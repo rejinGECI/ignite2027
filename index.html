@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1% Rule - Dream Career Tracker</title>
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Your web app's Firebase configuration
+        // TODO: Replace with your Firebase config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        window.firebaseAuth = getAuth(app);
+        window.firebaseDb = getFirestore(app);
+    </script>
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="login-page" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fas fa-chart-line"></i>
+                <h1>1% Rule</h1>
+                <p>Dream Career Tracker</p>
+            </div>
+            <div id="login-form" class="auth-form active">
+                <input type="text" id="login-username" placeholder="Username" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button class="btn btn-primary" onclick="app.login()">Login</button>
+                <div id="login-error" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container" class="container" style="display: none;">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-chart-line"></i>
+                <span>1% Rule</span>
+            </div>
+            <ul class="nav-menu" id="nav-menu">
+                <li><a href="#" class="nav-link active" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li id="admin-dash-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-dashboard"><i class="fas fa-users"></i> Students</a></li>
+                <li><a href="#" class="nav-link" data-page="dreams"><i class="fas fa-star"></i> My Dreams</a></li>
+                <li><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
+                <li><a href="#" class="nav-link" data-page="stats"><i class="fas fa-chart-bar"></i> Statistics</a></li>
+                <li><a href="#" class="nav-link" data-page="habits"><i class="fas fa-book"></i> Habits</a></li>
+                <li><a href="#" class="nav-link" data-page="feedback"><i class="fas fa-comments"></i> Feedback</a></li>
+                <li><a href="#" class="nav-link" onclick="app.logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div id="dashboard" class="page active">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <p class="subtitle">Your journey to achieving your dream career starts with 1% daily progress</p>
+                </div>
+                
+                <div class="dashboard-grid">
+                    <div class="stat-card streak-card">
+                        <div class="stat-icon"><i class="fas fa-fire"></i></div>
+                        <div class="stat-content">
+                            <h3 id="current-streak">0</h3>
+                            <p>Day Streak</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card progress-card">
+                        <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                        <div class="stat-content">
+                            <h3 id="total-minutes">0</h3>
+                            <p>Total Minutes</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card days-card">
+                        <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
+                        <div class="stat-content">
+                            <h3 id="total-days">0</h3>
+                            <p>Days Active</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card goal-card">
+                        <div class="stat-icon"><i class="fas fa-bullseye"></i></div>
+                        <div class="stat-content">
+                            <h3 id="completion-rate">0%</h3>
+                            <p>Goal Completion</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="today-section">
+                    <h2>Today's Progress</h2>
+                    <div class="progress-indicator">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="today-progress"></div>
+                        </div>
+                        <span id="today-minutes">0 / 20 minutes</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.showPage('progress')">
+                        <i class="fas fa-play"></i> Start Today's Session
+                    </button>
+                </div>
+
+                <div class="recent-activity">
+                    <h2>Recent Activity</h2>
+                    <div id="recent-activities" class="activity-list">
+                        <p class="empty-state">No activities yet. Start your journey today!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dreams Page -->
+            <div id="dreams" class="page">
+                <div class="page-header">
+                    <h1>My Dreams & Plans</h1>
+                    <p class="subtitle">Write about your dream career, places you want to visit, and your goals</p>
+                </div>
+                
+                <div class="dreams-section">
+                    <div class="dream-card">
+                        <h3><i class="fas fa-briefcase"></i> Dream Career</h3>
+                        <textarea id="dream-career" class="dream-textarea" placeholder="Describe your dream career in detail... What do you want to become? What excites you about this career?"></textarea>
+                    </div>
+                    
+                    <div class="dream-card">
+                        <h3><i class="fas fa-map-marked-alt"></i> Places to Visit</h3>
+                        <textarea id="places-visit" class="dream-textarea" placeholder="List the places you want to visit related to your career or personal growth..."></textarea>
+                    </div>
+                    
+                    <div class="dream-card">
+                        <h3><i class="fas fa-list-check"></i> Things to Do</h3>
+                        <textarea id="things-do" class="dream-textarea" placeholder="What are the things you want to accomplish? Skills to learn? Experiences to have?"></textarea>
+                    </div>
+                    
+                    <div class="dream-card">
+                        <h3><i class="fas fa-route"></i> Action Plan</h3>
+                        <textarea id="action-plan" class="dream-textarea" placeholder="Create a detailed action plan to achieve your dreams. Break it down into steps..."></textarea>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary btn-save" onclick="app.saveDreams()">
+                    <i class="fas fa-save"></i> Save Dreams & Plans
+                </button>
+            </div>
+
+            <!-- Progress Page -->
+            <div id="progress" class="page">
+                <div class="page-header">
+                    <h1>Daily Progress</h1>
+                    <p class="subtitle">Spend at least 20 minutes working towards your dreams</p>
+                </div>
+                
+                <div class="timer-section">
+                    <div class="timer-display">
+                        <div class="timer-circle">
+                            <svg class="timer-svg" viewBox="0 0 200 200">
+                                <circle class="timer-bg" cx="100" cy="100" r="90"></circle>
+                                <circle class="timer-progress" cx="100" cy="100" r="90" id="timer-circle"></circle>
+                            </svg>
+                            <div class="timer-text">
+                                <span id="timer-display">20:00</span>
+                                <p>minutes</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="timer-controls">
+                        <button class="btn btn-primary" id="start-timer" onclick="app.startTimer()">
+                            <i class="fas fa-play"></i> Start Session
+                        </button>
+                        <button class="btn btn-secondary" id="pause-timer" onclick="app.pauseTimer()" style="display: none;">
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+                        <button class="btn btn-danger" id="stop-timer" onclick="app.stopTimer()" style="display: none;">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                    </div>
+                </div>
+
+                <div class="activity-log-section">
+                    <h3>What did you do today?</h3>
+                    <textarea id="activity-log" class="activity-textarea" placeholder="Describe what you did to progress one step further towards your dreams today..."></textarea>
+                    <button class="btn btn-primary" onclick="app.saveActivity()">
+                        <i class="fas fa-check"></i> Save Activity
+                    </button>
+                </div>
+
+                <div class="today-activities">
+                    <h3>Today's Activities</h3>
+                    <div id="today-activities-list" class="activities-list">
+                        <p class="empty-state">No activities logged yet for today.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Page -->
+            <div id="stats" class="page">
+                <div class="page-header">
+                    <h1>Statistics</h1>
+                    <p class="subtitle">Track your progress and maintain your streaks</p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <h3>Current Streak</h3>
+                        <div class="stat-value" id="stat-streak">0 days</div>
+                        <div class="stat-detail" id="streak-detail">Keep going! 🔥</div>
+                    </div>
+                    
+                    <div class="stat-box">
+                        <h3>Longest Streak</h3>
+                        <div class="stat-value" id="stat-longest">0 days</div>
+                        <div class="stat-detail">Your best record!</div>
+                    </div>
+                    
+                    <div class="stat-box">
+                        <h3>Total Time</h3>
+                        <div class="stat-value" id="stat-total-time">0 hours</div>
+                        <div class="stat-detail" id="total-time-detail">Cumulative effort</div>
+                    </div>
+                    
+                    <div class="stat-box">
+                        <h3>Days Active</h3>
+                        <div class="stat-value" id="stat-days-active">0</div>
+                        <div class="stat-detail">Out of <span id="total-days-tracked">0</span> days</div>
+                    </div>
+                </div>
+
+                <div class="calendar-section">
+                    <h3>Activity Calendar</h3>
+                    <div id="activity-calendar" class="calendar-grid"></div>
+                </div>
+
+                <div class="weekly-stats">
+                    <h3>Weekly Progress</h3>
+                    <div class="week-chart">
+                        <canvas id="weekly-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Habits Page -->
+            <div id="habits" class="page">
+                <div class="page-header">
+                    <h1>Habit Building</h1>
+                    <p class="subtitle">Build consistent habits, especially reading</p>
+                </div>
+                
+                <div class="habits-section">
+                    <div class="habit-card reading-habit">
+                        <div class="habit-header">
+                            <i class="fas fa-book"></i>
+                            <h3>Daily Reading</h3>
+                        </div>
+                        <div class="habit-content">
+                            <p>Reading is one of the most powerful habits for growth. Track your daily reading progress here.</p>
+                            <div class="reading-input">
+                                <label>Pages Read Today:</label>
+                                <input type="number" id="pages-read" min="0" placeholder="0">
+                                <button class="btn btn-primary" onclick="app.saveReading()">
+                                    <i class="fas fa-check"></i> Log Reading
+                                </button>
+                            </div>
+                            <div class="reading-stats">
+                                <div class="reading-stat">
+                                    <span class="stat-label">Today:</span>
+                                    <span class="stat-value" id="today-pages">0</span> pages
+                                </div>
+                                <div class="reading-stat">
+                                    <span class="stat-label">This Week:</span>
+                                    <span class="stat-value" id="week-pages">0</span> pages
+                                </div>
+                                <div class="reading-stat">
+                                    <span class="stat-label">Total:</span>
+                                    <span class="stat-value" id="total-pages">0</span> pages
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="habit-card">
+                        <div class="habit-header">
+                            <i class="fas fa-plus-circle"></i>
+                            <h3>Add Custom Habit</h3>
+                        </div>
+                        <div class="habit-content">
+                            <input type="text" id="new-habit-name" placeholder="Habit name (e.g., Exercise, Meditation)">
+                            <button class="btn btn-primary" onclick="app.addCustomHabit()">
+                                <i class="fas fa-plus"></i> Add Habit
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="custom-habits-list" class="custom-habits">
+                        <!-- Custom habits will be added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feedback Page -->
+            <div id="feedback" class="page">
+                <div class="page-header">
+                    <h1>Feedback & Recheck</h1>
+                    <p class="subtitle">Reflect on your progress and adjust your plans</p>
+                </div>
+                
+                <div class="feedback-section">
+                    <div class="feedback-card">
+                        <h3><i class="fas fa-sticky-note"></i> Weekly Reflection</h3>
+                        <textarea id="weekly-reflection" class="feedback-textarea" placeholder="How did this week go? What went well? What could be improved?"></textarea>
+                        <button class="btn btn-primary" onclick="app.saveReflection()">
+                            <i class="fas fa-save"></i> Save Reflection
+                        </button>
+                    </div>
+
+                    <div class="feedback-card">
+                        <h3><i class="fas fa-clipboard-check"></i> Plan Recheck</h3>
+                        <p>Review your action plan and update it based on your progress:</p>
+                        <div class="recheck-actions">
+                            <button class="btn btn-secondary" onclick="app.showPage('dreams')">
+                                <i class="fas fa-edit"></i> Review Action Plan
+                            </button>
+                            <button class="btn btn-secondary" onclick="app.showPage('stats')">
+                                <i class="fas fa-chart-line"></i> Check Statistics
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="feedback-card">
+                        <h3><i class="fas fa-comment-dots"></i> Feedback Notes</h3>
+                        <div class="feedback-notes-list" id="feedback-notes">
+                            <!-- Feedback notes will be added here -->
+                        </div>
+                        <div class="add-feedback">
+                            <textarea id="new-feedback" class="feedback-textarea" placeholder="Add a feedback note..."></textarea>
+                            <button class="btn btn-primary" onclick="app.addFeedbackNote()">
+                                <i class="fas fa-plus"></i> Add Note
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Admin Dashboard Page -->
+            <div id="admin-dashboard" class="page">
+                <div class="page-header">
+                    <h1>Students Management</h1>
+                    <p class="subtitle">Monitor all your students' progress and achievements</p>
+                </div>
+                
+                <div class="admin-section">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-upload"></i> Upload Students CSV</h3>
+                        <p>Upload a CSV file with student KTU IDs to create student accounts automatically.</p>
+                        <div class="csv-upload-area">
+                            <input type="file" id="csv-file-input" accept=".csv" style="display: none;" onchange="app.handleCSVUpload(event)">
+                            <label for="csv-file-input" class="csv-upload-label">
+                                <i class="fas fa-file-csv"></i>
+                                <span>Choose CSV File</span>
+                            </label>
+                            <div id="csv-status" class="csv-status"></div>
+                        </div>
+                        <div class="csv-format-info">
+                            <p><strong>CSV Format:</strong></p>
+                            <p>Single column with KTU IDs (one per line):</p>
+                            <pre>ktuid1
+ktuid2
+ktuid3</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-controls">
+                    <input type="text" id="search-students" placeholder="Search students by KTU ID..." class="search-input">
+                </div>
+
+                <div id="students-list" class="students-grid">
+                    <div class="loading-state">Loading students...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
+
