@@ -25,9 +25,51 @@
         };
         
         // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        window.firebaseAuth = getAuth(app);
-        window.firebaseDb = getFirestore(app);
+        const firebaseApp = initializeApp(firebaseConfig);
+        window.firebaseAuth = getAuth(firebaseApp);
+        window.firebaseDb = getFirestore(firebaseApp);
+    </script>
+    <!-- Stub app object to prevent "app is not defined" errors before module loads -->
+    <script>
+        // Create a stub app object that will be replaced when the module loads
+        window.app = window.app || {
+            login: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            logout: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            showPage: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            startTimer: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            pauseTimer: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            stopTimer: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            saveActivity: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            saveDreams: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            saveReading: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            addCustomHabit: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            saveReflection: function() {
+                console.warn('App is still loading. Please wait...');
+            },
+            addFeedbackNote: function() {
+                console.warn('App is still loading. Please wait...');
+            }
+        };
     </script>
 </head>
 <body>
