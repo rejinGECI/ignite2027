@@ -20,6 +20,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Application State
+// Define app object first, then make it global
 const app = {
     currentUser: null,
     userRole: null,
@@ -921,9 +922,20 @@ const app = {
     }
 };
 
+// Make app available globally for onclick handlers
+window.app = app;
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     app.init();
+    
+    // Setup CSV file input handler
+    const csvInput = document.getElementById('csv-file-input');
+    if (csvInput) {
+        csvInput.addEventListener('change', (event) => {
+            app.handleCSVUpload(event);
+        });
+    }
 });
 
 // Search functionality for admin dashboard
