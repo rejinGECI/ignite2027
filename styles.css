@@ -2555,11 +2555,13 @@ body.mobile-menu-open {
     z-index: 9999;
     opacity: 0;
     transition: opacity 0.3s ease;
+    pointer-events: none;
 }
 
 .mobile-menu-backdrop.active {
     display: block;
     opacity: 1;
+    pointer-events: auto;
 }
 
 /* Responsive Design */
@@ -2572,6 +2574,11 @@ body.mobile-menu-open {
     /* Mobile Menu Backdrop */
     .mobile-menu-backdrop {
         display: block;
+        pointer-events: none;
+    }
+    
+    .mobile-menu-backdrop.active {
+        pointer-events: auto;
     }
 
     /* Navigation */
