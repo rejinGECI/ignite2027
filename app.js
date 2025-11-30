@@ -108,90 +108,45 @@ const app = {
         console.log('✅ App initialization complete');
     },
     
-    // Setup all buttons using event delegation on document.body - works even if buttons are hidden
+    // Setup all buttons - EXACT same simple approach as navbar (no complex code)
     setupAllButtonListeners: function() {
-        // Prevent duplicate setup
-        if (this._buttonListenersSetup) {
-            return;
-        }
-        this._buttonListenersSetup = true;
-        
-        const self = this;
-        
-        // Button handlers by ID - add all button IDs here
-        const buttonHandlers = {
-            'start-timer': () => this.startTimer(),
-            'pause-timer': () => this.pauseTimer(),
-            'stop-timer': () => this.stopTimer(),
-            'start-today-session': () => this.showPage('progress'),
-            'save-activity-btn': () => this.saveActivity(),
-            'login-btn': () => this.login()
-        };
-        
-        // Also handle buttons by their onclick content (for buttons without IDs)
-        const onclickHandlers = {
-            'app.saveDreams()': () => this.saveDreams(),
-            'app.saveReading()': () => this.saveReading(),
-            'app.addCustomHabit()': () => this.addCustomHabit(),
-            'app.saveReflection()': () => this.saveReflection(),
-            'app.addFeedbackNote()': () => this.addFeedbackNote(),
-            'app.logout()': () => this.logout(),
-            'app.addEvaluationStage()': () => this.addEvaluationStage(),
-            'app.createGuideAccount()': () => this.createGuideAccount(),
-            'app.showCreateGroupModal()': () => this.showCreateGroupModal(),
-            'app.saveGoLiveDate()': () => this.saveGoLiveDate(),
-            'app.closeEditGroupModal()': () => this.closeEditGroupModal(),
-            'app.addMemberToGroup()': () => this.addMemberToGroup()
-        };
-        
-        // Event handler for all button clicks/touches - works like navbar
-        const handleButtonClick = (e) => {
-            // Find the button element (might be target or parent if icon was clicked)
-            let target = e.target;
-            
-            // If clicked on icon or span inside button, find the button
-            if (target.tagName === 'I' || (target.tagName === 'SPAN' && target.parentElement)) {
-                const button = target.closest('button') || target.closest('a.btn') || target.closest('a[onclick]');
-                if (button) {
-                    target = button;
-                }
-            }
-            
-            // Check if it's a button or link with btn class or onclick
-            const isButton = target.tagName === 'BUTTON';
-            const isButtonLink = target.tagName === 'A' && (target.classList.contains('btn') || target.hasAttribute('onclick'));
-            const hasOnclick = target.hasAttribute('onclick');
-            
-            if (!isButton && !isButtonLink && !hasOnclick) {
-                return; // Not a button
-            }
-            
-            // Skip if disabled
-            if (target.disabled || target.classList.contains('disabled')) {
-                return;
-            }
-            
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Handle by ID first
-            const buttonId = target.id;
-            if (buttonId && buttonHandlers[buttonId]) {
-                buttonHandlers[buttonId]();
-                return;
-            }
-            
-            // Handle by onclick attribute (check both onclick and data-onclick)
-            const onclick = target.getAttribute('onclick') || target.getAttribute('data-onclick');
-            if (onclick && onclick.includes('app.')) {
-                // First try exact match in onclickHandlers
-                const trimmedOnclick = onclick.trim();
-                if (onclickHandlers[trimmedOnclick]) {
-                    onclickHandlers[trimmedOnclick]();
-                    return;
+        // Setup buttons by ID - simple direct listeners (same as navbar)
+        const setupById = (id, handler) => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                // Remove onclick if present
+                if (btn.hasAttribute('onclick')) {
+                    btn.removeAttribute('onclick');
                 }
                 
-                // Then try parsing the function call
+                const handleClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handler();
+                };
+                
+                // Add both click and touch events - EXACT same as navbar
+                btn.addEventListener('click', handleClick, { passive: false });
+                btn.addEventListener('touchend', handleClick, { passive: false });
+            }
+        };
+        
+        // Setup specific buttons by ID
+        setupById('start-timer', () => this.startTimer());
+        setupById('pause-timer', () => this.pauseTimer());
+        setupById('stop-timer', () => this.stopTimer());
+        setupById('start-today-session', () => this.showPage('progress'));
+        setupById('save-activity-btn', () => this.saveActivity());
+        setupById('login-btn', () => this.login());
+        
+        // Setup all buttons with onclick - EXACT same pattern as navbar
+        document.querySelectorAll('button[onclick], a[onclick]').forEach(element => {
+            // Remove onclick if present - same as navbar
+            if (element.hasAttribute('onclick')) {
+                const onclick = element.getAttribute('onclick');
+                element.removeAttribute('onclick');
+                
+                // Extract function name and params
                 const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
                 if (match && this[match[1]]) {
                     const funcName = match[1];
@@ -203,33 +158,22 @@ const app = {
                         return p;
                     }) : [];
                     
-                    try {
+                    const handleClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         if (params.length > 0) {
                             this[funcName](...params);
                         } else {
                             this[funcName]();
                         }
-                    } catch (error) {
-                        console.error('Error calling button handler:', error);
-                    }
+                    };
+                    
+                    // Add both click and touch events - EXACT same as navbar
+                    element.addEventListener('click', handleClick, { passive: false });
+                    element.addEventListener('touchend', handleClick, { passive: false });
                 }
             }
-        };
-        
-        // Store onclick info in data attribute before removing (so event delegation can use it)
-        document.querySelectorAll('button[onclick], a[onclick]').forEach(element => {
-            const onclick = element.getAttribute('onclick');
-            if (onclick) {
-                // Store the onclick in a data attribute before removing
-                element.setAttribute('data-onclick', onclick);
-                element.removeAttribute('onclick');
-            }
         });
-        
-        // Add event listeners to document.body - always exists, catches all button clicks
-        // Don't use capture phase - use bubble phase like navbar does
-        document.body.addEventListener('click', handleButtonClick, { passive: false });
-        document.body.addEventListener('touchend', handleButtonClick, { passive: false });
     },
     
     // Authentication
@@ -972,12 +916,12 @@ const app = {
             page.classList.add('active');
                 // Show loading animation
                 this.showPageLoader(pageId, true);
-                
-                // Setup buttons for the newly shown page (important for mobile)
-                setTimeout(() => {
-                    this.setupAllButtonListeners();
-                }, 100);
         }
+        
+        // Setup buttons AFTER page is shown - important for mobile
+        setTimeout(() => {
+            this.setupAllButtonListeners();
+        }, 150);
         
         // Update active nav link
         document.querySelectorAll('.nav-link[data-page]').forEach(link => {
