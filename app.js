@@ -83,8 +83,8 @@ const app = {
     currentEditingMembers: [],
     isCreatingGuide: false,
     timer: {
-        duration: 5, // 5 seconds for testing (change back to 20 * 60 for 20 minutes)
-        remaining: 5,
+        duration: 20 * 60, // 20 minutes (1200 seconds)
+        remaining: 20 * 60,
         interval: null,
         isRunning: false,
         isPaused: false
@@ -96,9 +96,7 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
-        this.setupEventDelegation(); // Use event delegation for better mobile support
-        this.setupTimerButtons();
-        this.setupAllButtons();
+        this.setupAllButtonListeners(); // Simple direct event listeners
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
@@ -110,8 +108,120 @@ const app = {
         console.log('✅ App initialization complete');
     },
     
-    // Event delegation for all buttons - more reliable on mobile
-    setupEventDelegation: function() {
+    // Simple, direct button event listener setup - works reliably on mobile
+    setupButtonListener: function(button, handler) {
+        if (!button) return;
+        
+        // Skip if already set up
+        if (button.dataset.listenerSetup === 'true') {
+            return;
+        }
+        button.dataset.listenerSetup = 'true';
+        
+        // Remove onclick attribute
+                button.removeAttribute('onclick');
+                
+        // Prevent double-firing flag
+        let isHandling = false;
+        
+        const handleClick = function(e) {
+            if (isHandling) return;
+            isHandling = true;
+            setTimeout(() => { isHandling = false; }, 300);
+            
+                    e.preventDefault();
+                    e.stopPropagation();
+            handler();
+        };
+        
+        // Simple click handler
+        button.addEventListener('click', handleClick, { passive: false });
+        
+        // Simple touch handler for mobile
+        button.addEventListener('touchend', handleClick, { passive: false });
+        
+        // Ensure button is clickable
+        button.style.pointerEvents = 'auto';
+        button.style.cursor = 'pointer';
+        button.style.touchAction = 'manipulation';
+    },
+    
+    // Setup all button listeners - simple and direct
+    setupAllButtonListeners: function() {
+        const self = this;
+        
+        // Timer buttons
+        const startTimerBtn = document.getElementById('start-timer');
+        if (startTimerBtn) {
+            this.setupButtonListener(startTimerBtn, () => this.startTimer());
+        }
+        
+        const pauseTimerBtn = document.getElementById('pause-timer');
+        if (pauseTimerBtn) {
+            this.setupButtonListener(pauseTimerBtn, () => this.pauseTimer());
+        }
+        
+        const stopTimerBtn = document.getElementById('stop-timer');
+        if (stopTimerBtn) {
+            this.setupButtonListener(stopTimerBtn, () => this.stopTimer());
+        }
+        
+        const startTodaySessionBtn = document.getElementById('start-today-session');
+        if (startTodaySessionBtn) {
+            this.setupButtonListener(startTodaySessionBtn, () => this.showPage('progress'));
+        }
+        
+        // Save buttons
+        const saveActivityBtn = document.getElementById('save-activity-btn');
+        if (saveActivityBtn) {
+            this.setupButtonListener(saveActivityBtn, () => this.saveActivity());
+        }
+        
+        // Find all buttons with onclick attributes and set them up
+        document.querySelectorAll('button[onclick]').forEach(button => {
+            const onclick = button.getAttribute('onclick');
+            if (onclick && onclick.includes('app.')) {
+                // Extract function name
+                const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
+                if (match && this[match[1]]) {
+                    const funcName = match[1];
+                    const params = match[2] ? match[2].split(',').map(p => {
+                        p = p.trim().replace(/['"]/g, '');
+                        if (p === 'true') return true;
+                        if (p === 'false') return false;
+                        if (!isNaN(p)) return Number(p);
+                        return p;
+                    }) : [];
+                    
+                    button.removeAttribute('onclick');
+                    this.setupButtonListener(button, () => {
+                        if (params.length > 0) {
+                            this[funcName](...params);
+                        } else {
+                            this[funcName]();
+                        }
+                    });
+                }
+            }
+        });
+        
+        // Setup login button
+        const loginBtn = document.querySelector('button[onclick*="app.login()"]');
+        if (loginBtn) {
+            loginBtn.removeAttribute('onclick');
+            this.setupButtonListener(loginBtn, () => this.login());
+        }
+        
+        // Setup logout link
+        const logoutLink = document.querySelector('a[onclick*="app.logout()"]');
+        if (logoutLink) {
+            logoutLink.removeAttribute('onclick');
+            this.setupButtonListener(logoutLink, () => this.logout());
+        }
+    },
+    
+    // Authentication
+    checkAuthState: function() {
         // Prevent duplicate setup
         if (this._eventDelegationSetup) {
             return;
@@ -161,8 +271,8 @@ const app = {
                     if (e.type === 'touchend' || e.type === 'touchstart') {
                         if (now - lastTouchTime < 300 && lastTouchTarget === button) {
                             console.log('⏭️ Skipping duplicate touch event');
-                            e.preventDefault();
-                            e.stopPropagation();
+                    e.preventDefault();
+                    e.stopPropagation();
                             return;
                         }
                         lastTouchTime = now;
@@ -293,127 +403,6 @@ const app = {
     },
     
     // Setup all buttons with onclick attributes to use proper event listeners
-    setupAllButtons: function() {
-        // Setup login button
-        const loginBtn = document.querySelector('button[onclick*="app.login()"]');
-        if (loginBtn) {
-            this.addMobileEventListener(loginBtn, () => this.login());
-        }
-        
-        // Setup logout link
-        const logoutLink = document.querySelector('a[onclick*="app.logout()"]');
-        if (logoutLink) {
-            this.addMobileEventListener(logoutLink, () => this.logout());
-        }
-        
-        // Setup save dreams button
-        const saveDreamsBtn = document.querySelector('button[onclick*="app.saveDreams()"]');
-        if (saveDreamsBtn) {
-            this.addMobileEventListener(saveDreamsBtn, () => this.saveDreams());
-        }
-        
-        // Setup save activity button
-        const saveActivityBtn = document.getElementById('save-activity-btn');
-        if (saveActivityBtn) {
-            this.addMobileEventListener(saveActivityBtn, () => this.saveActivity());
-        }
-        
-        // Setup save reading button
-        const saveReadingBtn = document.querySelector('button[onclick*="app.saveReading()"]');
-        if (saveReadingBtn) {
-            this.addMobileEventListener(saveReadingBtn, () => this.saveReading());
-        }
-        
-        // Setup add custom habit button
-        const addHabitBtn = document.querySelector('button[onclick*="app.addCustomHabit()"]');
-        if (addHabitBtn) {
-            this.addMobileEventListener(addHabitBtn, () => this.addCustomHabit());
-        }
-        
-        // Setup save reflection button
-        const saveReflectionBtn = document.querySelector('button[onclick*="app.saveReflection()"]');
-        if (saveReflectionBtn) {
-            this.addMobileEventListener(saveReflectionBtn, () => this.saveReflection());
-        }
-        
-        // Setup add feedback note button
-        const addFeedbackBtn = document.querySelector('button[onclick*="app.addFeedbackNote()"]');
-        if (addFeedbackBtn) {
-            this.addMobileEventListener(addFeedbackBtn, () => this.addFeedbackNote());
-        }
-        
-        // Setup admin buttons
-        const addStageBtn = document.querySelector('button[onclick*="app.addEvaluationStage()"]');
-        if (addStageBtn) {
-            this.addMobileEventListener(addStageBtn, () => this.addEvaluationStage());
-        }
-        
-        const createGuideBtn = document.querySelector('button[onclick*="app.createGuideAccount()"]');
-        if (createGuideBtn) {
-            this.addMobileEventListener(createGuideBtn, () => this.createGuideAccount());
-        }
-        
-        const showGroupModalBtn = document.querySelector('button[onclick*="app.showCreateGroupModal()"]');
-        if (showGroupModalBtn) {
-            this.addMobileEventListener(showGroupModalBtn, () => this.showCreateGroupModal());
-        }
-        
-        const saveGoLiveBtn = document.querySelector('button[onclick*="app.saveGoLiveDate()"]');
-        if (saveGoLiveBtn) {
-            this.addMobileEventListener(saveGoLiveBtn, () => this.saveGoLiveDate());
-        }
-        
-        // Setup modal buttons
-        const closeModalBtn = document.querySelector('button[onclick*="app.closeEditGroupModal()"]');
-        if (closeModalBtn) {
-            this.addMobileEventListener(closeModalBtn, () => this.closeEditGroupModal());
-        }
-        
-        const addMemberBtn = document.querySelector('button[onclick*="app.addMemberToGroup()"]');
-        if (addMemberBtn) {
-            this.addMobileEventListener(addMemberBtn, () => this.addMemberToGroup());
-        }
-        
-        // Setup navigation buttons that use showPage
-        const reviewPlanBtn = document.querySelector('button[onclick*="app.showPage(\'dreams\')"]');
-        if (reviewPlanBtn) {
-            this.addMobileEventListener(reviewPlanBtn, () => this.showPage('dreams'));
-        }
-        
-        const checkStatsBtn = document.querySelector('button[onclick*="app.showPage(\'stats\')"]');
-        if (checkStatsBtn) {
-            this.addMobileEventListener(checkStatsBtn, () => this.showPage('stats'));
-        }
-        
-        // Setup modal overlay click handler
-        const editGroupModal = document.getElementById('edit-group-modal');
-        if (editGroupModal) {
-            editGroupModal.addEventListener('touchend', (e) => {
-                if (e.target === editGroupModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.closeEditGroupModal();
-                }
-            }, { passive: false });
-        }
-    },
-    
-    setupTimerButtons: function() {
-        // Setup timer buttons with proper event listeners for mobile compatibility
-        const setupButton = (buttonId, handler) => {
-            const button = document.getElementById(buttonId);
-            if (button) {
-                return this.setupButtonWithMobileSupport(button, handler);
-            }
-            return false;
-        };
-        
-        // Setup timer control buttons
-        setupButton('start-timer', this.startTimer);
-        setupButton('pause-timer', this.pauseTimer);
-        setupButton('stop-timer', this.stopTimer);
-        setupButton('start-today-session', () => this.showPage('progress'));
-    },
     
     // Enhanced button setup with comprehensive mobile support
     setupButtonWithMobileSupport: function(button, handler) {
@@ -565,8 +554,7 @@ const app = {
         // Setup all buttons again after app is shown (in case they weren't available during init)
         // Use setTimeout to ensure DOM is fully rendered
         setTimeout(() => {
-            this.setupAllButtons();
-            this.setupTimerButtons();
+            this.setupAllButtonListeners();
         }, 100);
         
         // Update mini project visibility
@@ -1048,9 +1036,9 @@ const app = {
                 e.stopPropagation();
                 const page = link.getAttribute('data-page');
                 if (page) {
-                    this.showPage(page);
-                    // Close mobile menu after navigation
-                    this.closeMobileMenu();
+                this.showPage(page);
+                // Close mobile menu after navigation
+                this.closeMobileMenu();
                 }
             };
             
@@ -1218,9 +1206,8 @@ const app = {
                 
                 // Setup buttons for the newly shown page (important for mobile)
                 setTimeout(() => {
-                    this.setupTimerButtons();
-                    this.setupAllButtons();
-                }, 50);
+                    this.setupAllButtonListeners();
+                }, 100);
         }
         
         // Update active nav link
@@ -1266,7 +1253,7 @@ const app = {
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
                     // Setup timer buttons for mobile compatibility
-                    this.setupTimerButtons();
+                    this.setupAllButtonListeners();
                 } else if (pageId === 'dreams') {
                     // Dreams page - data already loaded, just hide loader
                 } else if (pageId === 'feedback') {
@@ -1351,11 +1338,14 @@ const app = {
         // Play stop sound
         SoundManager.playStopSound();
         
-        // For testing: calculate seconds spent (change back to minutes for production)
+        // Calculate minutes spent
         const secondsSpent = this.timer.duration - this.timer.remaining;
         if (secondsSpent > 0 && !this.isAdmin) {
-            // For testing: record 1 minute minimum (change calculation for production)
-            await this.recordTime(secondsSpent >= 5 ? 1 : 0);
+            // Convert seconds to minutes and record (round to nearest minute)
+            const minutesSpent = Math.round(secondsSpent / 60);
+            if (minutesSpent > 0) {
+                await this.recordTime(minutesSpent);
+            }
         }
         
         this.timer.remaining = this.timer.duration;
@@ -1377,8 +1367,8 @@ const app = {
         this.timer.isRunning = false;
         this.timer.isPaused = false;
         if (!this.isAdmin) {
-            // For testing: record 1 minute when 5 seconds complete (change to 20 for production)
-            await this.recordTime(1);
+            // Record 20 minutes when timer completes
+            await this.recordTime(20);
             
             // Automatically record timer completion as an activity
             await this.recordTimerCompletion();
@@ -1714,7 +1704,7 @@ const app = {
         // For testing: progress based on 1 minute goal (change to 20 minutes for production)
         const progressPercent = Math.min(100, (todayMinutes / 1) * 100);
         document.getElementById('today-progress').style.width = `${progressPercent}%`;
-        document.getElementById('today-minutes').textContent = `${todayMinutes} / 5 seconds (testing)`;
+        document.getElementById('today-minutes').textContent = `${todayMinutes} / 20 minutes`;
     },
     
     async updateStatistics() {
@@ -4114,9 +4104,9 @@ window.app = app;
 function initializeApp() {
     if (document.readyState === 'loading') {
         // DOM is still loading, wait for DOMContentLoaded
-        document.addEventListener('DOMContentLoaded', () => {
-            app.init();
-            app.setupCSVUpload();
+document.addEventListener('DOMContentLoaded', () => {
+    app.init();
+    app.setupCSVUpload();
         });
     } else {
         // DOM is already loaded, initialize immediately
@@ -4137,11 +4127,11 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // Fallback: Also initialize on window load (most reliable on mobile)
 window.addEventListener('load', () => {
-    // Re-setup event delegation in case it didn't work the first time
-    if (app && app.setupEventDelegation) {
+    // Re-setup button listeners in case they weren't available the first time
+    if (app && app.setupAllButtonListeners) {
         setTimeout(() => {
-            app.setupEventDelegation();
-        }, 100);
+            app.setupAllButtonListeners();
+        }, 200);
     }
 });
 
