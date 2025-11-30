@@ -102,7 +102,7 @@
                         <i class="fas fa-eye" id="password-eye-icon"></i>
                     </button>
                 </div>
-                <button class="btn btn-primary" id="login-btn" onclick="app.login()">Login</button>
+                <button type="button" class="btn btn-primary" id="login-btn" onclick="app.login()">Login</button>
                 <div id="login-error" class="error-message"></div>
             </div>
         </div>
@@ -247,7 +247,7 @@
                     </div>
                 </div>
                 
-                <button class="btn btn-primary btn-save" id="save-dreams-btn" onclick="app.saveDreams()">
+                <button type="button" class="btn btn-primary btn-save" id="save-dreams-btn" onclick="app.saveDreams()">
                     <i class="fas fa-save"></i> Save Dreams & Plans
                 </button>
             </div>
@@ -284,13 +284,13 @@
                     </div>
                     
                     <div class="timer-controls">
-                        <button class="btn btn-primary" id="start-timer" onclick="app.startTimer()">
+                        <button type="button" class="btn btn-primary" id="start-timer" onclick="app.startTimer()">
                             <i class="fas fa-play"></i> Start Session
                         </button>
-                        <button class="btn btn-secondary" id="pause-timer" style="display: none;" onclick="app.pauseTimer()">
+                        <button type="button" class="btn btn-secondary" id="pause-timer" style="display: none;" onclick="app.pauseTimer()">
                             <i class="fas fa-pause"></i> Pause
                         </button>
-                        <button class="btn btn-danger" id="stop-timer" style="display: none;" onclick="app.stopTimer()">
+                        <button type="button" class="btn btn-danger" id="stop-timer" style="display: none;" onclick="app.stopTimer()">
                             <i class="fas fa-stop"></i> Stop
                         </button>
                     </div>
@@ -299,7 +299,7 @@
                 <div class="activity-log-section">
                     <h3>What did you do today?</h3>
                     <textarea id="activity-log" class="activity-textarea" placeholder="Describe what you did to progress one step further towards your dreams today..."></textarea>
-                    <button id="save-activity-btn" class="btn btn-primary" onclick="app.saveActivity()" disabled>
+                    <button type="button" id="save-activity-btn" class="btn btn-primary" onclick="app.saveActivity()" disabled>
                         <i class="fas fa-check"></i> Save Activity
                     </button>
                 </div>
@@ -470,7 +470,7 @@
                                     <textarea id="reading-notes" class="reading-notes-textarea" placeholder="Add your notes about what you read..."></textarea>
                                 </div>
                                 
-                                <button class="btn btn-primary" id="save-reading-btn" onclick="app.saveReading()">
+                                <button type="button" class="btn btn-primary" id="save-reading-btn" onclick="app.saveReading()">
                                     <i class="fas fa-check"></i> Log Reading
                                 </button>
                             </div>
@@ -487,7 +487,7 @@
                             <div class="habit-add-section">
                                 <div class="habit-form-row">
                                     <input type="text" id="new-habit-name" placeholder="Habit name (e.g., Exercise, Meditation)" class="habit-name-input">
-                                    <button class="btn btn-primary" id="add-custom-habit-btn" onclick="app.addCustomHabit()">
+                                    <button type="button" class="btn btn-primary" id="add-custom-habit-btn" onclick="app.addCustomHabit()">
                                         <i class="fas fa-plus"></i> Add Habit
                                     </button>
                                 </div>
@@ -531,7 +531,7 @@
                     <div class="feedback-card">
                         <h3><i class="fas fa-sticky-note"></i> Weekly Reflection</h3>
                         <textarea id="weekly-reflection" class="feedback-textarea" placeholder="How did this week go? What went well? What could be improved?"></textarea>
-                        <button class="btn btn-primary" id="save-reflection-btn" onclick="app.saveReflection()">
+                        <button type="button" class="btn btn-primary" id="save-reflection-btn" onclick="app.saveReflection()">
                             <i class="fas fa-save"></i> Save Reflection
                         </button>
                     </div>
@@ -540,10 +540,10 @@
                         <h3><i class="fas fa-clipboard-check"></i> Plan Recheck</h3>
                         <p>Review your action plan and update it based on your progress:</p>
                         <div class="recheck-actions">
-                            <button class="btn btn-secondary" id="show-dreams-btn" onclick="app.showPage('dreams')">
+                            <button type="button" class="btn btn-secondary" id="show-dreams-btn" onclick="app.showPage('dreams')">
                                 <i class="fas fa-edit"></i> Review Action Plan
                             </button>
-                            <button class="btn btn-secondary" id="show-stats-btn" onclick="app.showPage('stats')">
+                            <button type="button" class="btn btn-secondary" id="show-stats-btn" onclick="app.showPage('stats')">
                                 <i class="fas fa-chart-line"></i> Check Statistics
                             </button>
                         </div>
@@ -556,7 +556,7 @@
                         </div>
                         <div class="add-feedback">
                             <textarea id="new-feedback" class="feedback-textarea" placeholder="Share your feedback on how Ignite has improved your life quality..."></textarea>
-                            <button class="btn btn-primary" id="add-feedback-note-btn" onclick="app.addFeedbackNote()">
+                            <button type="button" class="btn btn-primary" id="add-feedback-note-btn" onclick="app.addFeedbackNote()">
                                 <i class="fas fa-plus"></i> Add Note
                             </button>
                         </div>
@@ -674,7 +674,7 @@ Bob Johnson,GHI789</pre>
                         </div>
                         <div class="add-stage-section">
                             <input type="text" id="new-stage-name" placeholder="Stage name (e.g., Proposal, Mid-term, Final)" class="stage-input">
-                            <button class="btn btn-primary" id="add-evaluation-stage-btn" onclick="app.addEvaluationStage()">
+                            <button type="button" class="btn btn-primary" id="add-evaluation-stage-btn" onclick="app.addEvaluationStage()">
                                 <i class="fas fa-plus"></i> Add Stage
                             </button>
                         </div>
@@ -698,7 +698,7 @@ Bob Johnson,GHI789</pre>
                                 <input type="text" id="guide-name" placeholder="Guide Name" class="form-input">
                                 <input type="text" id="guide-email" placeholder="Email/Username" class="form-input">
                                 <input type="password" id="guide-password" placeholder="Password" class="form-input">
-                                <button class="btn btn-primary" id="create-guide-account-btn" onclick="app.createGuideAccount()">
+                                <button type="button" class="btn btn-primary" id="create-guide-account-btn" onclick="app.createGuideAccount()">
                                     <i class="fas fa-plus"></i> Create Guide
                                 </button>
                             </div>
@@ -711,7 +711,7 @@ Bob Johnson,GHI789</pre>
                     <!-- Project Groups Management -->
                     <div class="admin-card">
                         <h3><i class="fas fa-users"></i> Project Groups</h3>
-                        <button class="btn btn-primary" id="show-create-group-modal-btn" onclick="app.showCreateGroupModal()" style="margin-bottom: 1rem;">
+                        <button type="button" class="btn btn-primary" id="show-create-group-modal-btn" onclick="app.showCreateGroupModal()" style="margin-bottom: 1rem;">
                             <i class="fas fa-plus"></i> Create New Group
                         </button>
                         <div id="project-groups-list" class="project-groups-list">
@@ -747,7 +747,7 @@ Bob Johnson,GHI789</pre>
                             </div>
                             
                             <div class="form-group">
-                                <button class="btn btn-primary" id="save-go-live-date-btn" onclick="app.saveGoLiveDate()">
+                                <button type="button" class="btn btn-primary" id="save-go-live-date-btn" onclick="app.saveGoLiveDate()">
                                     <i class="fas fa-save"></i> Save Go Live Date
                                 </button>
                             </div>
@@ -899,7 +899,7 @@ Bob Johnson,GHI789</pre>
         <div class="modal-content modal-large" onclick="event.stopPropagation()">
             <div class="modal-header">
                 <h2><i class="fas fa-edit"></i> Edit Project Group</h2>
-                <button class="modal-close" id="close-edit-group-modal-btn" onclick="app.closeEditGroupModal()">
+                <button type="button" class="modal-close" id="close-edit-group-modal-btn" onclick="app.closeEditGroupModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
