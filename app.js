@@ -96,6 +96,7 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
+        this.setupStartTodaySessionButton();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
@@ -734,6 +735,28 @@ const app = {
     },
 
 
+    // Setup Start Today's Session button - EXACT same as navigation
+    setupStartTodaySessionButton: function() {
+        var btn = document.getElementById('start-today-session');
+        if (btn) {
+            // Remove onclick if present - same as nav
+            if (btn.hasAttribute('onclick')) {
+                btn.removeAttribute('onclick');
+            }
+            
+            // Handler - EXACT same as nav
+            var handleClick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Start Today\'s Session button clicked!');
+            };
+            
+            // Add both click and touch events - EXACT same as nav
+            btn.addEventListener('click', handleClick, { passive: false });
+            btn.addEventListener('touchend', handleClick, { passive: false });
+        }
+    },
+
     toggleMobileMenu: function() {
         const navbar = document.getElementById('navbar');
         const toggle = document.getElementById('mobile-menu-toggle');
@@ -885,7 +908,10 @@ const app = {
             this.setupProgressSearch();
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
-                    // Setup timer buttons for mobile compatibility
+                    // Setup Start Today's Session button
+                    setTimeout(() => {
+                        this.setupStartTodaySessionButton();
+                    }, 150);
                 } else if (pageId === 'dreams') {
                     // Dreams page - data already loaded, just hide loader
                 } else if (pageId === 'feedback') {
