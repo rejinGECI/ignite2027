@@ -744,11 +744,8 @@ const app = {
 
     // Setup all buttons - ONE simple global handler, that's it
     setupAllButtons: function() {
-        // Remove old handler
-        if (this._buttonClickHandler) {
-            document.removeEventListener('click', this._buttonClickHandler);
-            document.removeEventListener('touchend', this._buttonClickHandler);
-        }
+        // Only setup once
+        if (this._buttonClickHandler) return;
         
         // ONE simple handler for ALL buttons
         this._buttonClickHandler = (e) => {
@@ -762,7 +759,7 @@ const app = {
                     if (onclick) {
                         e.preventDefault();
                         e.stopPropagation();
-                        alert('Button clicked!');
+                        alert('Button clicked: ' + onclick);
                         try {
                             eval(onclick);
                         } catch (err) {
@@ -775,7 +772,7 @@ const app = {
             }
         };
         
-        // Add to document
+        // Add to document - only once
         document.addEventListener('click', this._buttonClickHandler, true);
         document.addEventListener('touchend', this._buttonClickHandler, true);
     },
