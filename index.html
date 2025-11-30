@@ -205,9 +205,9 @@
                         </div>
                         <span id="today-minutes">0 / 20 minutes</span>
                     </div>
-                    <a href="#" class="btn btn-primary" id="start-today-session" data-action="showPage" data-page="progress">
+                    <button type="button" class="btn btn-primary" id="start-today-session" onclick="app.showPage('progress')">
                         <i class="fas fa-play"></i> Start Today's Session
-                    </a>
+                    </button>
                 </div>
 
                 <div class="recent-activity">
@@ -960,27 +960,6 @@ Bob Johnson,GHI789</pre>
             </div>
         </div>
     </div>
-    <script>
-        // EXACT same pattern as navigation - simple and works
-        var btn = document.getElementById('start-today-session');
-        if (btn) {
-            // Remove onclick if present - same as nav
-            if (btn.hasAttribute('onclick')) {
-                btn.removeAttribute('onclick');
-            }
-            
-            // Handler - EXACT same as nav
-            var handleClick = function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                alert('Start Today\'s Session button clicked!');
-            };
-            
-            // Add both click and touch events - EXACT same as nav
-            btn.addEventListener('click', handleClick, { passive: false });
-            btn.addEventListener('touchend', handleClick, { passive: false });
-        }
-    </script>
     
     <!-- Mobile Console Logger -->
     <div id="mobile-console" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); color: #0f0; padding: 10px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; z-index: 99999; border-top: 2px solid #0f0;">
