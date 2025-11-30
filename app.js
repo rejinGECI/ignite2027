@@ -739,7 +739,12 @@ const app = {
     setupAllButtons: function() {
         // Find all buttons with onclick - EXACT same pattern as nav links
         const buttons = document.querySelectorAll('button[onclick]');
+        console.log('Found buttons:', buttons.length);
         buttons.forEach(button => {
+            // Skip if already set up (check data attribute)
+            if (button.dataset.listenerAdded === 'true') return;
+            button.dataset.listenerAdded = 'true';
+            
             // Remove onclick if present - same as nav
             if (button.hasAttribute('onclick')) {
                 const onclick = button.getAttribute('onclick');
@@ -761,6 +766,7 @@ const app = {
                     const handleClick = (e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        alert('Button clicked: ' + funcName);
                         if (params.length > 0) {
                             this[funcName](...params);
                         } else {
@@ -771,6 +777,7 @@ const app = {
                     // Add both click and touch events - EXACT same as nav
                     button.addEventListener('click', handleClick, { passive: false });
                     button.addEventListener('touchend', handleClick, { passive: false });
+                    console.log('Added listeners to button:', button.id || button.className);
                 }
             }
         });
@@ -884,10 +891,16 @@ const app = {
                 this.showPageLoader(pageId, true);
         }
         
-        // Setup buttons when page is shown - EXACT same timing as navigation
+        // Setup buttons when page is shown - run multiple times to catch all buttons
         setTimeout(() => {
             this.setupAllButtons();
         }, 150);
+        setTimeout(() => {
+            this.setupAllButtons();
+        }, 500);
+        setTimeout(() => {
+            this.setupAllButtons();
+        }, 1000);
         
         
         // Update active nav link
