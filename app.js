@@ -112,15 +112,15 @@ const app = {
     setupButtonListener: function(button, handler) {
         if (!button) return;
         
-        // Skip if already set up
+        // Skip if already set up (check data attribute)
         if (button.dataset.listenerSetup === 'true') {
             return;
         }
         button.dataset.listenerSetup = 'true';
         
         // Remove onclick attribute
-                button.removeAttribute('onclick');
-                
+        button.removeAttribute('onclick');
+        
         // Prevent double-firing flag
         let isHandling = false;
         
@@ -129,15 +129,13 @@ const app = {
             isHandling = true;
             setTimeout(() => { isHandling = false; }, 300);
             
-                    e.preventDefault();
-                    e.stopPropagation();
+            e.preventDefault();
+            e.stopPropagation();
             handler();
         };
         
-        // Simple click handler
+        // Add event listeners directly
         button.addEventListener('click', handleClick, { passive: false });
-        
-        // Simple touch handler for mobile
         button.addEventListener('touchend', handleClick, { passive: false });
         
         // Ensure button is clickable
@@ -205,8 +203,8 @@ const app = {
             }
         });
         
-        // Setup login button
-        const loginBtn = document.querySelector('button[onclick*="app.login()"]');
+        // Setup login button (by ID or selector)
+        const loginBtn = document.getElementById('login-btn') || document.querySelector('button[onclick*="app.login()"]');
         if (loginBtn) {
             loginBtn.removeAttribute('onclick');
             this.setupButtonListener(loginBtn, () => this.login());
@@ -545,6 +543,11 @@ const app = {
     showLogin: function() {
         document.getElementById('login-page').style.display = 'flex';
         document.getElementById('app-container').style.display = 'none';
+        
+        // Setup login button when login page is shown (important for mobile)
+        setTimeout(() => {
+            this.setupAllButtonListeners();
+        }, 50);
     },
     
     showApp: async function() {
