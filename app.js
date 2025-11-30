@@ -93,12 +93,15 @@ const app = {
     init: function() {
         console.log('🚀 App initializing...');
         
-        // Ensure mobile backdrop doesn't block interactions
+        // Ensure mobile backdrop doesn't block interactions - FORCE it off
         const backdrop = document.getElementById('mobile-menu-backdrop');
         if (backdrop) {
             backdrop.style.pointerEvents = 'none';
+            backdrop.style.display = 'none';
+            backdrop.style.opacity = '0';
+            backdrop.classList.remove('active');
             backdrop.style.zIndex = '9999';
-            console.log('Mobile backdrop initialized with pointer-events: none');
+            console.log('Mobile backdrop FORCED OFF - pointer-events: none, display: none');
         }
         
         // Don't show login immediately - wait for auth check
@@ -201,6 +204,15 @@ const app = {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
         
+        // FORCE backdrop off when app shows
+        const backdrop = document.getElementById('mobile-menu-backdrop');
+        if (backdrop) {
+            backdrop.style.pointerEvents = 'none';
+            backdrop.style.display = 'none';
+            backdrop.style.opacity = '0';
+            backdrop.classList.remove('active');
+            console.log('Backdrop FORCED OFF in showApp');
+        }
         
         // Update mini project visibility
         await this.updateMiniProjectVisibility();

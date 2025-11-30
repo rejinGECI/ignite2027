@@ -2578,14 +2578,17 @@ body.mobile-menu-open {
         z-index: 10001;
     }
 
-    /* Mobile Menu Backdrop */
+    /* Mobile Menu Backdrop - HIDDEN by default */
     .mobile-menu-backdrop {
-        display: block;
+        display: none !important;
         pointer-events: none !important;
+        opacity: 0 !important;
     }
     
     .mobile-menu-backdrop.active {
+        display: block !important;
         pointer-events: auto !important;
+        opacity: 1 !important;
     }
     
     /* Ensure buttons work on mobile */
