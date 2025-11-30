@@ -96,7 +96,6 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
-        this.setupAllButtons();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
@@ -187,20 +186,12 @@ const app = {
         document.getElementById('login-page').style.display = 'flex';
         document.getElementById('app-container').style.display = 'none';
         
-        // Setup buttons when login page is shown
-        setTimeout(() => {
-            this.setupAllButtons();
-        }, 50);
     },
     
     showApp: async function() {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
         
-        // Setup all buttons again after app is shown
-        setTimeout(() => {
-            this.setupAllButtons();
-        }, 100);
         
         // Update mini project visibility
         await this.updateMiniProjectVisibility();
@@ -742,37 +733,6 @@ const app = {
         }
     },
 
-    // Setup all buttons - SIMPLEST: catch all button clicks
-    setupAllButtons: function() {
-        // Only setup once
-        if (this._buttonClickHandler) return;
-        
-        // ONE handler for ALL buttons - SIMPLEST possible
-        this._buttonClickHandler = (e) => {
-            // Find button (might be icon inside button)
-            let btn = e.target.closest('button') || e.target.closest('a.btn');
-            if (!btn) return;
-            if (btn.disabled) return;
-            
-            const onclick = btn.getAttribute('onclick');
-            if (onclick) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                alert('Button clicked: ' + onclick);
-                try {
-                    eval(onclick);
-                } catch (err) {
-                    console.error('Button error:', err);
-                }
-            }
-        };
-        
-        // Add to document - EARLIEST possible (capture phase)
-        document.addEventListener('click', this._buttonClickHandler, true);
-        document.addEventListener('touchstart', this._buttonClickHandler, true);
-        document.addEventListener('touchend', this._buttonClickHandler, true);
-    },
 
     toggleMobileMenu: function() {
         const navbar = document.getElementById('navbar');
@@ -882,10 +842,6 @@ const app = {
                 this.showPageLoader(pageId, true);
         }
         
-        // Setup buttons AFTER page is shown - important for mobile
-        setTimeout(() => {
-            this.setupAllButtons();
-        }, 150);
         
         // Update active nav link
         document.querySelectorAll('.nav-link[data-page]').forEach(link => {

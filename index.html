@@ -960,6 +960,31 @@ Bob Johnson,GHI789</pre>
             </div>
         </div>
     </div>
+    <script>
+        // SIMPLEST: Handle all button clicks directly - no functions, no init
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('button') || e.target.closest('a.btn');
+            if (btn && !btn.disabled) {
+                var onclick = btn.getAttribute('onclick');
+                if (onclick) {
+                    e.preventDefault();
+                    alert('Button clicked!');
+                    eval(onclick);
+                }
+            }
+        });
+        document.addEventListener('touchend', function(e) {
+            var btn = e.target.closest('button') || e.target.closest('a.btn');
+            if (btn && !btn.disabled) {
+                var onclick = btn.getAttribute('onclick');
+                if (onclick) {
+                    e.preventDefault();
+                    alert('Button clicked!');
+                    eval(onclick);
+                }
+            }
+        });
+    </script>
 </body>
 </html>
 
