@@ -961,29 +961,37 @@ Bob Johnson,GHI789</pre>
         </div>
     </div>
     <script>
-        // SIMPLEST: Event bubbling - one listener, use target
+        // SIMPLEST: Event bubbling - one listener for all buttons
         document.addEventListener('click', function(e) {
             var btn = e.target.closest('button') || e.target.closest('a.btn');
             if (btn && !btn.disabled) {
                 var onclick = btn.getAttribute('onclick');
                 if (onclick) {
                     e.preventDefault();
-                    alert('Button clicked!');
-                    eval(onclick);
+                    e.stopPropagation();
+                    try {
+                        eval(onclick);
+                    } catch(err) {
+                        alert('Error: ' + err.message);
+                    }
                 }
             }
-        });
+        }, true);
         document.addEventListener('touchend', function(e) {
             var btn = e.target.closest('button') || e.target.closest('a.btn');
             if (btn && !btn.disabled) {
                 var onclick = btn.getAttribute('onclick');
                 if (onclick) {
                     e.preventDefault();
-                    alert('Button clicked!');
-                    eval(onclick);
+                    e.stopPropagation();
+                    try {
+                        eval(onclick);
+                    } catch(err) {
+                        alert('Error: ' + err.message);
+                    }
                 }
             }
-        });
+        }, true);
     </script>
 </body>
 </html>
