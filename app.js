@@ -108,11 +108,17 @@ const app = {
         console.log('✅ App initialization complete');
     },
     
-    // Setup all buttons using the EXACT same approach as navbar items
+    // Setup all buttons using event delegation on document.body - works even if buttons are hidden
     setupAllButtonListeners: function() {
+        // Prevent duplicate setup
+        if (this._buttonListenersSetup) {
+            return;
+        }
+        this._buttonListenersSetup = true;
+        
         const self = this;
         
-        // Setup buttons by ID - same pattern as navbar
+        // Button handlers by ID - add all button IDs here
         const buttonHandlers = {
             'start-timer': () => this.startTimer(),
             'pause-timer': () => this.pauseTimer(),
@@ -122,33 +128,70 @@ const app = {
             'login-btn': () => this.login()
         };
         
-        // Setup buttons by ID - same approach as navbar
-        Object.keys(buttonHandlers).forEach(buttonId => {
-            const button = document.getElementById(buttonId);
-            if (button) {
-                // Remove onclick if present - same as navbar
-                button.removeAttribute('onclick');
-                
-                const handleClick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    buttonHandlers[buttonId]();
-                };
-                
-                // Add both click and touch events - EXACT same as navbar
-                button.addEventListener('click', handleClick, { passive: false });
-                button.addEventListener('touchend', handleClick, { passive: false });
-            }
-        });
+        // Also handle buttons by their onclick content (for buttons without IDs)
+        const onclickHandlers = {
+            'app.saveDreams()': () => this.saveDreams(),
+            'app.saveReading()': () => this.saveReading(),
+            'app.addCustomHabit()': () => this.addCustomHabit(),
+            'app.saveReflection()': () => this.saveReflection(),
+            'app.addFeedbackNote()': () => this.addFeedbackNote(),
+            'app.logout()': () => this.logout(),
+            'app.addEvaluationStage()': () => this.addEvaluationStage(),
+            'app.createGuideAccount()': () => this.createGuideAccount(),
+            'app.showCreateGroupModal()': () => this.showCreateGroupModal(),
+            'app.saveGoLiveDate()': () => this.saveGoLiveDate(),
+            'app.closeEditGroupModal()': () => this.closeEditGroupModal(),
+            'app.addMemberToGroup()': () => this.addMemberToGroup()
+        };
         
-        // Setup all buttons with onclick attributes - same pattern as navbar
-        document.querySelectorAll('button[onclick], a[onclick]').forEach(element => {
-            // Remove onclick if present - same as navbar
-            const onclick = element.getAttribute('onclick');
-            if (onclick) {
-                element.removeAttribute('onclick');
+        // Event handler for all button clicks/touches - works like navbar
+        const handleButtonClick = (e) => {
+            // Find the button element (might be target or parent if icon was clicked)
+            let target = e.target;
+            
+            // If clicked on icon or span inside button, find the button
+            if (target.tagName === 'I' || (target.tagName === 'SPAN' && target.parentElement)) {
+                const button = target.closest('button') || target.closest('a.btn') || target.closest('a[onclick]');
+                if (button) {
+                    target = button;
+                }
+            }
+            
+            // Check if it's a button or link with btn class or onclick
+            const isButton = target.tagName === 'BUTTON';
+            const isButtonLink = target.tagName === 'A' && (target.classList.contains('btn') || target.hasAttribute('onclick'));
+            const hasOnclick = target.hasAttribute('onclick');
+            
+            if (!isButton && !isButtonLink && !hasOnclick) {
+                return; // Not a button
+            }
+            
+            // Skip if disabled
+            if (target.disabled || target.classList.contains('disabled')) {
+                return;
+            }
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Handle by ID first
+            const buttonId = target.id;
+            if (buttonId && buttonHandlers[buttonId]) {
+                buttonHandlers[buttonId]();
+                return;
+            }
+            
+            // Handle by onclick attribute (check both onclick and data-onclick)
+            const onclick = target.getAttribute('onclick') || target.getAttribute('data-onclick');
+            if (onclick && onclick.includes('app.')) {
+                // First try exact match in onclickHandlers
+                const trimmedOnclick = onclick.trim();
+                if (onclickHandlers[trimmedOnclick]) {
+                    onclickHandlers[trimmedOnclick]();
+                    return;
+                }
                 
-                // Extract function name and params
+                // Then try parsing the function call
                 const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
                 if (match && this[match[1]]) {
                     const funcName = match[1];
@@ -160,270 +203,33 @@ const app = {
                         return p;
                     }) : [];
                     
-                    const handleClick = (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    try {
                         if (params.length > 0) {
                             this[funcName](...params);
                         } else {
                             this[funcName]();
                         }
-                    };
-                    
-                    // Add both click and touch events - EXACT same as navbar
-                    element.addEventListener('click', handleClick, { passive: false });
-                    element.addEventListener('touchend', handleClick, { passive: false });
+                    } catch (error) {
+                        console.error('Error calling button handler:', error);
+                    }
                 }
+            }
+        };
+        
+        // Store onclick info in data attribute before removing (so event delegation can use it)
+        document.querySelectorAll('button[onclick], a[onclick]').forEach(element => {
+            const onclick = element.getAttribute('onclick');
+            if (onclick) {
+                // Store the onclick in a data attribute before removing
+                element.setAttribute('data-onclick', onclick);
+                element.removeAttribute('onclick');
             }
         });
-    },
-    
-    // Authentication
-    checkAuthState: function() {
-        // Prevent duplicate setup
-        if (this._eventDelegationSetup) {
-            return;
-        }
-        this._eventDelegationSetup = true;
         
-        const self = this;
-        
-        // Track last touch to prevent double-firing
-        let lastTouchTime = 0;
-        let lastTouchTarget = null;
-        
-        // Unified handler for button clicks/touches
-        const handleButtonInteraction = (e) => {
-            // Find the button element (might be the target or a parent)
-            let button = e.target;
-            
-            // Handle icon clicks inside buttons
-            if (button.tagName === 'I' || button.tagName === 'SPAN') {
-                button = button.closest('button') || button.closest('a.btn');
-            }
-            
-            // Traverse up to find the button element
-            while (button && button !== document.body && button !== document.documentElement) {
-                const isButton = button.tagName === 'BUTTON';
-                const isButtonLink = button.tagName === 'A' && button.classList.contains('btn');
-                const hasButtonId = button.id && (
-                    button.id === 'start-timer' ||
-                    button.id === 'pause-timer' ||
-                    button.id === 'stop-timer' ||
-                    button.id === 'start-today-session' ||
-                    button.id === 'save-activity-btn' ||
-                    button.classList.contains('btn')
-                );
-                
-                if (isButton || isButtonLink || hasButtonId) {
-                    // Debug: Log button interaction
-                    console.log('🔘 Button interaction detected:', {
-                        type: e.type,
-                        buttonId: button.id,
-                        buttonTag: button.tagName,
-                        buttonClass: button.className
-                    });
-                    
-                    // Prevent double-firing on mobile (touch + click)
-                    const now = Date.now();
-                    if (e.type === 'touchend' || e.type === 'touchstart') {
-                        if (now - lastTouchTime < 300 && lastTouchTarget === button) {
-                            console.log('⏭️ Skipping duplicate touch event');
-                    e.preventDefault();
-                    e.stopPropagation();
-                            return;
-                        }
-                        lastTouchTime = now;
-                        lastTouchTarget = button;
-                    }
-                    
-                    // Prevent default and stop propagation
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    
-                    // Skip if button is disabled
-                    if (button.disabled || button.classList.contains('disabled')) {
-                        console.log('⛔ Button is disabled, skipping');
-                        return;
-                    }
-                    
-                    // Handle based on button ID
-                    const buttonId = button.id;
-                    
-                    // Timer buttons
-                    if (buttonId === 'start-timer') {
-                        console.log('▶️ Calling startTimer()');
-                        self.startTimer();
-                        return;
-                    }
-                    if (buttonId === 'pause-timer') {
-                        console.log('⏸️ Calling pauseTimer()');
-                        self.pauseTimer();
-                        return;
-                    }
-                    if (buttonId === 'stop-timer') {
-                        console.log('⏹️ Calling stopTimer()');
-                        self.stopTimer();
-                        return;
-                    }
-                    if (buttonId === 'start-today-session') {
-                        console.log('📅 Calling showPage(progress)');
-                        self.showPage('progress');
-                        return;
-                    }
-                    if (buttonId === 'save-activity-btn') {
-                        console.log('💾 Calling saveActivity()');
-                        self.saveActivity();
-                        return;
-                    }
-                    
-                    // Handle onclick attributes
-                    const onclickAttr = button.getAttribute('onclick');
-                    if (onclickAttr) {
-                        // Extract function name from onclick
-                        const match = onclickAttr.match(/app\.(\w+)(?:\(([^)]*)\))?/);
-                        if (match && self[match[1]]) {
-                            try {
-                                // Try to call with parameters if any
-                                const params = match[2] ? match[2].split(',').map(p => {
-                                    p = p.trim().replace(/['"]/g, '');
-                                    // Try to evaluate as number, boolean, or string
-                                    if (p === 'true') return true;
-                                    if (p === 'false') return false;
-                                    if (!isNaN(p)) return Number(p);
-                                    return p;
-                                }) : [];
-                                self[match[1]](...params);
-                            } catch (error) {
-                                console.error('Error calling button handler:', error);
-                                // Fallback: try without params
-                                try {
-                                    self[match[1]]();
-                                } catch (e2) {
-                                    console.error('Error in fallback handler:', e2);
-                                }
-                            }
-                            return;
-                        }
-                    }
-                    
-                    // If button has data-action attribute
-                    const action = button.getAttribute('data-action');
-                    if (action && self[action]) {
-                        try {
-                            self[action]();
-                        } catch (error) {
-                            console.error('Error calling data-action handler:', error);
-                        }
-                        return;
-                    }
-                    
-                    // If we found a button but no handler, at least prevent default
-                    break;
-                }
-                button = button.parentElement;
-            }
-        };
-        
-        // Set up on document.body - this always exists and catches all events
-        // Use capture phase to catch events before they bubble
-        document.body.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
-        document.body.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
-        document.body.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
-        
-        // Debug: Log that event delegation is set up
-        console.log('✅ Event delegation set up on document.body');
-        
-        // Also set up on main-content when it becomes available
-        const trySetupOnMainContent = () => {
-            const mainContent = document.querySelector('.main-content');
-            const appContainer = document.getElementById('app-container');
-            if (mainContent || appContainer) {
-                const container = mainContent || appContainer;
-                container.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
-                container.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
-                container.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
-            } else {
-                // Retry after a short delay
-                setTimeout(trySetupOnMainContent, 100);
-            }
-        };
-        trySetupOnMainContent();
-    },
-    
-    // Utility function to add mobile-friendly event listeners
-    addMobileEventListener: function(element, handler) {
-        if (!element) return;
-        
-        // Use the enhanced setup method for better mobile support
-        this.setupButtonWithMobileSupport(element, handler);
-    },
-    
-    // Setup all buttons with onclick attributes to use proper event listeners
-    
-    // Enhanced button setup with comprehensive mobile support
-    setupButtonWithMobileSupport: function(button, handler) {
-        if (!button) return false;
-        
-        // Check if already set up
-        if (button.dataset.mobileListenerAdded === 'true') {
-            return true; // Already set up
-        }
-        
-        // Mark as set up
-        button.dataset.mobileListenerAdded = 'true';
-        
-        // Ensure button is clickable
-        button.style.pointerEvents = 'auto';
-        button.style.cursor = 'pointer';
-        button.style.touchAction = 'manipulation';
-        button.style.webkitTapHighlightColor = 'rgba(0, 0, 0, 0.1)';
-        
-        // Remove onclick attribute
-        button.removeAttribute('onclick');
-        
-        // Track if handler has been called to prevent double-firing
-        let handlerCalled = false;
-        const resetHandlerFlag = () => {
-            setTimeout(() => {
-                handlerCalled = false;
-            }, 300);
-        };
-        
-        // Unified event handler
-        const handleInteraction = (e) => {
-            // Prevent double-firing between touch and click
-            if (handlerCalled) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-            
-            // Prevent default for touch events
-            if (e.type === 'touchstart' || e.type === 'touchend') {
-                e.preventDefault();
-            }
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            
-            handlerCalled = true;
-            resetHandlerFlag();
-            
-            // Call the handler
-            try {
-                handler.call(this, e);
-            } catch (error) {
-                console.error('Error in button handler:', error);
-            }
-        };
-        
-        // Add comprehensive event listeners
-        button.addEventListener('click', handleInteraction, { passive: false, capture: false });
-        button.addEventListener('touchstart', handleInteraction, { passive: false, capture: false });
-        button.addEventListener('touchend', handleInteraction, { passive: false, capture: false });
-        
-        return true;
+        // Add event listeners to document.body - always exists, catches all button clicks
+        // Don't use capture phase - use bubble phase like navbar does
+        document.body.addEventListener('click', handleButtonClick, { passive: false });
+        document.body.addEventListener('touchend', handleButtonClick, { passive: false });
     },
     
     // Authentication
