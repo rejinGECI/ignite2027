@@ -742,38 +742,35 @@ const app = {
         }
     },
 
-    // Setup all buttons - ONE simple global handler, that's it
+    // Setup all buttons - SIMPLEST: catch all button clicks
     setupAllButtons: function() {
         // Only setup once
         if (this._buttonClickHandler) return;
         
-        // ONE simple handler for ALL buttons
+        // ONE handler for ALL buttons - SIMPLEST possible
         this._buttonClickHandler = (e) => {
-            let btn = e.target;
-            // Find button element
-            while (btn && btn !== document.body) {
-                if (btn.tagName === 'BUTTON' || (btn.tagName === 'A' && btn.classList.contains('btn'))) {
-                    if (btn.disabled) return;
-                    
-                    const onclick = btn.getAttribute('onclick');
-                    if (onclick) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        alert('Button clicked: ' + onclick);
-                        try {
-                            eval(onclick);
-                        } catch (err) {
-                            console.error(err);
-                        }
-                    }
-                    return;
+            // Find button (might be icon inside button)
+            let btn = e.target.closest('button') || e.target.closest('a.btn');
+            if (!btn) return;
+            if (btn.disabled) return;
+            
+            const onclick = btn.getAttribute('onclick');
+            if (onclick) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                alert('Button clicked: ' + onclick);
+                try {
+                    eval(onclick);
+                } catch (err) {
+                    console.error('Button error:', err);
                 }
-                btn = btn.parentElement;
             }
         };
         
-        // Add to document - only once
+        // Add to document - EARLIEST possible (capture phase)
         document.addEventListener('click', this._buttonClickHandler, true);
+        document.addEventListener('touchstart', this._buttonClickHandler, true);
         document.addEventListener('touchend', this._buttonClickHandler, true);
     },
 
