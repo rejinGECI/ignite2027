@@ -1006,6 +1006,12 @@ body.mobile-menu-open {
     align-items: center;
     gap: 0.5rem;
     transition: all 0.2s;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+    z-index: 1;
 }
 
 .btn-primary {

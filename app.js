@@ -94,11 +94,46 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
+        this.setupTimerButtons();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'none';
+    },
+    
+    setupTimerButtons: function() {
+        // Setup timer buttons with proper event listeners for mobile compatibility
+        const setupButton = (buttonId, handler) => {
+            const button = document.getElementById(buttonId);
+            if (button && !button.dataset.listenerAdded) {
+                // Mark as having listener to avoid duplicates
+                button.dataset.listenerAdded = 'true';
+                
+                // Remove any existing onclick
+                button.removeAttribute('onclick');
+                
+                // Add click event
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handler.call(this);
+                }, { passive: false });
+                
+                // Add touch event for better mobile support
+                button.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handler.call(this);
+                }, { passive: false });
+            }
+        };
+        
+        // Setup timer control buttons
+        setupButton('start-timer', this.startTimer);
+        setupButton('pause-timer', this.pauseTimer);
+        setupButton('stop-timer', this.stopTimer);
+        setupButton('start-today-session', () => this.showPage('progress'));
     },
     
     // Authentication
@@ -209,6 +244,10 @@ const app = {
             if (adminMiniProjectSettingsNav) {
                 adminMiniProjectSettingsNav.style.display = 'block';
             }
+            const adminSettingsNav = document.getElementById('admin-settings-nav');
+            if (adminSettingsNav) {
+                adminSettingsNav.style.display = 'block';
+            }
             
             // Hide guide navigation
             const guideNav = document.getElementById('guide-dashboard-nav');
@@ -242,6 +281,19 @@ const app = {
             const progressNav = document.getElementById('admin-progress-nav');
             if (progressNav) {
                 progressNav.style.display = 'none';
+            }
+            // Hide all admin navigation items
+            const adminMiniProjectNav = document.getElementById('admin-miniproject-nav');
+            if (adminMiniProjectNav) {
+                adminMiniProjectNav.style.display = 'none';
+            }
+            const adminMiniProjectSettingsNav = document.getElementById('admin-miniproject-settings-nav');
+            if (adminMiniProjectSettingsNav) {
+                adminMiniProjectSettingsNav.style.display = 'none';
+            }
+            const adminSettingsNav = document.getElementById('admin-settings-nav');
+            if (adminSettingsNav) {
+                adminSettingsNav.style.display = 'none';
             }
             document.querySelectorAll('.student-nav').forEach(nav => {
                 nav.style.display = 'none';
@@ -277,6 +329,19 @@ const app = {
             const progressNav = document.getElementById('admin-progress-nav');
             if (progressNav) {
                 progressNav.style.display = 'none';
+            }
+            // Hide all admin navigation items
+            const adminMiniProjectNav = document.getElementById('admin-miniproject-nav');
+            if (adminMiniProjectNav) {
+                adminMiniProjectNav.style.display = 'none';
+            }
+            const adminMiniProjectSettingsNav = document.getElementById('admin-miniproject-settings-nav');
+            if (adminMiniProjectSettingsNav) {
+                adminMiniProjectSettingsNav.style.display = 'none';
+            }
+            const adminSettingsNav = document.getElementById('admin-settings-nav');
+            if (adminSettingsNav) {
+                adminSettingsNav.style.display = 'none';
             }
             // Show all student navigation items
             document.querySelectorAll('.student-nav').forEach(nav => {
@@ -744,6 +809,19 @@ const app = {
     
     showPage: async function(pageId) {
         try {
+            // Prevent non-admins from accessing admin pages
+            const adminPages = ['admin-dashboard', 'admin-progress', 'admin-miniproject', 'admin-miniproject-settings', 'admin-settings'];
+            if (adminPages.includes(pageId) && !this.isAdmin && this.userRole !== 'admin') {
+                console.warn('Access denied: Admin pages require admin privileges');
+                // Redirect to appropriate page
+                if (this.userRole === 'guide') {
+                    await this.showPage('guide-dashboard');
+                } else {
+                    await this.showPage('dashboard');
+                }
+                return;
+            }
+            
             // Save current page to localStorage for restoration on refresh
             localStorage.setItem('currentPage', pageId);
             
@@ -784,6 +862,8 @@ const app = {
                     await this.renderCustomHabits();
                 } else if (pageId === 'admin-miniproject-settings') {
                     await this.loadMiniProjectSettings();
+                } else if (pageId === 'admin-settings') {
+                    await this.loadAdminSettings();
                 } else if (pageId === 'admin-miniproject') {
                     await this.loadGuidesList();
                     await this.loadProjectGroups();
@@ -802,6 +882,8 @@ const app = {
             this.setupProgressSearch();
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
+                    // Setup timer buttons for mobile compatibility
+                    this.setupTimerButtons();
                 } else if (pageId === 'dreams') {
                     // Dreams page - data already loaded, just hide loader
                 } else if (pageId === 'feedback') {
@@ -1212,21 +1294,34 @@ const app = {
         
         const timeLog = data.timeLog || [];
         
+        // Filter timeLog by go-live date
+        const goLiveDate = await this.getGoLiveDate();
+        let filteredTimeLog = timeLog;
+        if (goLiveDate) {
+            const goLive = new Date(goLiveDate);
+            goLive.setHours(0, 0, 0, 0);
+            filteredTimeLog = timeLog.filter(log => {
+                const logDate = new Date(log.date);
+                logDate.setHours(0, 0, 0, 0);
+                return logDate >= goLive;
+            });
+        }
+        
         // Calculate streak
-        const streak = this.calculateStreak(timeLog);
+        const streak = await this.calculateStreak(timeLog);
         document.getElementById('current-streak').textContent = streak.current;
         
-        // Calculate total minutes
-        const totalMinutes = timeLog.reduce((sum, log) => sum + log.minutes, 0);
+        // Calculate total minutes (from filtered logs)
+        const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
         document.getElementById('total-minutes').textContent = totalMinutes;
         
-        // Calculate total days
-        const uniqueDays = new Set(timeLog.map(log => log.date)).size;
+        // Calculate total days (from filtered logs)
+        const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
         document.getElementById('total-days').textContent = uniqueDays;
         
         // Calculate completion rate (based on 20 min goal)
         const today = new Date().toISOString().split('T')[0];
-        const todayLog = timeLog.find(log => log.date === today);
+        const todayLog = filteredTimeLog.find(log => log.date === today);
         const todayMinutes = todayLog ? todayLog.minutes : 0;
         // For testing: completion rate based on 1 minute goal (change to 20 minutes for production)
         const completionRate = Math.min(100, Math.round((todayMinutes / 1) * 100));
@@ -1245,32 +1340,63 @@ const app = {
         if (!data) return;
         
         const timeLog = data.timeLog || [];
-        const streak = this.calculateStreak(timeLog);
+        
+        // Filter timeLog by go-live date
+        const goLiveDate = await this.getGoLiveDate();
+        let filteredTimeLog = timeLog;
+        if (goLiveDate) {
+            const goLive = new Date(goLiveDate);
+            goLive.setHours(0, 0, 0, 0);
+            filteredTimeLog = timeLog.filter(log => {
+                const logDate = new Date(log.date);
+                logDate.setHours(0, 0, 0, 0);
+                return logDate >= goLive;
+            });
+        }
+        
+        const streak = await this.calculateStreak(timeLog);
         
         document.getElementById('stat-streak').textContent = `${streak.current} days`;
         document.getElementById('stat-longest').textContent = `${streak.longest} days`;
         
-        const totalMinutes = timeLog.reduce((sum, log) => sum + log.minutes, 0);
+        const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
         const totalHours = Math.floor(totalMinutes / 60);
         document.getElementById('stat-total-time').textContent = `${totalHours} hours`;
         document.getElementById('total-time-detail').textContent = `${totalMinutes} minutes total`;
         
-        const uniqueDays = new Set(timeLog.map(log => log.date)).size;
+        const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
         document.getElementById('stat-days-active').textContent = uniqueDays;
         
-        // Calculate days tracked: from first activity date to today (inclusive)
+        // Calculate days tracked: from go-live date or first activity date to today (inclusive)
         let daysTracked = 1; // Default to 1 if no activity
-        if (timeLog.length > 0) {
-            const allDates = timeLog.map(log => log.date).sort();
+        if (filteredTimeLog.length > 0) {
+            const allDates = filteredTimeLog.map(log => log.date).sort();
             const firstDateStr = allDates[0];
             const firstDate = new Date(firstDateStr + 'T00:00:00');
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             
+            // If go-live date exists, use it as the start date
+            let startDate = firstDate;
+            if (goLiveDate) {
+                const goLive = new Date(goLiveDate);
+                goLive.setHours(0, 0, 0, 0);
+                startDate = goLive < firstDate ? goLive : firstDate;
+            }
+            
             // Calculate difference in days (inclusive of both start and end date)
-            const diffTime = today - firstDate;
+            const diffTime = today - startDate;
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            daysTracked = diffDays + 1; // +1 to include both start and end date
+            daysTracked = Math.max(1, diffDays + 1); // +1 to include both start and end date, minimum 1
+        } else if (goLiveDate) {
+            // If no activity but go-live date exists, calculate from go-live date
+            const goLive = new Date(goLiveDate);
+            goLive.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diffTime = today - goLive;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            daysTracked = Math.max(1, diffDays + 1);
         }
         document.getElementById('total-days-tracked').textContent = daysTracked;
         
@@ -1344,12 +1470,30 @@ const app = {
         }).join('');
     },
     
-    calculateStreak: function(timeLog) {
+    calculateStreak: async function(timeLog) {
         if (timeLog.length === 0) {
             return { current: 0, longest: 0 };
         }
         
-        const sortedLogs = [...timeLog].sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Get go-live date and filter logs
+        const goLiveDate = await this.getGoLiveDate();
+        let filteredLogs = timeLog;
+        
+        if (goLiveDate) {
+            const goLive = new Date(goLiveDate);
+            goLive.setHours(0, 0, 0, 0);
+            filteredLogs = timeLog.filter(log => {
+                const logDate = new Date(log.date);
+                logDate.setHours(0, 0, 0, 0);
+                return logDate >= goLive;
+            });
+        }
+        
+        if (filteredLogs.length === 0) {
+            return { current: 0, longest: 0 };
+        }
+        
+        const sortedLogs = [...filteredLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
         const dates = [...new Set(sortedLogs.map(log => log.date))].sort((a, b) => new Date(b) - new Date(a));
         
         let currentStreak = 0;
@@ -1396,6 +1540,20 @@ const app = {
         
         const timeLog = data.timeLog || [];
         const reading = (data.habits?.reading || []);
+        
+        // Filter by go-live date
+        const goLiveDate = await this.getGoLiveDate();
+        let filteredTimeLog = timeLog;
+        if (goLiveDate) {
+            const goLive = new Date(goLiveDate);
+            goLive.setHours(0, 0, 0, 0);
+            filteredTimeLog = timeLog.filter(log => {
+                const logDate = new Date(log.date);
+                logDate.setHours(0, 0, 0, 0);
+                return logDate >= goLive;
+            });
+        }
+        
         const container = document.getElementById('activity-calendar');
         if (!container) return;
         
@@ -1408,7 +1566,7 @@ const app = {
         }
         
         container.innerHTML = days.map(date => {
-            const log = timeLog.find(l => l.date === date);
+            const log = filteredTimeLog.find(l => l.date === date);
             const isActive = log && log.minutes >= 20;
             const isPartial = log && log.minutes > 0 && log.minutes < 20;
             
@@ -1953,9 +2111,23 @@ const app = {
                 const studentData = studentDataDoc.exists() ? studentDataDoc.data() : {};
                 
                 const timeLog = studentData.timeLog || [];
-                const streak = this.calculateStreak(timeLog);
-                const totalMinutes = timeLog.reduce((sum, log) => sum + log.minutes, 0);
-                const uniqueDays = new Set(timeLog.map(log => log.date)).size;
+                
+                // Filter by go-live date
+                const goLiveDate = await this.getGoLiveDate();
+                let filteredTimeLog = timeLog;
+                if (goLiveDate) {
+                    const goLive = new Date(goLiveDate);
+                    goLive.setHours(0, 0, 0, 0);
+                    filteredTimeLog = timeLog.filter(log => {
+                        const logDate = new Date(log.date);
+                        logDate.setHours(0, 0, 0, 0);
+                        return logDate >= goLive;
+                    });
+                }
+                
+                const streak = await this.calculateStreak(timeLog);
+                const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
+                const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
                 
                 students.push({
                     id: userDoc.id,
@@ -2154,9 +2326,22 @@ const app = {
                 const reflections = studentData.reflections || [];
                 const feedback = studentData.feedback || [];
                 
-                const streak = this.calculateStreak(timeLog);
-                const totalMinutes = timeLog.reduce((sum, log) => sum + log.minutes, 0);
-                const uniqueDays = new Set(timeLog.map(log => log.date)).size;
+                // Filter by go-live date
+                const goLiveDate = await this.getGoLiveDate();
+                let filteredTimeLog = timeLog;
+                if (goLiveDate) {
+                    const goLive = new Date(goLiveDate);
+                    goLive.setHours(0, 0, 0, 0);
+                    filteredTimeLog = timeLog.filter(log => {
+                        const logDate = new Date(log.date);
+                        logDate.setHours(0, 0, 0, 0);
+                        return logDate >= goLive;
+                    });
+                }
+                
+                const streak = await this.calculateStreak(timeLog);
+                const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
+                const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
                 const totalHours = Math.floor(totalMinutes / 60);
                 
                 // Calculate recent activity (last 7 days)
@@ -2744,6 +2929,112 @@ const app = {
             `).join('');
         } catch (error) {
             console.error('Error loading evaluation stages:', error);
+        }
+    },
+    
+    // Admin Settings Functions
+    async loadAdminSettings() {
+        if (!this.isAdmin) return;
+        
+        try {
+            const goLiveDate = await this.getGoLiveDate();
+            const dateInput = document.getElementById('go-live-date');
+            const displayDiv = document.getElementById('current-go-live-date');
+            const displaySpan = document.getElementById('go-live-date-display');
+            
+            if (goLiveDate) {
+                if (dateInput) {
+                    dateInput.value = goLiveDate;
+                }
+                if (displayDiv) {
+                    displayDiv.style.display = 'block';
+                }
+                if (displaySpan) {
+                    const date = new Date(goLiveDate);
+                    displaySpan.textContent = date.toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                    });
+                }
+            } else {
+                if (displayDiv) {
+                    displayDiv.style.display = 'none';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading admin settings:', error);
+        }
+    },
+    
+    async getGoLiveDate() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'general'));
+            if (settingsDoc.exists()) {
+                const data = settingsDoc.data();
+                return data.goLiveDate || null;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error getting go-live date:', error);
+            return null;
+        }
+    },
+    
+    async saveGoLiveDate() {
+        if (!this.isAdmin) {
+            alert('Only administrators can change this setting.');
+            return;
+        }
+        
+        const dateInput = document.getElementById('go-live-date');
+        const statusDiv = document.getElementById('go-live-date-status');
+        
+        if (!dateInput || !dateInput.value) {
+            alert('Please select a go-live date!');
+            return;
+        }
+        
+        const selectedDate = dateInput.value;
+        
+        try {
+            // Show loading
+            if (statusDiv) {
+                statusDiv.innerHTML = '<div class="csv-processing">Saving go-live date...</div>';
+            }
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'settings', 'general'), {
+                goLiveDate: selectedDate,
+                updatedAt: new Date().toISOString(),
+                updatedBy: this.currentUser.uid
+            }, { merge: true });
+            
+            // Show success
+            if (statusDiv) {
+                statusDiv.innerHTML = '<div class="csv-success">Go-live date saved successfully! All streaks and statistics will be recalculated.</div>';
+            }
+            
+            // Reload the settings page to show updated date
+            await this.loadAdminSettings();
+            
+            // Refresh dashboard and statistics for all users
+            if (!this.isAdmin) {
+                await this.updateDashboard();
+                await this.updateStatistics();
+            }
+            
+            // Clear status after 3 seconds
+            setTimeout(() => {
+                if (statusDiv) {
+                    statusDiv.innerHTML = '';
+                }
+            }, 3000);
+        } catch (error) {
+            console.error('Error saving go-live date:', error);
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="csv-error">Error saving go-live date: ${error.message}</div>`;
+            }
         }
     },
     

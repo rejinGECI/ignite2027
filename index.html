@@ -129,8 +129,9 @@
                 <li id="admin-dash-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-dashboard"><i class="fas fa-users"></i> Students</a></li>
                 <li id="admin-miniproject-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject"><i class="fas fa-project-diagram"></i> Mini Projects</a></li>
                 <li id="admin-miniproject-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject-settings"><i class="fas fa-cog"></i> Mini Project Settings</a></li>
+                <li id="admin-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
                 <li id="guide-dashboard-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-dashboard"><i class="fas fa-user-tie"></i> Guide Dashboard</a></li>
-                <li id="nav-miniproject" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="miniproject"><i class="fas fa-project-diagram"></i> My Mini Project</a></li>
+                <li id="nav-miniproject" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="miniproject"><i class="fas fa-project-diagram"></i> Mini Project</a></li>
                 <li id="nav-dreams" class="student-nav"><a href="#" class="nav-link" data-page="dreams"><i class="fas fa-star"></i> My Dream Life</a></li>
                 <li id="nav-progress" class="student-nav"><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
                 <li id="nav-stats" class="student-nav"><a href="#" class="nav-link" data-page="stats"><i class="fas fa-chart-bar"></i> Statistics</a></li>
@@ -201,7 +202,7 @@
                         </div>
                         <span id="today-minutes">0 / 5 seconds (testing)</span>
                     </div>
-                    <button class="btn btn-primary" onclick="app.showPage('progress')">
+                    <button class="btn btn-primary" id="start-today-session">
                         <i class="fas fa-play"></i> Start Today's Session
                     </button>
                 </div>
@@ -280,13 +281,13 @@
                     </div>
                     
                     <div class="timer-controls">
-                        <button class="btn btn-primary" id="start-timer" onclick="app.startTimer()">
+                        <button class="btn btn-primary" id="start-timer">
                             <i class="fas fa-play"></i> Start Session
                         </button>
-                        <button class="btn btn-secondary" id="pause-timer" onclick="app.pauseTimer()" style="display: none;">
+                        <button class="btn btn-secondary" id="pause-timer" style="display: none;">
                             <i class="fas fa-pause"></i> Pause
                         </button>
-                        <button class="btn btn-danger" id="stop-timer" onclick="app.stopTimer()" style="display: none;">
+                        <button class="btn btn-danger" id="stop-timer" style="display: none;">
                             <i class="fas fa-stop"></i> Stop
                         </button>
                     </div>
@@ -717,6 +718,56 @@ Bob Johnson,GHI789</pre>
                 </div>
             </div>
             
+            <!-- Admin Settings Page -->
+            <div id="admin-settings" class="page">
+                <div class="page-header">
+                    <h1>Admin Settings</h1>
+                    <p class="subtitle">Configure system-wide settings and preferences</p>
+                </div>
+                
+                <div class="admin-section">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-calendar-alt"></i> Go Live Date</h3>
+                        <p>Set the date from which the site goes live. All streaks and statistics will be calculated from this date onwards.</p>
+                        
+                        <div class="settings-item" style="flex-direction: column; align-items: stretch; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="go-live-date">Go Live Date *</label>
+                                <input type="date" id="go-live-date" class="form-input" required>
+                                <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-secondary);">
+                                    <em>All streaks, statistics, and progress tracking will start from this date.</em>
+                                </p>
+                            </div>
+                            
+                            <div id="current-go-live-date" class="current-setting-display" style="display: none;">
+                                <p><strong>Current Go Live Date:</strong> <span id="go-live-date-display"></span></p>
+                            </div>
+                            
+                            <div class="form-group">
+                                <button class="btn btn-primary" onclick="app.saveGoLiveDate()">
+                                    <i class="fas fa-save"></i> Save Go Live Date
+                                </button>
+                            </div>
+                            
+                            <div id="go-live-date-status" class="csv-status"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="admin-card">
+                        <h3><i class="fas fa-info-circle"></i> About Go Live Date</h3>
+                        <div style="padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                            <p style="margin-bottom: 0.75rem;"><strong>What does this do?</strong></p>
+                            <ul style="margin-left: 1.5rem; color: var(--text-secondary); line-height: 1.8;">
+                                <li>All student streaks will only count days from the go-live date onwards</li>
+                                <li>Statistics and progress tracking will ignore any data before this date</li>
+                                <li>This ensures fair tracking when the system launches mid-semester or mid-year</li>
+                                <li>You can change this date at any time, and all calculations will update accordingly</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Guide Dashboard Page -->
             <div id="guide-dashboard" class="page">
                 <div class="page-header">
@@ -754,7 +805,7 @@ Bob Johnson,GHI789</pre>
             <!-- Student Mini Project Page -->
             <div id="miniproject" class="page">
                 <div class="page-header">
-                    <h1>My Mini Project</h1>
+                    <h1>Mini Project</h1>
                     <p class="subtitle">View your project details and progress</p>
                 </div>
                 
