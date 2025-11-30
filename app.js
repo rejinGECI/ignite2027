@@ -91,6 +91,8 @@ const app = {
     },
     
     init: function() {
+        console.log('🚀 App initializing...');
+        
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
@@ -100,24 +102,22 @@ const app = {
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
-        document.getElementById('login-page').style.display = 'none';
-        document.getElementById('app-container').style.display = 'none';
+        const loginPage = document.getElementById('login-page');
+        const appContainer = document.getElementById('app-container');
+        if (loginPage) loginPage.style.display = 'none';
+        if (appContainer) appContainer.style.display = 'none';
+        
+        console.log('✅ App initialization complete');
     },
     
     // Event delegation for all buttons - more reliable on mobile
     setupEventDelegation: function() {
-        // Try to get container
-        const mainContent = document.querySelector('.main-content');
-        const appContainer = document.getElementById('app-container');
-        const container = mainContent || appContainer;
-        
-        // If container doesn't exist, wait a bit and try again
-        if (!container) {
-            setTimeout(() => {
-                this.setupEventDelegation();
-            }, 100);
+        // Prevent duplicate setup
+        if (this._eventDelegationSetup) {
             return;
         }
+        this._eventDelegationSetup = true;
+        
         const self = this;
         
         // Track last touch to prevent double-firing
@@ -135,7 +135,7 @@ const app = {
             }
             
             // Traverse up to find the button element
-            while (button && button !== container && button !== document.body) {
+            while (button && button !== document.body && button !== document.documentElement) {
                 const isButton = button.tagName === 'BUTTON';
                 const isButtonLink = button.tagName === 'A' && button.classList.contains('btn');
                 const hasButtonId = button.id && (
@@ -144,16 +144,23 @@ const app = {
                     button.id === 'stop-timer' ||
                     button.id === 'start-today-session' ||
                     button.id === 'save-activity-btn' ||
-                    button.id === 'save-activity-btn' ||
-                    button.id.includes('btn') ||
                     button.classList.contains('btn')
                 );
                 
                 if (isButton || isButtonLink || hasButtonId) {
+                    // Debug: Log button interaction
+                    console.log('🔘 Button interaction detected:', {
+                        type: e.type,
+                        buttonId: button.id,
+                        buttonTag: button.tagName,
+                        buttonClass: button.className
+                    });
+                    
                     // Prevent double-firing on mobile (touch + click)
                     const now = Date.now();
                     if (e.type === 'touchend' || e.type === 'touchstart') {
                         if (now - lastTouchTime < 300 && lastTouchTarget === button) {
+                            console.log('⏭️ Skipping duplicate touch event');
                             e.preventDefault();
                             e.stopPropagation();
                             return;
@@ -169,6 +176,7 @@ const app = {
                     
                     // Skip if button is disabled
                     if (button.disabled || button.classList.contains('disabled')) {
+                        console.log('⛔ Button is disabled, skipping');
                         return;
                     }
                     
@@ -177,22 +185,27 @@ const app = {
                     
                     // Timer buttons
                     if (buttonId === 'start-timer') {
+                        console.log('▶️ Calling startTimer()');
                         self.startTimer();
                         return;
                     }
                     if (buttonId === 'pause-timer') {
+                        console.log('⏸️ Calling pauseTimer()');
                         self.pauseTimer();
                         return;
                     }
                     if (buttonId === 'stop-timer') {
+                        console.log('⏹️ Calling stopTimer()');
                         self.stopTimer();
                         return;
                     }
                     if (buttonId === 'start-today-session') {
+                        console.log('📅 Calling showPage(progress)');
                         self.showPage('progress');
                         return;
                     }
                     if (buttonId === 'save-activity-btn') {
+                        console.log('💾 Calling saveActivity()');
                         self.saveActivity();
                         return;
                     }
@@ -245,11 +258,30 @@ const app = {
             }
         };
         
-        // Add event listeners with capture phase for better mobile support
+        // Set up on document.body - this always exists and catches all events
         // Use capture phase to catch events before they bubble
-        container.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
-        container.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
-        container.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
+        document.body.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
+        document.body.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
+        document.body.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
+        
+        // Debug: Log that event delegation is set up
+        console.log('✅ Event delegation set up on document.body');
+        
+        // Also set up on main-content when it becomes available
+        const trySetupOnMainContent = () => {
+            const mainContent = document.querySelector('.main-content');
+            const appContainer = document.getElementById('app-container');
+            if (mainContent || appContainer) {
+                const container = mainContent || appContainer;
+                container.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
+                container.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
+                container.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
+            } else {
+                // Retry after a short delay
+                setTimeout(trySetupOnMainContent, 100);
+            }
+        };
+        trySetupOnMainContent();
     },
     
     // Utility function to add mobile-friendly event listeners
@@ -4078,12 +4110,39 @@ const app = {
 // Make app available globally for onclick handlers
 window.app = app;
 
-// Initialize app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    app.init();
-    
-    // Setup CSV file input handler (will be re-setup when admin dashboard is shown)
-    app.setupCSVUpload();
+// Initialize app - handle both DOMContentLoaded and immediate execution
+function initializeApp() {
+    if (document.readyState === 'loading') {
+        // DOM is still loading, wait for DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+            app.setupCSVUpload();
+        });
+    } else {
+        // DOM is already loaded, initialize immediately
+        app.init();
+        app.setupCSVUpload();
+    }
+}
+
+// Also try immediate initialization (for cases where DOMContentLoaded already fired)
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    // Use setTimeout to ensure all scripts are loaded
+    setTimeout(() => {
+        initializeApp();
+    }, 0);
+} else {
+    initializeApp();
+}
+
+// Fallback: Also initialize on window load (most reliable on mobile)
+window.addEventListener('load', () => {
+    // Re-setup event delegation in case it didn't work the first time
+    if (app && app.setupEventDelegation) {
+        setTimeout(() => {
+            app.setupEventDelegation();
+        }, 100);
+    }
 });
 
 // Search functionality for admin dashboard
