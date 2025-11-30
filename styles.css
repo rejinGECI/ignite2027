@@ -2566,19 +2566,34 @@ body.mobile-menu-open {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    /* Ensure everything is clickable on mobile */
+    body, html {
+        pointer-events: auto !important;
+    }
+    
     /* Mobile Menu Toggle */
     .mobile-menu-toggle {
         display: flex;
+        pointer-events: auto !important;
+        z-index: 10001;
     }
 
     /* Mobile Menu Backdrop */
     .mobile-menu-backdrop {
         display: block;
-        pointer-events: none;
+        pointer-events: none !important;
     }
     
     .mobile-menu-backdrop.active {
-        pointer-events: auto;
+        pointer-events: auto !important;
+    }
+    
+    /* Ensure buttons work on mobile */
+    button, .btn, input, textarea, select {
+        pointer-events: auto !important;
+        touch-action: auto !important;
+        position: relative;
+        z-index: 10;
     }
 
     /* Navigation */
@@ -2639,10 +2654,14 @@ body.mobile-menu-open {
         padding-top: 4rem;
         width: 100%;
         max-width: 100%;
+        pointer-events: auto !important;
+        position: relative;
+        z-index: 1;
     }
 
     .container {
         flex-direction: column;
+        pointer-events: auto !important;
     }
 
     /* Page Headers */

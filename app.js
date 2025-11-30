@@ -93,6 +93,14 @@ const app = {
     init: function() {
         console.log('🚀 App initializing...');
         
+        // Ensure mobile backdrop doesn't block interactions
+        const backdrop = document.getElementById('mobile-menu-backdrop');
+        if (backdrop) {
+            backdrop.style.pointerEvents = 'none';
+            backdrop.style.zIndex = '9999';
+            console.log('Mobile backdrop initialized with pointer-events: none');
+        }
+        
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
