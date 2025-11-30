@@ -96,7 +96,7 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
-        this.setupAllButtonListeners(); // Simple direct event listeners
+        this.setupAllButtons();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
@@ -108,76 +108,6 @@ const app = {
         console.log('✅ App initialization complete');
     },
     
-    // Setup all buttons - SIMPLE event delegation on document.body (works everywhere)
-    setupAllButtonListeners: function() {
-        // Remove old listeners if any
-        if (this._buttonHandler) {
-            document.body.removeEventListener('click', this._buttonHandler);
-            document.body.removeEventListener('touchend', this._buttonHandler);
-        }
-        
-        // Simple handler map by ID
-        const buttonHandlers = {
-            'start-timer': () => this.startTimer(),
-            'pause-timer': () => this.pauseTimer(),
-            'stop-timer': () => this.stopTimer(),
-            'start-today-session': () => this.showPage('progress'),
-            'save-activity-btn': () => this.saveActivity(),
-            'login-btn': () => this.login()
-        };
-        
-        // Simple event handler - works for all buttons
-        this._buttonHandler = (e) => {
-            // Find the button (might be clicked element or parent)
-            let target = e.target;
-            while (target && target !== document.body) {
-                // Check if it's a button or link
-                if (target.tagName === 'BUTTON' || (target.tagName === 'A' && target.classList.contains('btn'))) {
-                    // Skip if disabled
-                    if (target.disabled || target.classList.contains('disabled')) {
-                        return;
-                    }
-                    
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    // Handle by ID first
-                    if (target.id && buttonHandlers[target.id]) {
-                        buttonHandlers[target.id]();
-                        return;
-                    }
-                    
-                    // Handle by onclick attribute (if still present)
-                    const onclick = target.getAttribute('onclick');
-                    if (onclick && onclick.includes('app.')) {
-                        const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
-                        if (match && this[match[1]]) {
-                            const funcName = match[1];
-                            const params = match[2] ? match[2].split(',').map(p => {
-                                p = p.trim().replace(/['"]/g, '');
-                                if (p === 'true') return true;
-                                if (p === 'false') return false;
-                                if (!isNaN(p)) return Number(p);
-                                return p;
-                            }) : [];
-                            
-                            if (params.length > 0) {
-                                this[funcName](...params);
-                            } else {
-                                this[funcName]();
-                            }
-                        }
-                    }
-                    return;
-                }
-                target = target.parentElement;
-            }
-        };
-        
-        // Add listeners to document.body - works for all buttons everywhere
-        document.body.addEventListener('click', this._buttonHandler, { passive: false });
-        document.body.addEventListener('touchend', this._buttonHandler, { passive: false });
-    },
     
     // Authentication
     checkAuthState: function() {
@@ -257,9 +187,9 @@ const app = {
         document.getElementById('login-page').style.display = 'flex';
         document.getElementById('app-container').style.display = 'none';
         
-        // Setup login button when login page is shown (important for mobile)
+        // Setup buttons when login page is shown
         setTimeout(() => {
-            this.setupAllButtonListeners();
+            this.setupAllButtons();
         }, 50);
     },
     
@@ -267,10 +197,9 @@ const app = {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
         
-        // Setup all buttons again after app is shown (in case they weren't available during init)
-        // Use setTimeout to ensure DOM is fully rendered
+        // Setup all buttons again after app is shown
         setTimeout(() => {
-            this.setupAllButtonListeners();
+            this.setupAllButtons();
         }, 100);
         
         // Update mini project visibility
@@ -813,6 +742,47 @@ const app = {
         }
     },
 
+    // Setup all buttons - EXACT same simple approach as navbar
+    setupAllButtons: function() {
+        // Find all buttons with onclick attributes - same pattern as navbar
+        document.querySelectorAll('button[onclick], a.btn[onclick]').forEach(button => {
+            // Get onclick value before removing
+            const onclick = button.getAttribute('onclick');
+            if (onclick && onclick.includes('app.')) {
+                // Remove onclick - same as navbar
+                button.removeAttribute('onclick');
+                
+                // Parse function call
+                const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
+                if (match && this[match[1]]) {
+                    const funcName = match[1];
+                    const params = match[2] ? match[2].split(',').map(p => {
+                        p = p.trim().replace(/['"]/g, '');
+                        if (p === 'true') return true;
+                        if (p === 'false') return false;
+                        if (!isNaN(p)) return Number(p);
+                        return p;
+                    }) : [];
+                    
+                    // Handler function - same as navbar
+                    const handleClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (params.length > 0) {
+                            this[funcName](...params);
+                        } else {
+                            this[funcName]();
+                        }
+                    };
+                    
+                    // Add both click and touch events - EXACT same as navbar
+                    button.addEventListener('click', handleClick, { passive: false });
+                    button.addEventListener('touchend', handleClick, { passive: false });
+                }
+            }
+        });
+    },
+
     toggleMobileMenu: function() {
         const navbar = document.getElementById('navbar');
         const toggle = document.getElementById('mobile-menu-toggle');
@@ -923,7 +893,7 @@ const app = {
         
         // Setup buttons AFTER page is shown - important for mobile
         setTimeout(() => {
-            this.setupAllButtonListeners();
+            this.setupAllButtons();
         }, 150);
         
         // Update active nav link
@@ -969,7 +939,6 @@ const app = {
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
                     // Setup timer buttons for mobile compatibility
-                    this.setupAllButtonListeners();
                 } else if (pageId === 'dreams') {
                     // Dreams page - data already loaded, just hide loader
                 } else if (pageId === 'feedback') {
@@ -3843,12 +3812,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 // Fallback: Also initialize on window load (most reliable on mobile)
 window.addEventListener('load', () => {
-    // Re-setup button listeners in case they weren't available the first time
-    if (app && app.setupAllButtonListeners) {
-        setTimeout(() => {
-            app.setupAllButtonListeners();
-        }, 200);
-    }
+    // Buttons use simple onclick handlers - no setup needed
 });
 
 // Search functionality for admin dashboard

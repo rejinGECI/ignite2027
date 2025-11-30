@@ -205,7 +205,7 @@
                         </div>
                         <span id="today-minutes">0 / 20 minutes</span>
                     </div>
-                    <button class="btn btn-primary" id="start-today-session">
+                    <button class="btn btn-primary" id="start-today-session" onclick="app.showPage('progress')">
                         <i class="fas fa-play"></i> Start Today's Session
                     </button>
                 </div>
@@ -284,13 +284,13 @@
                     </div>
                     
                     <div class="timer-controls">
-                        <button class="btn btn-primary" id="start-timer">
+                        <button class="btn btn-primary" id="start-timer" onclick="app.startTimer()">
                             <i class="fas fa-play"></i> Start Session
                         </button>
-                        <button class="btn btn-secondary" id="pause-timer" style="display: none;">
+                        <button class="btn btn-secondary" id="pause-timer" style="display: none;" onclick="app.pauseTimer()">
                             <i class="fas fa-pause"></i> Pause
                         </button>
-                        <button class="btn btn-danger" id="stop-timer" style="display: none;">
+                        <button class="btn btn-danger" id="stop-timer" style="display: none;" onclick="app.stopTimer()">
                             <i class="fas fa-stop"></i> Stop
                         </button>
                     </div>
