@@ -108,78 +108,47 @@ const app = {
         console.log('✅ App initialization complete');
     },
     
-    // Simple, direct button event listener setup - works reliably on mobile
-    setupButtonListener: function(button, handler) {
-        if (!button) return;
-        
-        // Skip if already set up (check data attribute)
-        if (button.dataset.listenerSetup === 'true') {
-            return;
-        }
-        button.dataset.listenerSetup = 'true';
-        
-        // Remove onclick attribute
-        button.removeAttribute('onclick');
-        
-        // Prevent double-firing flag
-        let isHandling = false;
-        
-        const handleClick = function(e) {
-            if (isHandling) return;
-            isHandling = true;
-            setTimeout(() => { isHandling = false; }, 300);
-            
-            e.preventDefault();
-            e.stopPropagation();
-            handler();
-        };
-        
-        // Add event listeners directly
-        button.addEventListener('click', handleClick, { passive: false });
-        button.addEventListener('touchend', handleClick, { passive: false });
-        
-        // Ensure button is clickable
-        button.style.pointerEvents = 'auto';
-        button.style.cursor = 'pointer';
-        button.style.touchAction = 'manipulation';
-    },
-    
-    // Setup all button listeners - simple and direct
+    // Setup all buttons using the EXACT same approach as navbar items
     setupAllButtonListeners: function() {
         const self = this;
         
-        // Timer buttons
-        const startTimerBtn = document.getElementById('start-timer');
-        if (startTimerBtn) {
-            this.setupButtonListener(startTimerBtn, () => this.startTimer());
-        }
+        // Setup buttons by ID - same pattern as navbar
+        const buttonHandlers = {
+            'start-timer': () => this.startTimer(),
+            'pause-timer': () => this.pauseTimer(),
+            'stop-timer': () => this.stopTimer(),
+            'start-today-session': () => this.showPage('progress'),
+            'save-activity-btn': () => this.saveActivity(),
+            'login-btn': () => this.login()
+        };
         
-        const pauseTimerBtn = document.getElementById('pause-timer');
-        if (pauseTimerBtn) {
-            this.setupButtonListener(pauseTimerBtn, () => this.pauseTimer());
-        }
+        // Setup buttons by ID - same approach as navbar
+        Object.keys(buttonHandlers).forEach(buttonId => {
+            const button = document.getElementById(buttonId);
+            if (button) {
+                // Remove onclick if present - same as navbar
+                button.removeAttribute('onclick');
+                
+                const handleClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    buttonHandlers[buttonId]();
+                };
+                
+                // Add both click and touch events - EXACT same as navbar
+                button.addEventListener('click', handleClick, { passive: false });
+                button.addEventListener('touchend', handleClick, { passive: false });
+            }
+        });
         
-        const stopTimerBtn = document.getElementById('stop-timer');
-        if (stopTimerBtn) {
-            this.setupButtonListener(stopTimerBtn, () => this.stopTimer());
-        }
-        
-        const startTodaySessionBtn = document.getElementById('start-today-session');
-        if (startTodaySessionBtn) {
-            this.setupButtonListener(startTodaySessionBtn, () => this.showPage('progress'));
-        }
-        
-        // Save buttons
-        const saveActivityBtn = document.getElementById('save-activity-btn');
-        if (saveActivityBtn) {
-            this.setupButtonListener(saveActivityBtn, () => this.saveActivity());
-        }
-        
-        // Find all buttons with onclick attributes and set them up
-        document.querySelectorAll('button[onclick]').forEach(button => {
-            const onclick = button.getAttribute('onclick');
-            if (onclick && onclick.includes('app.')) {
-                // Extract function name
+        // Setup all buttons with onclick attributes - same pattern as navbar
+        document.querySelectorAll('button[onclick], a[onclick]').forEach(element => {
+            // Remove onclick if present - same as navbar
+            const onclick = element.getAttribute('onclick');
+            if (onclick) {
+                element.removeAttribute('onclick');
+                
+                // Extract function name and params
                 const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
                 if (match && this[match[1]]) {
                     const funcName = match[1];
@@ -191,31 +160,22 @@ const app = {
                         return p;
                     }) : [];
                     
-                    button.removeAttribute('onclick');
-                    this.setupButtonListener(button, () => {
+                    const handleClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         if (params.length > 0) {
                             this[funcName](...params);
                         } else {
                             this[funcName]();
                         }
-                    });
+                    };
+                    
+                    // Add both click and touch events - EXACT same as navbar
+                    element.addEventListener('click', handleClick, { passive: false });
+                    element.addEventListener('touchend', handleClick, { passive: false });
                 }
             }
         });
-        
-        // Setup login button (by ID or selector)
-        const loginBtn = document.getElementById('login-btn') || document.querySelector('button[onclick*="app.login()"]');
-        if (loginBtn) {
-            loginBtn.removeAttribute('onclick');
-            this.setupButtonListener(loginBtn, () => this.login());
-        }
-        
-        // Setup logout link
-        const logoutLink = document.querySelector('a[onclick*="app.logout()"]');
-        if (logoutLink) {
-            logoutLink.removeAttribute('onclick');
-            this.setupButtonListener(logoutLink, () => this.logout());
-        }
     },
     
     // Authentication
