@@ -961,32 +961,29 @@ Bob Johnson,GHI789</pre>
         </div>
     </div>
     <script>
-        // SIMPLEST: Attach handler to each button - run multiple times to catch all buttons
-        function setupAllButtons() {
-            var buttons = document.querySelectorAll('button[onclick], a.btn[onclick]');
-            for (var i = 0; i < buttons.length; i++) {
-                var btn = buttons[i];
-                if (btn.dataset.handlerAdded) continue;
-                btn.dataset.handlerAdded = 'true';
+        // SIMPLEST: Event bubbling - one listener, use target
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('button') || e.target.closest('a.btn');
+            if (btn && !btn.disabled) {
                 var onclick = btn.getAttribute('onclick');
                 if (onclick) {
-                    btn.removeAttribute('onclick');
-                    var handler = function(oc) {
-                        return function(e) {
-                            e.preventDefault();
-                            alert('Button clicked!');
-                            eval(oc);
-                        };
-                    }(onclick);
-                    btn.addEventListener('click', handler);
-                    btn.addEventListener('touchend', handler);
+                    e.preventDefault();
+                    alert('Button clicked!');
+                    eval(onclick);
                 }
             }
-        }
-        setupAllButtons();
-        setTimeout(setupAllButtons, 500);
-        setTimeout(setupAllButtons, 1000);
-        setTimeout(setupAllButtons, 2000);
+        });
+        document.addEventListener('touchend', function(e) {
+            var btn = e.target.closest('button') || e.target.closest('a.btn');
+            if (btn && !btn.disabled) {
+                var onclick = btn.getAttribute('onclick');
+                if (onclick) {
+                    e.preventDefault();
+                    alert('Button clicked!');
+                    eval(onclick);
+                }
+            }
+        });
     </script>
 </body>
 </html>
