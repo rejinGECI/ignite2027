@@ -474,6 +474,35 @@
                                     <i class="fas fa-check"></i> Log Reading
                                 </button>
                             </div>
+                            
+                            <!-- Book Suggestions Section -->
+                            <div class="book-suggestions-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <h4 style="margin-bottom: 1rem; color: var(--text-primary);">
+                                    <i class="fas fa-lightbulb"></i> Suggest a Book
+                                </h4>
+                                <div class="suggestion-form" style="margin-bottom: 2rem;">
+                                    <div class="reading-form-field" style="margin-bottom: 1rem;">
+                                        <label for="suggest-book-name">Book Name:</label>
+                                        <input type="text" id="suggest-book-name" placeholder="Enter book name to suggest">
+                                    </div>
+                                    <div class="reading-form-field" style="margin-bottom: 1rem;">
+                                        <label for="suggest-book-note">Why do you recommend this book?</label>
+                                        <textarea id="suggest-book-note" class="reading-notes-textarea" placeholder="Share why you think others should read this book..." style="min-height: 100px;"></textarea>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary" onclick="app.suggestBook()">
+                                        <i class="fas fa-paper-plane"></i> Suggest Book
+                                    </button>
+                                </div>
+                                
+                                <div class="suggestions-list-section">
+                                    <h4 style="margin-bottom: 1rem; color: var(--text-primary);">
+                                        <i class="fas fa-book-open"></i> Book Suggestions from Students
+                                    </h4>
+                                    <div id="book-suggestions-list" class="suggestions-list">
+                                        <p class="empty-state">No book suggestions yet. Be the first to suggest a book!</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

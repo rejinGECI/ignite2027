@@ -16,7 +16,8 @@ import {
     where,
     getDocs,
     orderBy,
-    limit
+    limit,
+    serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Sound utility functions
@@ -884,6 +885,7 @@ const app = {
         } else if (pageId === 'habits') {
                     await this.loadBookDropdown();
             this.updateReadingStats();
+                    await this.loadBookSuggestions();
                     await this.renderCustomHabits();
                 } else if (pageId === 'admin-miniproject-settings') {
                     await this.loadMiniProjectSettings();
@@ -1792,6 +1794,103 @@ const app = {
         if (bookName) {
             document.getElementById('book-name').value = bookName;
             document.getElementById('author-name').value = authorName;
+        }
+    },
+    
+    // Book Suggestions
+    async suggestBook() {
+        const bookName = document.getElementById('suggest-book-name').value.trim();
+        const note = document.getElementById('suggest-book-note').value.trim();
+        
+        if (!bookName) {
+            alert('Please enter a book name!');
+            return;
+        }
+        
+        if (!note) {
+            alert('Please add a note explaining why you recommend this book!');
+            return;
+        }
+        
+        if (!this.currentUser) return;
+        
+        try {
+            // Get user info
+            const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
+            const userData = userDoc.data();
+            const studentName = userData?.name || 'Unknown';
+            const ktuid = userData?.username || userData?.ktuid || 'Unknown';
+            
+            // Save suggestion to Firestore
+            await addDoc(collection(window.firebaseDb, 'bookSuggestions'), {
+                bookName: bookName,
+                note: note,
+                studentName: studentName,
+                ktuid: ktuid,
+                suggestedBy: this.currentUser.uid,
+                createdAt: new Date().toISOString(),
+                timestamp: serverTimestamp()
+            });
+            
+            // Clear form
+            document.getElementById('suggest-book-name').value = '';
+            document.getElementById('suggest-book-note').value = '';
+            
+            // Reload suggestions
+            await this.loadBookSuggestions();
+            
+            alert('Book suggestion added! 📚');
+        } catch (error) {
+            console.error('Error suggesting book:', error);
+            alert('Error adding suggestion. Please try again.');
+        }
+    },
+    
+    async loadBookSuggestions() {
+        const suggestionsList = document.getElementById('book-suggestions-list');
+        if (!suggestionsList) return;
+        
+        try {
+            // Get all book suggestions from Firestore
+            const suggestionsRef = collection(window.firebaseDb, 'bookSuggestions');
+            const q = query(suggestionsRef, orderBy('createdAt', 'desc'));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+                suggestionsList.innerHTML = '<p class="empty-state">No book suggestions yet. Be the first to suggest a book!</p>';
+                return;
+            }
+            
+            let html = '';
+            querySnapshot.forEach((doc) => {
+                const suggestion = doc.data();
+                const date = new Date(suggestion.createdAt).toLocaleDateString();
+                
+                html += `
+                    <div class="book-suggestion-item" style="background: var(--card-bg); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: var(--shadow); border-left: 4px solid var(--primary-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <h5 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
+                                <i class="fas fa-book" style="color: var(--primary-color); margin-right: 0.5rem;"></i>
+                                ${suggestion.bookName}
+                            </h5>
+                            <span style="font-size: 0.85rem; color: var(--text-secondary);">${date}</span>
+                        </div>
+                        <p style="color: var(--text-primary); margin: 1rem 0; line-height: 1.6;">${suggestion.note}</p>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                            <i class="fas fa-user" style="color: var(--text-secondary);"></i>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">
+                                Suggested by <strong style="color: var(--primary-color);">${suggestion.studentName}</strong> 
+                                <span style="color: var(--text-secondary);">(${suggestion.ktuid})</span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            suggestionsList.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading book suggestions:', error);
+            suggestionsList.innerHTML = '<p class="empty-state">Error loading suggestions. Please try again.</p>';
         }
     },
     
