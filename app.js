@@ -1349,13 +1349,12 @@ const app = {
         const today = new Date().toISOString().split('T')[0];
         const todayLog = filteredTimeLog.find(log => log.date === today);
         const todayMinutes = todayLog ? todayLog.minutes : 0;
-        // For testing: completion rate based on 1 minute goal (change to 20 minutes for production)
-        const completionRate = Math.min(100, Math.round((todayMinutes / 1) * 100));
+        // Completion rate based on 20 minute goal
+        const completionRate = Math.min(100, Math.round((todayMinutes / 20) * 100));
         document.getElementById('completion-rate').textContent = `${completionRate}%`;
         
-        // Today's progress
-        // For testing: progress based on 1 minute goal (change to 20 minutes for production)
-        const progressPercent = Math.min(100, (todayMinutes / 1) * 100);
+        // Today's progress based on 20 minute goal
+        const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
         document.getElementById('today-progress').style.width = `${progressPercent}%`;
         document.getElementById('today-minutes').textContent = `${todayMinutes} / 20 minutes`;
     },
