@@ -962,17 +962,46 @@ Bob Johnson,GHI789</pre>
     </div>
     <script>
         // ONLY Start Today's Session button - show alert when clicked
-        var btn = document.getElementById('start-today-session');
-        if (btn) {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                alert('Start Today\'s Session button clicked!');
-            });
-            btn.addEventListener('touchend', function(e) {
-                e.preventDefault();
-                alert('Start Today\'s Session button clicked!');
-            });
+        // Wait for page to load and button to be available
+        function setupButton() {
+            var btn = document.getElementById('start-today-session');
+            if (btn) {
+                // Remove any existing listeners by cloning
+                var newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                btn = document.getElementById('start-today-session');
+                
+                // Add listeners
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    alert('Start Today\'s Session button clicked!');
+                }, { passive: false });
+                
+                btn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    alert('Start Today\'s Session button touched!');
+                }, { passive: false });
+                
+                btn.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    alert('Start Today\'s Session button touched!');
+                }, { passive: false });
+            }
         }
+        
+        // Try multiple times to catch button when it's available
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupButton);
+        } else {
+            setupButton();
+        }
+        
+        setTimeout(setupButton, 500);
+        setTimeout(setupButton, 1000);
+        setTimeout(setupButton, 2000);
     </script>
 </body>
 </html>
