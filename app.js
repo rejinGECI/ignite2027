@@ -107,25 +107,8 @@ const app = {
     addMobileEventListener: function(element, handler) {
         if (!element) return;
         
-        // Prevent duplicate listeners
-        if (element.dataset.mobileListenerAdded === 'true') return;
-        element.dataset.mobileListenerAdded = 'true';
-        
-        // Remove onclick attribute if present
-        if (element.hasAttribute('onclick')) {
-            element.removeAttribute('onclick');
-        }
-        
-        // Unified handler that works for both click and touch
-        const handleEvent = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handler.call(this, e);
-        };
-        
-        // Add both click and touch events
-        element.addEventListener('click', handleEvent, { passive: false });
-        element.addEventListener('touchend', handleEvent, { passive: false });
+        // Use the enhanced setup method for better mobile support
+        this.setupButtonWithMobileSupport(element, handler);
     },
     
     // Setup all buttons with onclick attributes to use proper event listeners
@@ -238,27 +221,10 @@ const app = {
         // Setup timer buttons with proper event listeners for mobile compatibility
         const setupButton = (buttonId, handler) => {
             const button = document.getElementById(buttonId);
-            if (button && !button.dataset.listenerAdded) {
-                // Mark as having listener to avoid duplicates
-                button.dataset.listenerAdded = 'true';
-                
-                // Remove any existing onclick
-                button.removeAttribute('onclick');
-                
-                // Add click event
-                button.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handler.call(this);
-                }, { passive: false });
-                
-                // Add touch event for better mobile support
-                button.addEventListener('touchend', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handler.call(this);
-                }, { passive: false });
+            if (button) {
+                return this.setupButtonWithMobileSupport(button, handler);
             }
+            return false;
         };
         
         // Setup timer control buttons
@@ -266,6 +232,70 @@ const app = {
         setupButton('pause-timer', this.pauseTimer);
         setupButton('stop-timer', this.stopTimer);
         setupButton('start-today-session', () => this.showPage('progress'));
+    },
+    
+    // Enhanced button setup with comprehensive mobile support
+    setupButtonWithMobileSupport: function(button, handler) {
+        if (!button) return false;
+        
+        // Check if already set up
+        if (button.dataset.mobileListenerAdded === 'true') {
+            return true; // Already set up
+        }
+        
+        // Mark as set up
+        button.dataset.mobileListenerAdded = 'true';
+        
+        // Ensure button is clickable
+        button.style.pointerEvents = 'auto';
+        button.style.cursor = 'pointer';
+        button.style.touchAction = 'manipulation';
+        button.style.webkitTapHighlightColor = 'rgba(0, 0, 0, 0.1)';
+        
+        // Remove onclick attribute
+        button.removeAttribute('onclick');
+        
+        // Track if handler has been called to prevent double-firing
+        let handlerCalled = false;
+        const resetHandlerFlag = () => {
+            setTimeout(() => {
+                handlerCalled = false;
+            }, 300);
+        };
+        
+        // Unified event handler
+        const handleInteraction = (e) => {
+            // Prevent double-firing between touch and click
+            if (handlerCalled) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            
+            // Prevent default for touch events
+            if (e.type === 'touchstart' || e.type === 'touchend') {
+                e.preventDefault();
+            }
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            
+            handlerCalled = true;
+            resetHandlerFlag();
+            
+            // Call the handler
+            try {
+                handler.call(this, e);
+            } catch (error) {
+                console.error('Error in button handler:', error);
+            }
+        };
+        
+        // Add comprehensive event listeners
+        button.addEventListener('click', handleInteraction, { passive: false, capture: false });
+        button.addEventListener('touchstart', handleInteraction, { passive: false, capture: false });
+        button.addEventListener('touchend', handleInteraction, { passive: false, capture: false });
+        
+        return true;
     },
     
     // Authentication
@@ -1004,6 +1034,12 @@ const app = {
             page.classList.add('active');
                 // Show loading animation
                 this.showPageLoader(pageId, true);
+                
+                // Setup buttons for the newly shown page (important for mobile)
+                setTimeout(() => {
+                    this.setupTimerButtons();
+                    this.setupAllButtons();
+                }, 50);
         }
         
         // Update active nav link

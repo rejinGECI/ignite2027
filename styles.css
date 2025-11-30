@@ -906,6 +906,14 @@ body.mobile-menu-open {
     padding: 2rem;
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
+    position: relative;
+    z-index: 1;
+}
+
+.today-section .btn {
+    position: relative;
+    z-index: 10;
+    pointer-events: auto !important;
 }
 
 .today-section h2 {
@@ -1036,7 +1044,9 @@ body.mobile-menu-open {
     user-select: none;
     -webkit-user-select: none;
     position: relative;
-    z-index: 1;
+    z-index: 10;
+    pointer-events: auto !important;
+    -webkit-user-drag: none;
 }
 
 .btn-primary {
@@ -1149,6 +1159,15 @@ body.mobile-menu-open {
     display: flex;
     gap: 1rem;
     justify-content: center;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
+}
+
+.timer-controls .btn {
+    position: relative;
+    z-index: 11;
+    pointer-events: auto !important;
 }
 
 .activity-log-section {
