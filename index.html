@@ -838,6 +838,25 @@ Bob Johnson,GHI789</pre>
             }
         }
         
+        // Setup password toggle button with mobile support
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordToggle = document.querySelector('.password-toggle');
+            if (passwordToggle) {
+                // Remove onclick attribute
+                passwordToggle.removeAttribute('onclick');
+                
+                // Add event listeners for both click and touch
+                const handleToggle = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    togglePasswordVisibility();
+                };
+                
+                passwordToggle.addEventListener('click', handleToggle, { passive: false });
+                passwordToggle.addEventListener('touchend', handleToggle, { passive: false });
+            }
+        });
+        
         // Error handler for module loading
         window.addEventListener('error', (event) => {
             // Check if it's a script loading error

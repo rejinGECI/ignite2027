@@ -95,11 +95,143 @@ const app = {
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
         this.setupTimerButtons();
+        this.setupAllButtons();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'none';
+    },
+    
+    // Utility function to add mobile-friendly event listeners
+    addMobileEventListener: function(element, handler) {
+        if (!element) return;
+        
+        // Prevent duplicate listeners
+        if (element.dataset.mobileListenerAdded === 'true') return;
+        element.dataset.mobileListenerAdded = 'true';
+        
+        // Remove onclick attribute if present
+        if (element.hasAttribute('onclick')) {
+            element.removeAttribute('onclick');
+        }
+        
+        // Unified handler that works for both click and touch
+        const handleEvent = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handler.call(this, e);
+        };
+        
+        // Add both click and touch events
+        element.addEventListener('click', handleEvent, { passive: false });
+        element.addEventListener('touchend', handleEvent, { passive: false });
+    },
+    
+    // Setup all buttons with onclick attributes to use proper event listeners
+    setupAllButtons: function() {
+        // Setup login button
+        const loginBtn = document.querySelector('button[onclick*="app.login()"]');
+        if (loginBtn) {
+            this.addMobileEventListener(loginBtn, () => this.login());
+        }
+        
+        // Setup logout link
+        const logoutLink = document.querySelector('a[onclick*="app.logout()"]');
+        if (logoutLink) {
+            this.addMobileEventListener(logoutLink, () => this.logout());
+        }
+        
+        // Setup save dreams button
+        const saveDreamsBtn = document.querySelector('button[onclick*="app.saveDreams()"]');
+        if (saveDreamsBtn) {
+            this.addMobileEventListener(saveDreamsBtn, () => this.saveDreams());
+        }
+        
+        // Setup save activity button
+        const saveActivityBtn = document.getElementById('save-activity-btn');
+        if (saveActivityBtn) {
+            this.addMobileEventListener(saveActivityBtn, () => this.saveActivity());
+        }
+        
+        // Setup save reading button
+        const saveReadingBtn = document.querySelector('button[onclick*="app.saveReading()"]');
+        if (saveReadingBtn) {
+            this.addMobileEventListener(saveReadingBtn, () => this.saveReading());
+        }
+        
+        // Setup add custom habit button
+        const addHabitBtn = document.querySelector('button[onclick*="app.addCustomHabit()"]');
+        if (addHabitBtn) {
+            this.addMobileEventListener(addHabitBtn, () => this.addCustomHabit());
+        }
+        
+        // Setup save reflection button
+        const saveReflectionBtn = document.querySelector('button[onclick*="app.saveReflection()"]');
+        if (saveReflectionBtn) {
+            this.addMobileEventListener(saveReflectionBtn, () => this.saveReflection());
+        }
+        
+        // Setup add feedback note button
+        const addFeedbackBtn = document.querySelector('button[onclick*="app.addFeedbackNote()"]');
+        if (addFeedbackBtn) {
+            this.addMobileEventListener(addFeedbackBtn, () => this.addFeedbackNote());
+        }
+        
+        // Setup admin buttons
+        const addStageBtn = document.querySelector('button[onclick*="app.addEvaluationStage()"]');
+        if (addStageBtn) {
+            this.addMobileEventListener(addStageBtn, () => this.addEvaluationStage());
+        }
+        
+        const createGuideBtn = document.querySelector('button[onclick*="app.createGuideAccount()"]');
+        if (createGuideBtn) {
+            this.addMobileEventListener(createGuideBtn, () => this.createGuideAccount());
+        }
+        
+        const showGroupModalBtn = document.querySelector('button[onclick*="app.showCreateGroupModal()"]');
+        if (showGroupModalBtn) {
+            this.addMobileEventListener(showGroupModalBtn, () => this.showCreateGroupModal());
+        }
+        
+        const saveGoLiveBtn = document.querySelector('button[onclick*="app.saveGoLiveDate()"]');
+        if (saveGoLiveBtn) {
+            this.addMobileEventListener(saveGoLiveBtn, () => this.saveGoLiveDate());
+        }
+        
+        // Setup modal buttons
+        const closeModalBtn = document.querySelector('button[onclick*="app.closeEditGroupModal()"]');
+        if (closeModalBtn) {
+            this.addMobileEventListener(closeModalBtn, () => this.closeEditGroupModal());
+        }
+        
+        const addMemberBtn = document.querySelector('button[onclick*="app.addMemberToGroup()"]');
+        if (addMemberBtn) {
+            this.addMobileEventListener(addMemberBtn, () => this.addMemberToGroup());
+        }
+        
+        // Setup navigation buttons that use showPage
+        const reviewPlanBtn = document.querySelector('button[onclick*="app.showPage(\'dreams\')"]');
+        if (reviewPlanBtn) {
+            this.addMobileEventListener(reviewPlanBtn, () => this.showPage('dreams'));
+        }
+        
+        const checkStatsBtn = document.querySelector('button[onclick*="app.showPage(\'stats\')"]');
+        if (checkStatsBtn) {
+            this.addMobileEventListener(checkStatsBtn, () => this.showPage('stats'));
+        }
+        
+        // Setup modal overlay click handler
+        const editGroupModal = document.getElementById('edit-group-modal');
+        if (editGroupModal) {
+            editGroupModal.addEventListener('touchend', (e) => {
+                if (e.target === editGroupModal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeEditGroupModal();
+                }
+            }, { passive: false });
+        }
     },
     
     setupTimerButtons: function() {
@@ -218,6 +350,13 @@ const app = {
     showApp: async function() {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
+        
+        // Setup all buttons again after app is shown (in case they weren't available during init)
+        // Use setTimeout to ensure DOM is fully rendered
+        setTimeout(() => {
+            this.setupAllButtons();
+            this.setupTimerButtons();
+        }, 100);
         
         // Update mini project visibility
         await this.updateMiniProjectVisibility();
@@ -688,13 +827,25 @@ const app = {
     setupNavigation: function() {
         const navLinks = document.querySelectorAll('.nav-link[data-page]');
         navLinks.forEach(link => {
-            link.addEventListener('click', (e) => {
+            // Remove onclick if present
+            if (link.hasAttribute('onclick')) {
+                link.removeAttribute('onclick');
+            }
+            
+            const handleNavClick = (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 const page = link.getAttribute('data-page');
-                this.showPage(page);
-                // Close mobile menu after navigation
-                this.closeMobileMenu();
-            });
+                if (page) {
+                    this.showPage(page);
+                    // Close mobile menu after navigation
+                    this.closeMobileMenu();
+                }
+            };
+            
+            // Add both click and touch events for mobile support
+            link.addEventListener('click', handleNavClick, { passive: false });
+            link.addEventListener('touchend', handleNavClick, { passive: false });
         });
 
         // Mobile menu toggle
@@ -702,26 +853,41 @@ const app = {
         const navbar = document.getElementById('navbar');
         
         if (mobileMenuToggle && navbar) {
-            mobileMenuToggle.addEventListener('click', () => {
+            const handleToggle = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 this.toggleMobileMenu();
-            });
+            };
+            
+            // Add both click and touch events
+            mobileMenuToggle.addEventListener('click', handleToggle, { passive: false });
+            mobileMenuToggle.addEventListener('touchend', handleToggle, { passive: false });
 
             // Close menu when clicking backdrop or outside
             const backdrop = document.getElementById('mobile-menu-backdrop');
             if (backdrop) {
-                backdrop.addEventListener('click', () => {
+                const handleBackdropClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     this.closeMobileMenu();
-                });
+                };
+                
+                backdrop.addEventListener('click', handleBackdropClick, { passive: false });
+                backdrop.addEventListener('touchend', handleBackdropClick, { passive: false });
             }
             
-            document.addEventListener('click', (e) => {
+            // Handle outside clicks/touches
+            const handleOutsideClick = (e) => {
                 if (navbar.classList.contains('mobile-open') && 
                     !navbar.contains(e.target) && 
                     !mobileMenuToggle.contains(e.target) &&
                     !(backdrop && backdrop.contains(e.target))) {
                     this.closeMobileMenu();
                 }
-            });
+            };
+            
+            document.addEventListener('click', handleOutsideClick);
+            document.addEventListener('touchend', handleOutsideClick);
 
             // Close menu on window resize (if resizing to desktop)
             window.addEventListener('resize', () => {
