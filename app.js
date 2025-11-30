@@ -94,6 +94,7 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
+        this.setupEventDelegation(); // Use event delegation for better mobile support
         this.setupTimerButtons();
         this.setupAllButtons();
         this.checkAuthState();
@@ -101,6 +102,154 @@ const app = {
         // Initially hide both login and app container until auth state is determined
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('app-container').style.display = 'none';
+    },
+    
+    // Event delegation for all buttons - more reliable on mobile
+    setupEventDelegation: function() {
+        // Try to get container
+        const mainContent = document.querySelector('.main-content');
+        const appContainer = document.getElementById('app-container');
+        const container = mainContent || appContainer;
+        
+        // If container doesn't exist, wait a bit and try again
+        if (!container) {
+            setTimeout(() => {
+                this.setupEventDelegation();
+            }, 100);
+            return;
+        }
+        const self = this;
+        
+        // Track last touch to prevent double-firing
+        let lastTouchTime = 0;
+        let lastTouchTarget = null;
+        
+        // Unified handler for button clicks/touches
+        const handleButtonInteraction = (e) => {
+            // Find the button element (might be the target or a parent)
+            let button = e.target;
+            
+            // Handle icon clicks inside buttons
+            if (button.tagName === 'I' || button.tagName === 'SPAN') {
+                button = button.closest('button') || button.closest('a.btn');
+            }
+            
+            // Traverse up to find the button element
+            while (button && button !== container && button !== document.body) {
+                const isButton = button.tagName === 'BUTTON';
+                const isButtonLink = button.tagName === 'A' && button.classList.contains('btn');
+                const hasButtonId = button.id && (
+                    button.id === 'start-timer' ||
+                    button.id === 'pause-timer' ||
+                    button.id === 'stop-timer' ||
+                    button.id === 'start-today-session' ||
+                    button.id === 'save-activity-btn' ||
+                    button.id === 'save-activity-btn' ||
+                    button.id.includes('btn') ||
+                    button.classList.contains('btn')
+                );
+                
+                if (isButton || isButtonLink || hasButtonId) {
+                    // Prevent double-firing on mobile (touch + click)
+                    const now = Date.now();
+                    if (e.type === 'touchend' || e.type === 'touchstart') {
+                        if (now - lastTouchTime < 300 && lastTouchTarget === button) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            return;
+                        }
+                        lastTouchTime = now;
+                        lastTouchTarget = button;
+                    }
+                    
+                    // Prevent default and stop propagation
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    // Skip if button is disabled
+                    if (button.disabled || button.classList.contains('disabled')) {
+                        return;
+                    }
+                    
+                    // Handle based on button ID
+                    const buttonId = button.id;
+                    
+                    // Timer buttons
+                    if (buttonId === 'start-timer') {
+                        self.startTimer();
+                        return;
+                    }
+                    if (buttonId === 'pause-timer') {
+                        self.pauseTimer();
+                        return;
+                    }
+                    if (buttonId === 'stop-timer') {
+                        self.stopTimer();
+                        return;
+                    }
+                    if (buttonId === 'start-today-session') {
+                        self.showPage('progress');
+                        return;
+                    }
+                    if (buttonId === 'save-activity-btn') {
+                        self.saveActivity();
+                        return;
+                    }
+                    
+                    // Handle onclick attributes
+                    const onclickAttr = button.getAttribute('onclick');
+                    if (onclickAttr) {
+                        // Extract function name from onclick
+                        const match = onclickAttr.match(/app\.(\w+)(?:\(([^)]*)\))?/);
+                        if (match && self[match[1]]) {
+                            try {
+                                // Try to call with parameters if any
+                                const params = match[2] ? match[2].split(',').map(p => {
+                                    p = p.trim().replace(/['"]/g, '');
+                                    // Try to evaluate as number, boolean, or string
+                                    if (p === 'true') return true;
+                                    if (p === 'false') return false;
+                                    if (!isNaN(p)) return Number(p);
+                                    return p;
+                                }) : [];
+                                self[match[1]](...params);
+                            } catch (error) {
+                                console.error('Error calling button handler:', error);
+                                // Fallback: try without params
+                                try {
+                                    self[match[1]]();
+                                } catch (e2) {
+                                    console.error('Error in fallback handler:', e2);
+                                }
+                            }
+                            return;
+                        }
+                    }
+                    
+                    // If button has data-action attribute
+                    const action = button.getAttribute('data-action');
+                    if (action && self[action]) {
+                        try {
+                            self[action]();
+                        } catch (error) {
+                            console.error('Error calling data-action handler:', error);
+                        }
+                        return;
+                    }
+                    
+                    // If we found a button but no handler, at least prevent default
+                    break;
+                }
+                button = button.parentElement;
+            }
+        };
+        
+        // Add event listeners with capture phase for better mobile support
+        // Use capture phase to catch events before they bubble
+        container.addEventListener('click', handleButtonInteraction, { passive: false, capture: true });
+        container.addEventListener('touchstart', handleButtonInteraction, { passive: false, capture: true });
+        container.addEventListener('touchend', handleButtonInteraction, { passive: false, capture: true });
     },
     
     // Utility function to add mobile-friendly event listeners
