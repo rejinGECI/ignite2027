@@ -735,25 +735,29 @@ const app = {
     },
 
 
-    // Setup Start Today's Session button - EXACT same as navigation
+    // Setup Start Today's Session button - EXACT same as navigation (it's now an anchor)
     setupStartTodaySessionButton: function() {
-        var btn = document.getElementById('start-today-session');
-        if (btn) {
+        const link = document.getElementById('start-today-session');
+        if (link) {
             // Remove onclick if present - same as nav
-            if (btn.hasAttribute('onclick')) {
-                btn.removeAttribute('onclick');
+            if (link.hasAttribute('onclick')) {
+                link.removeAttribute('onclick');
             }
             
             // Handler - EXACT same as nav
-            var handleClick = (e) => {
+            const handleClick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                alert('Start Today\'s Session button clicked!');
+                const page = link.getAttribute('data-page');
+                if (page) {
+                    alert('Start Today\'s Session clicked! Going to: ' + page);
+                    this.showPage(page);
+                }
             };
             
             // Add both click and touch events - EXACT same as nav
-            btn.addEventListener('click', handleClick, { passive: false });
-            btn.addEventListener('touchend', handleClick, { passive: false });
+            link.addEventListener('click', handleClick, { passive: false });
+            link.addEventListener('touchend', handleClick, { passive: false });
         }
     },
 
