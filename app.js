@@ -96,7 +96,7 @@ const app = {
         // Don't show login immediately - wait for auth check
         // This prevents showing login screen on refresh if user is already authenticated
         this.setupNavigation();
-        this.setupStartTodaySessionButton();
+        this.setupAllButtons();
         this.checkAuthState();
         
         // Initially hide both login and app container until auth state is determined
@@ -735,30 +735,45 @@ const app = {
     },
 
 
-    // Setup Start Today's Session button - EXACT same as navigation (it's now an anchor)
-    setupStartTodaySessionButton: function() {
-        const link = document.getElementById('start-today-session');
-        if (link) {
+    // Setup all buttons - EXACT same pattern as navigation
+    setupAllButtons: function() {
+        // Find all buttons with onclick - EXACT same pattern as nav links
+        const buttons = document.querySelectorAll('button[onclick]');
+        buttons.forEach(button => {
             // Remove onclick if present - same as nav
-            if (link.hasAttribute('onclick')) {
-                link.removeAttribute('onclick');
-            }
-            
-            // Handler - EXACT same as nav
-            const handleClick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const page = link.getAttribute('data-page');
-                if (page) {
-                    alert('Start Today\'s Session clicked! Going to: ' + page);
-                    this.showPage(page);
+            if (button.hasAttribute('onclick')) {
+                const onclick = button.getAttribute('onclick');
+                button.removeAttribute('onclick');
+                
+                // Parse onclick to get function name and params
+                const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
+                if (match && this[match[1]]) {
+                    const funcName = match[1];
+                    const params = match[2] ? match[2].split(',').map(p => {
+                        p = p.trim().replace(/['"]/g, '');
+                        if (p === 'true') return true;
+                        if (p === 'false') return false;
+                        if (!isNaN(p)) return Number(p);
+                        return p;
+                    }) : [];
+                    
+                    // Handler - EXACT same as nav
+                    const handleClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (params.length > 0) {
+                            this[funcName](...params);
+                        } else {
+                            this[funcName]();
+                        }
+                    };
+                    
+                    // Add both click and touch events - EXACT same as nav
+                    button.addEventListener('click', handleClick, { passive: false });
+                    button.addEventListener('touchend', handleClick, { passive: false });
                 }
-            };
-            
-            // Add both click and touch events - EXACT same as nav
-            link.addEventListener('click', handleClick, { passive: false });
-            link.addEventListener('touchend', handleClick, { passive: false });
-        }
+            }
+        });
     },
 
     toggleMobileMenu: function() {
@@ -869,6 +884,11 @@ const app = {
                 this.showPageLoader(pageId, true);
         }
         
+        // Setup buttons when page is shown - EXACT same timing as navigation
+        setTimeout(() => {
+            this.setupAllButtons();
+        }, 150);
+        
         
         // Update active nav link
         document.querySelectorAll('.nav-link[data-page]').forEach(link => {
@@ -912,10 +932,6 @@ const app = {
             this.setupProgressSearch();
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
-                    // Setup Start Today's Session button
-                    setTimeout(() => {
-                        this.setupStartTodaySessionButton();
-                    }, 150);
                 } else if (pageId === 'dreams') {
                     // Dreams page - data already loaded, just hide loader
                 } else if (pageId === 'feedback') {
