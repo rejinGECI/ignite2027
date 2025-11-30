@@ -742,66 +742,48 @@ const app = {
         }
     },
 
-    // Setup all buttons - SIMPLEST possible: global click handler that executes onclick
+    // Setup all buttons - EXACT same as navbar, nothing more
     setupAllButtons: function() {
-        // Remove old handler if exists
-        if (this._globalButtonHandler) {
-            document.removeEventListener('click', this._globalButtonHandler, true);
-            document.removeEventListener('touchend', this._globalButtonHandler, true);
-        }
-        
-        // ONE simple global handler for ALL buttons
-        this._globalButtonHandler = (e) => {
-            let target = e.target;
-            
-            // Find button element (might be icon inside button)
-            while (target && target !== document.body) {
-                if (target.tagName === 'BUTTON' || (target.tagName === 'A' && target.classList.contains('btn'))) {
-                    if (target.disabled || target.classList.contains('disabled')) {
-                        return;
-                    }
+        // Find all buttons with onclick - EXACT same pattern as navbar
+        document.querySelectorAll('button[onclick], a.btn[onclick]').forEach(button => {
+            // Remove onclick if present - same as navbar
+            if (button.hasAttribute('onclick')) {
+                const onclick = button.getAttribute('onclick');
+                button.removeAttribute('onclick');
+                
+                // Parse function call
+                const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
+                if (match && this[match[1]]) {
+                    const funcName = match[1];
+                    const params = match[2] ? match[2].split(',').map(p => {
+                        p = p.trim().replace(/['"]/g, '');
+                        if (p === 'true') return true;
+                        if (p === 'false') return false;
+                        if (!isNaN(p)) return Number(p);
+                        return p;
+                    }) : [];
                     
-                    const onclick = target.getAttribute('onclick');
-                    if (onclick) {
+                    // Handler - EXACT same as navbar
+                    const handleClick = (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        try {
-                            // Execute onclick directly
-                            if (onclick.includes('app.')) {
-                                const match = onclick.match(/app\.(\w+)(?:\(([^)]*)\))?/);
-                                if (match && this[match[1]]) {
-                                    const funcName = match[1];
-                                    const params = match[2] ? match[2].split(',').map(p => {
-                                        p = p.trim().replace(/['"]/g, '');
-                                        if (p === 'true') return true;
-                                        if (p === 'false') return false;
-                                        if (!isNaN(p)) return Number(p);
-                                        return p;
-                                    }) : [];
-                                    
-                                    if (params.length > 0) {
-                                        this[funcName](...params);
-                                    } else {
-                                        this[funcName]();
-                                    }
-                                }
-                            } else {
-                                // For non-app functions like togglePasswordVisibility
-                                eval(onclick);
-                            }
-                        } catch (err) {
-                            console.error('Button click error:', err);
+                        
+                        // DEBUG: Show alert
+                        alert('Button clicked: ' + funcName);
+                        
+                        if (params.length > 0) {
+                            this[funcName](...params);
+                        } else {
+                            this[funcName]();
                         }
-                    }
-                    return;
+                    };
+                    
+                    // Add both click and touch events - EXACT same as navbar
+                    button.addEventListener('click', handleClick, { passive: false });
+                    button.addEventListener('touchend', handleClick, { passive: false });
                 }
-                target = target.parentElement;
             }
-        };
-        
-        // Add to document with capture phase to catch everything
-        document.addEventListener('click', this._globalButtonHandler, true);
-        document.addEventListener('touchend', this._globalButtonHandler, true);
+        });
     },
 
     toggleMobileMenu: function() {
