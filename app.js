@@ -1314,6 +1314,64 @@ const app = {
         }).join('');
     },
     
+    async showAllActivities() {
+        const data = await this.getUserData();
+        if (!data) return;
+        
+        const allActivities = (data.activities || []).slice().reverse();
+        
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h2>All Activities</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem;">
+                    ${allActivities.length === 0 
+                        ? '<p class="empty-state">No activities yet. Start your journey today!</p>'
+                        : allActivities.map(activity => {
+                            const date = new Date(activity.date);
+                            const time = new Date(activity.timestamp);
+                            const formattedDate = date.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            });
+                            const formattedTime = time.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                            return `
+                                <div class="activity-item" style="margin-bottom: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                        <div class="activity-date" style="font-weight: 600; color: var(--text-primary);">${formattedDate}</div>
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${formattedTime}</div>
+                                    </div>
+                                    <div class="activity-text" style="color: var(--text-primary); line-height: 1.6;">${this.escapeHtml(activity.text)}</div>
+                                </div>
+                            `;
+                        }).join('')
+                    }
+                </div>
+            </div>
+        `;
+        
+        // Add click outside to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
+    },
+    
     // Statistics
     async updateDashboard() {
         if (this.isAdmin) return;
@@ -1953,9 +2011,14 @@ const app = {
                                 <span class="stat-badge">${totalMinutes} min total</span>
                             </div>
                         </div>
-                        <button class="btn-icon" onclick="app.deleteHabit(${habit.id})" title="Delete habit">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary btn-sm" onclick="app.showHabitDetails(${habit.id})" title="View habit details">
+                                <i class="fas fa-info-circle"></i> Details
+                            </button>
+                            <button class="btn-icon" onclick="app.deleteHabit(${habit.id})" title="Delete habit">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="habit-item-controls">
                         <label class="habit-checkbox-label">
@@ -2050,6 +2113,149 @@ const app = {
         data.habits.custom = data.habits.custom.filter(h => h.id !== habitId);
         await this.saveUserData(data);
         await this.renderCustomHabits();
+    },
+    
+    async showHabitDetails(habitId) {
+        const data = await this.getUserData();
+        if (!data || !data.habits) return;
+        
+        const habit = data.habits.custom.find(h => h.id === habitId);
+        if (!habit) return;
+        
+        const totalEntries = habit.entries.length;
+        const completedEntries = habit.entries.filter(e => e.completed).length;
+        const totalMinutes = habit.entries.reduce((sum, e) => sum + (e.minutes || 0), 0);
+        const completionRate = totalEntries > 0 ? Math.round((completedEntries / totalEntries) * 100) : 0;
+        
+        // Sort entries by date (most recent first)
+        const sortedEntries = [...habit.entries].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h2>${this.escapeHtml(habit.name)} - Details</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem;">
+                        <div style="text-align: center; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
+                            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">${completionRate}%</div>
+                            <div style="color: var(--text-secondary); margin-top: 0.5rem;">Completion Rate</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
+                            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">${totalEntries}</div>
+                            <div style="color: var(--text-secondary); margin-top: 0.5rem;">Total Entries</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
+                            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m</div>
+                            <div style="color: var(--text-secondary); margin-top: 0.5rem;">Total Time</div>
+                        </div>
+                    </div>
+                    <h3 style="margin-bottom: 1rem;">Habit History</h3>
+                    ${sortedEntries.length === 0 
+                        ? '<p class="empty-state">No entries yet. Start tracking this habit!</p>'
+                        : sortedEntries.map(entry => {
+                            const date = new Date(entry.date);
+                            const formattedDate = date.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            });
+                            return `
+                                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid ${entry.completed ? '#10b981' : '#ef4444'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div>
+                                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">${formattedDate}</div>
+                                            <div style="color: var(--text-secondary);">
+                                                ${entry.completed ? '<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Completed</span>' : '<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> Not Completed</span>'}
+                                                ${entry.minutes > 0 ? ` • ${entry.minutes} minutes` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')
+                    }
+                </div>
+            </div>
+        `;
+        
+        // Add click outside to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
+    },
+    
+    async showReadingHistory() {
+        const data = await this.getUserData();
+        if (!data || !data.habits) return;
+        
+        const reading = (data.habits.reading || []).slice().reverse();
+        
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h2>Reading History</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem;">
+                    ${reading.length === 0 
+                        ? '<p class="empty-state">No reading entries yet. Start reading!</p>'
+                        : reading.map(entry => {
+                            const date = new Date(entry.date);
+                            const time = new Date(entry.timestamp);
+                            const formattedDate = date.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            });
+                            const formattedTime = time.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                            return `
+                                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                        <div>
+                                            <div style="font-weight: 600; color: var(--text-primary); font-size: 1.1rem; margin-bottom: 0.25rem;">${this.escapeHtml(entry.bookName)}</div>
+                                            ${entry.authorName ? `<div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">by ${this.escapeHtml(entry.authorName)}</div>` : ''}
+                                        </div>
+                                        <span style="background: var(--primary-color); color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-weight: 600;">${entry.pages} pages</span>
+                                    </div>
+                                    <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">${formattedDate} • ${formattedTime}</div>
+                                    ${entry.notes ? `<div style="color: var(--text-primary); line-height: 1.6; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">${this.escapeHtml(entry.notes)}</div>` : ''}
+                                </div>
+                            `;
+                        }).join('')
+                    }
+                </div>
+            </div>
+        `;
+        
+        // Add click outside to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
     },
     
     async renderHabitStatistics() {
