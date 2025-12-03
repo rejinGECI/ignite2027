@@ -962,12 +962,6 @@ const app = {
             document.getElementById('start-timer').style.display = 'none';
             document.getElementById('pause-timer').style.display = 'inline-flex';
             document.getElementById('stop-timer').style.display = 'inline-flex';
-            
-            // Disable save activity button when timer starts
-            const saveActivityBtn = document.getElementById('save-activity-btn');
-            if (saveActivityBtn) {
-                saveActivityBtn.disabled = true;
-            }
         }
     },
     
@@ -1009,12 +1003,6 @@ const app = {
         document.getElementById('start-timer').style.display = 'inline-flex';
         document.getElementById('pause-timer').style.display = 'none';
         document.getElementById('stop-timer').style.display = 'none';
-        
-        // Keep save activity button disabled when timer is stopped (not completed)
-        const saveActivityBtn = document.getElementById('save-activity-btn');
-        if (saveActivityBtn) {
-            saveActivityBtn.disabled = true;
-        }
     },
     
     completeTimer: async function() {
@@ -1037,12 +1025,6 @@ const app = {
         document.getElementById('start-timer').style.display = 'inline-flex';
         document.getElementById('pause-timer').style.display = 'none';
         document.getElementById('stop-timer').style.display = 'none';
-        
-        // Enable save activity button after timer completion
-        const saveActivityBtn = document.getElementById('save-activity-btn');
-        if (saveActivityBtn) {
-            saveActivityBtn.disabled = false;
-        }
         
         if (!this.isAdmin) {
             alert('🎉 Great job! You completed your session!');
@@ -1201,11 +1183,6 @@ const app = {
     
     // Activities
     async saveActivity() {
-        const saveActivityBtn = document.getElementById('save-activity-btn');
-        if (saveActivityBtn && saveActivityBtn.disabled) {
-            return; // Don't allow saving if button is disabled
-        }
-        
         const activityText = document.getElementById('activity-log').value.trim();
         if (!activityText) {
             alert('Please describe what you did today!');
@@ -1229,11 +1206,6 @@ const app = {
         this.renderRecentActivities();
         await this.updateDashboard();
         alert('Activity saved! Keep up the great work! 💪');
-        
-        // Disable button again after saving - must complete timer again to enable
-        if (saveActivityBtn) {
-            saveActivityBtn.disabled = true;
-        }
     },
     
     async recordTime(minutes) {
