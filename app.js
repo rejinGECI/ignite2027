@@ -1400,9 +1400,37 @@ const app = {
         // Today's progress based on 20 minute goal
         const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
         const todayProgressEl = document.getElementById('today-progress');
-        if (todayProgressEl) todayProgressEl.style.width = `${progressPercent}%`;
+        if (todayProgressEl) {
+            todayProgressEl.style.width = `${progressPercent}%`;
+            
+            // Set color based on completion status
+            todayProgressEl.className = 'progress-fill'; // Reset classes
+            if (todayMinutes >= 20) {
+                // Completed - green
+                todayProgressEl.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+                todayProgressEl.classList.add('progress-completed');
+            } else if (todayMinutes > 0) {
+                // Partial - yellow/orange
+                todayProgressEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+                todayProgressEl.classList.add('progress-partial');
+            } else {
+                // No progress - gray
+                todayProgressEl.style.background = 'var(--border-color)';
+                todayProgressEl.classList.add('progress-none');
+            }
+        }
+        
         const todayMinutesEl = document.getElementById('today-minutes');
-        if (todayMinutesEl) todayMinutesEl.textContent = `${todayMinutes} / 20 minutes`;
+        if (todayMinutesEl) {
+            if (todayMinutes >= 20) {
+                todayMinutesEl.textContent = `✅ Completed! (${todayMinutes} / 20 minutes)`;
+            } else if (todayMinutes > 0) {
+                const percent = Math.round(progressPercent);
+                todayMinutesEl.textContent = `${todayMinutes} / 20 minutes (${percent}%)`;
+            } else {
+                todayMinutesEl.textContent = `0 / 20 minutes`;
+            }
+        }
     },
     
     async updateStatistics() {
