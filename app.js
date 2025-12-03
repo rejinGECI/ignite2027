@@ -1380,15 +1380,24 @@ const app = {
         const totalDaysEl = document.getElementById('total-days');
         if (totalDaysEl) totalDaysEl.textContent = uniqueDays;
         
-        // Calculate total hours
+        // Calculate total hours and remaining minutes
         const totalHours = Math.floor(totalMinutes / 60);
+        const remainingMinutes = totalMinutes % 60;
         const totalHoursEl = document.getElementById('total-hours');
-        if (totalHoursEl) totalHoursEl.textContent = totalHours;
+        if (totalHoursEl) {
+            if (totalHours > 0) {
+                totalHoursEl.textContent = remainingMinutes > 0 ? `${totalHours}h ${remainingMinutes}m` : `${totalHours}h`;
+            } else {
+                totalHoursEl.textContent = remainingMinutes > 0 ? `${remainingMinutes}m` : '0';
+            }
+        }
         
-        // Today's progress based on 20 minute goal
+        // Calculate today's minutes for progress display
         const today = new Date().toISOString().split('T')[0];
         const todayLog = filteredTimeLog.find(log => log.date === today);
         const todayMinutes = todayLog ? todayLog.minutes : 0;
+        
+        // Today's progress based on 20 minute goal
         const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
         const todayProgressEl = document.getElementById('today-progress');
         if (todayProgressEl) todayProgressEl.style.width = `${progressPercent}%`;
