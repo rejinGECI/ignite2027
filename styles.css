@@ -143,6 +143,44 @@ body.mobile-menu-open {
     border-bottom-color: var(--primary-color);
 }
 
+/* Admin Tabs */
+.admin-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.admin-tabs .tab-btn {
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+}
+
+.admin-tab-content {
+    display: none;
+}
+
+.admin-tab-content.active {
+    display: block;
+}
+
+/* Evaluation Form */
+.evaluation-form {
+    padding: 1rem;
+}
+
+.evaluation-section {
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.individual-eval-item {
+    margin-bottom: 1.5rem;
+}
+
 .auth-form {
     display: none;
     flex-direction: column;
@@ -3246,6 +3284,25 @@ body.mobile-menu-open {
 
     .toggle-switch {
         align-self: flex-start;
+    }
+    
+    /* Admin Tabs */
+    .admin-tabs {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .admin-tabs .tab-btn {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .evaluation-section {
+        padding: 1rem;
+    }
+    
+    .individual-eval-item {
+        padding: 0.875rem !important;
     }
 }
 

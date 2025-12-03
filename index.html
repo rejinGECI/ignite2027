@@ -731,36 +731,78 @@ Bob Johnson,GHI789</pre>
             <div id="admin-miniproject" class="page">
                 <div class="page-header">
                     <h1>Mini Project Management</h1>
-                    <p class="subtitle">Manage groups, topics, areas, and guides</p>
+                    <p class="subtitle">Manage teams, guides, and evaluations</p>
+                </div>
+                
+                <!-- Tabs for different sections -->
+                <div class="admin-tabs">
+                    <button class="tab-btn active" data-tab="teams" onclick="app.switchAdminMiniProjectTab('teams')">
+                        <i class="fas fa-users"></i> Teams & Guides
+                    </button>
+                    <button class="tab-btn" data-tab="evaluations" onclick="app.switchAdminMiniProjectTab('evaluations')">
+                        <i class="fas fa-clipboard-check"></i> Evaluations
+                    </button>
                 </div>
                 
                 <div class="admin-section">
-                    <!-- Guides Management -->
-                    <div class="admin-card">
-                        <h3><i class="fas fa-user-tie"></i> Manage Guides</h3>
-                        <div class="add-guide-section">
-                            <div class="form-row">
-                                <input type="text" id="guide-name" placeholder="Guide Name" class="form-input">
-                                <input type="text" id="guide-email" placeholder="Email/Username" class="form-input">
-                                <input type="password" id="guide-password" placeholder="Password" class="form-input">
-                                <button type="button" class="btn btn-primary" id="create-guide-account-btn" onclick="app.createGuideAccount()">
-                                    <i class="fas fa-plus"></i> Create Guide
-                                </button>
+                    <!-- Teams & Guides Tab -->
+                    <div id="admin-miniproject-teams-tab" class="admin-tab-content active">
+                        <!-- Guides Management -->
+                        <div class="admin-card">
+                            <h3><i class="fas fa-user-tie"></i> Manage Guides</h3>
+                            <div class="add-guide-section">
+                                <div class="form-row">
+                                    <input type="text" id="guide-name" placeholder="Guide Name" class="form-input">
+                                    <input type="text" id="guide-email" placeholder="Email/Username" class="form-input">
+                                    <input type="password" id="guide-password" placeholder="Password" class="form-input">
+                                    <button type="button" class="btn btn-primary" id="create-guide-account-btn" onclick="app.createGuideAccount()">
+                                        <i class="fas fa-plus"></i> Create Guide
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="guides-list" class="guides-list">
+                                <!-- Guides will be listed here -->
                             </div>
                         </div>
-                        <div id="guides-list" class="guides-list">
-                            <!-- Guides will be listed here -->
+                        
+                        <!-- Project Teams Management -->
+                        <div class="admin-card">
+                            <h3><i class="fas fa-users"></i> Project Teams</h3>
+                            <button type="button" class="btn btn-primary" id="show-create-team-modal-btn" onclick="app.showCreateTeamModal()" style="margin-bottom: 1rem;">
+                                <i class="fas fa-plus"></i> Create New Team
+                            </button>
+                            <div id="project-teams-list" class="project-teams-list">
+                                <!-- Teams will be listed here -->
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- Project Teams Management -->
-                    <div class="admin-card">
-                        <h3><i class="fas fa-users"></i> Project Teams</h3>
-                        <button type="button" class="btn btn-primary" id="show-create-team-modal-btn" onclick="app.showCreateTeamModal()" style="margin-bottom: 1rem;">
-                            <i class="fas fa-plus"></i> Create New Team
-                        </button>
-                        <div id="project-teams-list" class="project-teams-list">
-                            <!-- Teams will be listed here -->
+                    <!-- Evaluations Tab -->
+                    <div id="admin-miniproject-evaluations-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-clipboard-check"></i> Evaluation Marks & Comments</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Select a team and evaluation stage to add marks and comments.
+                            </p>
+                            
+                            <div class="form-row" style="margin-bottom: 1.5rem;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="eval-team-select">Select Team *</label>
+                                    <select id="eval-team-select" class="form-input" onchange="app.loadTeamEvaluations()">
+                                        <option value="">-- Select a team --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="eval-stage-select">Select Evaluation Stage *</label>
+                                    <select id="eval-stage-select" class="form-input" onchange="app.loadEvaluationForm()">
+                                        <option value="">-- Select a stage --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div id="evaluation-form-container" style="display: none;">
+                                <!-- Evaluation form will be loaded here -->
+                            </div>
                         </div>
                     </div>
                 </div>
