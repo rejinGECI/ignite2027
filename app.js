@@ -3279,18 +3279,30 @@ const app = {
                 return;
             }
             
-            container.innerHTML = stages.map((stage, index) => `
+            container.innerHTML = stages.map((stage, index) => {
+                const teamParams = stage.teamMarkParams || [];
+                const individualParams = stage.individualMarkParams || [];
+                const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                
+                return `
                 <div class="evaluation-stage-item">
                     <span class="stage-number">${index + 1}</span>
                     <span class="stage-name">${this.escapeHtml(stage.name)}</span>
                     <span class="stage-marks" style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 1rem;">
-                        (${stage.marks || 100} marks)
+                        Team: ${teamTotal} | Individual: ${individualTotal}
                     </span>
-                    <button class="btn-icon" onclick="app.deleteEvaluationStage(${index})" title="Delete stage">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-primary btn-sm" onclick="app.editStageMarkParameters(${index})" title="Configure marks">
+                            <i class="fas fa-cog"></i> Configure
+                        </button>
+                        <button class="btn-icon" onclick="app.deleteEvaluationStage(${index})" title="Delete stage">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         } catch (error) {
             console.error('Error loading evaluation stages:', error);
         }
@@ -3404,17 +3416,10 @@ const app = {
     
     async addEvaluationStage() {
         const nameInput = document.getElementById('new-stage-name');
-        const marksInput = document.getElementById('new-stage-marks');
         const stageName = nameInput.value.trim();
-        const stageMarks = parseInt(marksInput.value) || 100;
         
         if (!stageName) {
             alert('Please enter a stage name!');
-            return;
-        }
-        
-        if (stageMarks < 1) {
-            alert('Marks must be at least 1!');
             return;
         }
         
@@ -3424,7 +3429,8 @@ const app = {
             
             currentStages.push({ 
                 name: stageName,
-                marks: stageMarks
+                teamMarkParams: [],
+                individualMarkParams: []
             });
             
             await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
@@ -3433,12 +3439,205 @@ const app = {
             }, { merge: true });
             
             nameInput.value = '';
-            marksInput.value = '100';
             await this.loadEvaluationStages();
         } catch (error) {
             console.error('Error adding evaluation stage:', error);
             alert('Error adding stage. Please try again.');
         }
+    },
+    
+    async editStageMarkParameters(stageIndex) {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[stageIndex];
+            
+            if (!stage) {
+                alert('Stage not found!');
+                return;
+            }
+            
+            document.getElementById('edit-stage-index').value = stageIndex;
+            document.getElementById('edit-stage-name-text').textContent = stage.name;
+            
+            // Load team parameters
+            const teamParams = stage.teamMarkParams || [];
+            const teamList = document.getElementById('team-params-list');
+            teamList.innerHTML = teamParams.map((param, idx) => `
+                <div class="param-item" style="display: flex; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--card-bg); border-radius: 6px;">
+                    <div style="flex: 2;">
+                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Parameter Name</label>
+                        <input type="text" class="form-input param-name" value="${this.escapeHtml(param.name || '')}" placeholder="e.g., Presentation" data-param-index="${idx}" data-param-type="team">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Max Marks</label>
+                        <input type="number" class="form-input param-marks" value="${param.maxMarks || 0}" min="0" placeholder="0" data-param-index="${idx}" data-param-type="team" onchange="app.updateTotalMarks('team')">
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="app.removeMarkParameter('team', ${idx})" style="flex-shrink: 0;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+            
+            // Load individual parameters
+            const individualParams = stage.individualMarkParams || [];
+            const individualList = document.getElementById('individual-params-list');
+            individualList.innerHTML = individualParams.map((param, idx) => `
+                <div class="param-item" style="display: flex; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--card-bg); border-radius: 6px;">
+                    <div style="flex: 2;">
+                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Parameter Name</label>
+                        <input type="text" class="form-input param-name" value="${this.escapeHtml(param.name || '')}" placeholder="e.g., Contribution" data-param-index="${idx}" data-param-type="individual">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Max Marks</label>
+                        <input type="number" class="form-input param-marks" value="${param.maxMarks || 0}" min="0" placeholder="0" data-param-index="${idx}" data-param-type="individual" onchange="app.updateTotalMarks('individual')">
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="app.removeMarkParameter('individual', ${idx})" style="flex-shrink: 0;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+            
+            this.updateTotalMarks('team');
+            this.updateTotalMarks('individual');
+            
+            document.getElementById('edit-stage-modal').style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading stage for editing:', error);
+            alert('Error loading stage. Please try again.');
+        }
+    },
+    
+    addMarkParameter(type) {
+        const listId = type === 'team' ? 'team-params-list' : 'individual-params-list';
+        const list = document.getElementById(listId);
+        const currentIndex = list.querySelectorAll('.param-item').length;
+        
+        const paramItem = document.createElement('div');
+        paramItem.className = 'param-item';
+        paramItem.style.cssText = 'display: flex; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem; padding: 0.75rem; background: var(--card-bg); border-radius: 6px;';
+        paramItem.innerHTML = `
+            <div style="flex: 2;">
+                <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Parameter Name</label>
+                <input type="text" class="form-input param-name" placeholder="e.g., ${type === 'team' ? 'Presentation' : 'Contribution'}" data-param-index="${currentIndex}" data-param-type="${type}">
+            </div>
+            <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--text-secondary);">Max Marks</label>
+                <input type="number" class="form-input param-marks" value="0" min="0" placeholder="0" data-param-index="${currentIndex}" data-param-type="${type}" onchange="app.updateTotalMarks('${type}')">
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeMarkParameter('${type}', ${currentIndex})" style="flex-shrink: 0;">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        list.appendChild(paramItem);
+        this.updateTotalMarks(type);
+    },
+    
+    removeMarkParameter(type, index) {
+        const listId = type === 'team' ? 'team-params-list' : 'individual-params-list';
+        const list = document.getElementById(listId);
+        const items = list.querySelectorAll('.param-item');
+        
+        if (items[index]) {
+            items[index].remove();
+            // Reindex remaining items
+            const remainingItems = list.querySelectorAll('.param-item');
+            remainingItems.forEach((item, idx) => {
+                item.querySelectorAll('input, button').forEach(el => {
+                    if (el.dataset.paramIndex !== undefined) {
+                        el.dataset.paramIndex = idx;
+                    }
+                    if (el.onclick) {
+                        el.setAttribute('onclick', el.getAttribute('onclick').replace(/\d+/, idx));
+                    }
+                });
+            });
+            this.updateTotalMarks(type);
+        }
+    },
+    
+    updateTotalMarks(type) {
+        const listId = type === 'team' ? 'team-params-list' : 'individual-params-list';
+        const totalId = type === 'team' ? 'team-total-marks' : 'individual-total-marks';
+        const list = document.getElementById(listId);
+        const marksInputs = list.querySelectorAll('.param-marks');
+        
+        let total = 0;
+        marksInputs.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            total += value;
+        });
+        
+        document.getElementById(totalId).textContent = total;
+    },
+    
+    async saveStageMarkParameters() {
+        try {
+            const stageIndex = parseInt(document.getElementById('edit-stage-index').value);
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (!stages[stageIndex]) {
+                alert('Stage not found!');
+                return;
+            }
+            
+            // Collect team parameters
+            const teamParams = [];
+            const teamList = document.getElementById('team-params-list');
+            teamList.querySelectorAll('.param-item').forEach(item => {
+                const nameInput = item.querySelector('.param-name');
+                const marksInput = item.querySelector('.param-marks');
+                const name = nameInput.value.trim();
+                const maxMarks = parseFloat(marksInput.value) || 0;
+                
+                if (name && maxMarks > 0) {
+                    teamParams.push({ name, maxMarks });
+                }
+            });
+            
+            // Collect individual parameters
+            const individualParams = [];
+            const individualList = document.getElementById('individual-params-list');
+            individualList.querySelectorAll('.param-item').forEach(item => {
+                const nameInput = item.querySelector('.param-name');
+                const marksInput = item.querySelector('.param-marks');
+                const name = nameInput.value.trim();
+                const maxMarks = parseFloat(marksInput.value) || 0;
+                
+                if (name && maxMarks > 0) {
+                    individualParams.push({ name, maxMarks });
+                }
+            });
+            
+            // Update stage
+            stages[stageIndex].teamMarkParams = teamParams;
+            stages[stageIndex].individualMarkParams = individualParams;
+            
+            // Calculate total marks for backward compatibility
+            const teamTotal = teamParams.reduce((sum, p) => sum + p.maxMarks, 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + p.maxMarks, 0);
+            stages[stageIndex].marks = Math.max(teamTotal, individualTotal); // Use max for backward compatibility
+            
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                evaluationStages: stages,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            alert('Mark parameters saved successfully!');
+            this.closeEditStageModal();
+            await this.loadEvaluationStages();
+        } catch (error) {
+            console.error('Error saving mark parameters:', error);
+            alert('Error saving parameters. Please try again.');
+        }
+    },
+    
+    closeEditStageModal() {
+        document.getElementById('edit-stage-modal').style.display = 'none';
+        document.getElementById('team-params-list').innerHTML = '';
+        document.getElementById('individual-params-list').innerHTML = '';
     },
     
     async deleteEvaluationStage(index) {
@@ -4326,30 +4525,53 @@ const app = {
             const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
             const evalData = evalDoc.exists() ? evalDoc.data() : {};
             
-            // Get max marks for this stage (default to 100 for backward compatibility)
-            const maxMarks = stage.marks || 100;
+            // Get mark parameters
+            const teamParams = stage.teamMarkParams || [];
+            const individualParams = stage.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Get existing evaluation marks (parameter-based or legacy)
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarksTotal = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
             
             // Build form HTML
             formContainer.innerHTML = `
                 <div class="evaluation-form">
                     <h4 style="margin-bottom: 1.5rem; color: var(--text-primary);">
                         <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)} - ${this.escapeHtml(teamData.groupName || 'Team')}
-                        <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Max: ${maxMarks} marks)</span>
                     </h4>
                     
                     <!-- Team Marks & Comments -->
                     <div class="evaluation-section">
                         <h5 style="margin-bottom: 1rem; color: var(--text-primary);">
                             <i class="fas fa-users"></i> Team Evaluation
+                            ${teamTotal > 0 ? `<span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
                         </h5>
-                        <div class="form-row">
-                            <div class="form-group" style="flex: 1;">
-                                <label for="team-marks">Team Marks (out of ${maxMarks})</label>
-                                <input type="number" id="team-marks" class="form-input" min="0" max="${maxMarks}" 
-                                       value="${evalData.teamMarks || ''}" placeholder="Enter team marks">
+                        ${teamParams.length > 0 ? `
+                            ${teamParams.map((param, idx) => `
+                                <div class="form-group" style="margin-bottom: 1rem;">
+                                    <label for="team-param-${idx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                    <input type="number" id="team-param-${idx}" class="form-input team-param-input" 
+                                           min="0" max="${param.maxMarks}" 
+                                           data-param-name="${this.escapeHtml(param.name)}"
+                                           value="${teamMarksData[param.name] || ''}" 
+                                           placeholder="Enter marks">
+                                </div>
+                            `).join('')}
+                            <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                <strong>Total Team Marks: <span id="team-marks-total">${teamMarksTotal || 0}</span> / ${teamTotal}</strong>
                             </div>
-                        </div>
-                        <div class="form-group">
+                        ` : `
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="team-marks">Team Marks</label>
+                                    <input type="number" id="team-marks" class="form-input" min="0" 
+                                           value="${teamMarksTotal || ''}" placeholder="Enter team marks">
+                                </div>
+                            </div>
+                        `}
+                        <div class="form-group" style="margin-top: 1.5rem;">
                             <label for="team-comments">Team Comments</label>
                             <textarea id="team-comments" class="form-input" rows="4" 
                                       placeholder="Enter team evaluation comments...">${this.escapeHtml(evalData.teamComments || '')}</textarea>
@@ -4371,16 +4593,37 @@ const app = {
                                             <strong style="color: var(--text-primary);">${this.escapeHtml(member.name || member.ktuid)}</strong>
                                             ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
                                         </div>
-                                        <div class="form-row">
-                                            <div class="form-group" style="flex: 1;">
-                                                <label for="individual-marks-${index}">Individual Marks (out of ${maxMarks})</label>
-                                                <input type="number" id="individual-marks-${index}" 
-                                                       class="form-input" min="0" max="${maxMarks}" 
-                                                       data-user-id="${member.userId || member.ktuid}"
-                                                       value="${memberEval.marks || ''}" 
-                                                       placeholder="Enter individual marks">
+                                        ${individualParams.length > 0 ? `
+                                            ${individualParams.map((param, paramIdx) => {
+                                                const paramMarks = memberEval.marksData?.[param.name] || '';
+                                                return `
+                                                    <div class="form-group" style="margin-bottom: 1rem;">
+                                                        <label for="individual-param-${index}-${paramIdx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                                        <input type="number" id="individual-param-${index}-${paramIdx}" 
+                                                               class="form-input individual-param-input" 
+                                                               min="0" max="${param.maxMarks}" 
+                                                               data-user-id="${member.userId || member.ktuid}"
+                                                               data-param-name="${this.escapeHtml(param.name)}"
+                                                               value="${paramMarks}" 
+                                                               placeholder="Enter marks">
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                            <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                                <strong>Total Individual Marks: <span id="individual-marks-total-${index}">${memberEval.marks || 0}</span> / ${individualTotal}</strong>
                                             </div>
-                                        </div>
+                                        ` : `
+                                            <div class="form-row">
+                                                <div class="form-group" style="flex: 1;">
+                                                    <label for="individual-marks-${index}">Individual Marks</label>
+                                                    <input type="number" id="individual-marks-${index}" 
+                                                           class="form-input" min="0" 
+                                                           data-user-id="${member.userId || member.ktuid}"
+                                                           value="${memberEval.marks || ''}" 
+                                                           placeholder="Enter individual marks">
+                                                </div>
+                                            </div>
+                                        `}
                                         <div class="form-group">
                                             <label for="individual-comments-${index}">Individual Comments</label>
                                             <textarea id="individual-comments-${index}" 
@@ -4406,30 +4649,92 @@ const app = {
             `;
             
             formContainer.style.display = 'block';
+            
+            // Add event listeners for parameter-based marks calculation
+            if (teamParams.length > 0) {
+                document.querySelectorAll('.team-param-input').forEach(input => {
+                    input.addEventListener('input', () => this.calculateTeamMarksTotal());
+                });
+            }
+            
+            if (individualParams.length > 0) {
+                document.querySelectorAll('.individual-param-input').forEach(input => {
+                    input.addEventListener('input', (e) => {
+                        const userId = e.target.dataset.userId;
+                        this.calculateIndividualMarksTotal(userId);
+                    });
+                });
+            }
         } catch (error) {
             console.error('Error loading evaluation form:', error);
             alert('Error loading evaluation form. Please try again.');
         }
     },
     
+    calculateTeamMarksTotal() {
+        const inputs = document.querySelectorAll('.team-param-input');
+        let total = 0;
+        inputs.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            total += value;
+        });
+        const totalEl = document.getElementById('team-marks-total');
+        if (totalEl) totalEl.textContent = total;
+    },
+    
+    calculateIndividualMarksTotal(userId) {
+        const inputs = document.querySelectorAll(`.individual-param-input[data-user-id="${userId}"]`);
+        let total = 0;
+        inputs.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            total += value;
+        });
+        // Find the member index
+        const firstInput = inputs[0];
+        if (firstInput) {
+            const inputId = firstInput.id;
+            const match = inputId.match(/individual-param-(\d+)-/);
+            if (match) {
+                const memberIndex = match[1];
+                const totalEl = document.getElementById(`individual-marks-total-${memberIndex}`);
+                if (totalEl) totalEl.textContent = total;
+            }
+        }
+    },
+    
     async saveEvaluationData(teamId, stageIndex) {
         try {
-            // Get stage max marks for validation
+            // Get stage and parameters
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             const stage = stages[parseInt(stageIndex)];
-            const maxMarks = stage?.marks || 100;
+            const teamParams = stage?.teamMarkParams || [];
+            const individualParams = stage?.individualMarkParams || [];
             
-            const teamMarksInput = document.getElementById('team-marks');
-            const teamMarks = teamMarksInput.value.trim();
             const teamComments = document.getElementById('team-comments').value.trim();
             
-            // Validate team marks
-            if (teamMarks) {
-                const marks = parseFloat(teamMarks);
-                if (marks < 0 || marks > maxMarks) {
-                    alert(`Team marks must be between 0 and ${maxMarks}!`);
-                    return;
+            // Collect team marks (parameter-based or single)
+            let teamMarks = null;
+            let teamMarksData = {};
+            
+            if (teamParams.length > 0) {
+                // Parameter-based marks
+                teamParams.forEach((param, idx) => {
+                    const input = document.getElementById(`team-param-${idx}`);
+                    if (input) {
+                        const value = parseFloat(input.value) || 0;
+                        if (value > 0) {
+                            teamMarksData[param.name] = value;
+                        }
+                    }
+                });
+                teamMarks = Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+            } else {
+                // Legacy single marks
+                const teamMarksInput = document.getElementById('team-marks');
+                if (teamMarksInput) {
+                    const value = teamMarksInput.value.trim();
+                    teamMarks = value ? parseFloat(value) : null;
                 }
             }
             
@@ -4440,29 +4745,41 @@ const app = {
             const members = teamData.members || [];
             
             members.forEach((member, index) => {
-                const marksInput = document.getElementById(`individual-marks-${index}`);
+                const userId = member.userId || member.ktuid;
                 const commentsInput = document.getElementById(`individual-comments-${index}`);
+                const comments = commentsInput ? commentsInput.value.trim() : '';
                 
-                if (marksInput && commentsInput) {
-                    const userId = member.userId || member.ktuid;
-                    const marksValue = marksInput.value.trim();
-                    
-                    // Validate individual marks
-                    if (marksValue) {
-                        const marks = parseFloat(marksValue);
-                        if (marks < 0 || marks > maxMarks) {
-                            alert(`Individual marks for ${member.name || member.ktuid} must be between 0 and ${maxMarks}!`);
-                            return;
+                let marks = null;
+                let marksData = {};
+                
+                if (individualParams.length > 0) {
+                    // Parameter-based marks
+                    individualParams.forEach((param, paramIdx) => {
+                        const input = document.getElementById(`individual-param-${index}-${paramIdx}`);
+                        if (input) {
+                            const value = parseFloat(input.value) || 0;
+                            if (value > 0) {
+                                marksData[param.name] = value;
+                            }
                         }
+                    });
+                    marks = Object.values(marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                } else {
+                    // Legacy single marks
+                    const marksInput = document.getElementById(`individual-marks-${index}`);
+                    if (marksInput) {
+                        const value = marksInput.value.trim();
+                        marks = value ? parseFloat(value) : null;
                     }
-                    
-                    individualEvaluations[userId] = {
-                        marks: marksValue ? parseFloat(marksValue) : null,
-                        comments: commentsInput.value.trim() || '',
-                        studentName: member.name || member.ktuid,
-                        ktuid: member.ktuid || ''
-                    };
                 }
+                
+                individualEvaluations[userId] = {
+                    marks: marks,
+                    marksData: Object.keys(marksData).length > 0 ? marksData : undefined,
+                    comments: comments,
+                    studentName: member.name || member.ktuid,
+                    ktuid: member.ktuid || ''
+                };
             });
             
             // Save to Firestore
@@ -4470,7 +4787,8 @@ const app = {
             await setDoc(evalRef, {
                 teamId: teamId,
                 stageIndex: parseInt(stageIndex),
-                teamMarks: teamMarks ? parseFloat(teamMarks) : null,
+                teamMarks: teamMarks,
+                teamMarksData: Object.keys(teamMarksData).length > 0 ? teamMarksData : undefined,
                 teamComments: teamComments,
                 individualEvaluations: individualEvaluations,
                 updatedAt: new Date().toISOString(),
@@ -4597,22 +4915,41 @@ const app = {
                                     const studentEval = evalData.individualEvaluations?.[studentUserId] || 
                                                        evalData.individualEvaluations?.[studentKtuid] || null;
                                     
-                                    // Get max marks for this stage (default to 100 for backward compatibility)
-                                    const maxMarks = stage.marks || 100;
+                                    // Get mark parameters
+                                    const teamParams = stage.teamMarkParams || [];
+                                    const individualParams = stage.individualMarkParams || [];
+                                    const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    
+                                    // Get team marks data (parameter-based or legacy)
+                                    const teamMarksData = evalData.teamMarksData || {};
+                                    const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                                     
                                     return `
                                         <div class="evaluation-item" style="margin-bottom: 1.5rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
                                             <h4 style="margin-bottom: 1rem; color: var(--text-primary);">
                                                 <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)}
-                                                <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Max: ${maxMarks} marks)</span>
                                             </h4>
                                             
-                                            ${evalData.teamMarks !== null && evalData.teamMarks !== undefined ? `
+                                            ${teamMarks !== null && teamMarks !== undefined ? `
                                                 <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-color); border-radius: 6px;">
-                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                                                         <strong style="color: var(--text-primary);"><i class="fas fa-users"></i> Team Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${evalData.teamMarks} / ${maxMarks}</span>
+                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${teamMarks} / ${teamTotal || (stage.marks || 100)}</span>
                                                     </div>
+                                                    ${teamParams.length > 0 && Object.keys(teamMarksData).length > 0 ? `
+                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                                                            ${teamParams.map(param => {
+                                                                const paramMarks = teamMarksData[param.name] || 0;
+                                                                return `
+                                                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                        <span style="color: var(--text-secondary);">${this.escapeHtml(param.name)}:</span>
+                                                                        <span style="color: var(--text-primary); font-weight: 500;">${paramMarks} / ${param.maxMarks}</span>
+                                                                    </div>
+                                                                `;
+                                                            }).join('')}
+                                                        </div>
+                                                    ` : ''}
                                                     ${evalData.teamComments ? `
                                                         <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
                                                             <strong style="color: var(--text-secondary); font-size: 0.9rem;">Team Comments:</strong>
@@ -4624,10 +4961,23 @@ const app = {
                                             
                                             ${studentEval ? `
                                                 <div style="padding: 1rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 6px; border-left: 3px solid var(--primary-color);">
-                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                                                         <strong style="color: var(--text-primary);"><i class="fas fa-user"></i> Your Individual Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 'N/A'} / ${maxMarks}</span>
+                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 'N/A'} / ${individualTotal || (stage.marks || 100)}</span>
                                                     </div>
+                                                    ${individualParams.length > 0 && studentEval.marksData && Object.keys(studentEval.marksData).length > 0 ? `
+                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                                                            ${individualParams.map(param => {
+                                                                const paramMarks = studentEval.marksData[param.name] || 0;
+                                                                return `
+                                                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                        <span style="color: var(--text-secondary);">${this.escapeHtml(param.name)}:</span>
+                                                                        <span style="color: var(--text-primary); font-weight: 500;">${paramMarks} / ${param.maxMarks}</span>
+                                                                    </div>
+                                                                `;
+                                                            }).join('')}
+                                                        </div>
+                                                    ` : ''}
                                                     ${studentEval.comments ? `
                                                         <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
                                                             <strong style="color: var(--text-secondary); font-size: 0.9rem;">Individual Comments:</strong>

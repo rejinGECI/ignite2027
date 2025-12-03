@@ -713,14 +713,13 @@ Bob Johnson,GHI789</pre>
                     
                     <div class="admin-card">
                         <h3><i class="fas fa-list-check"></i> Evaluation Stages</h3>
-                        <p>Configure the stages for project evaluation</p>
+                        <p>Configure the stages for project evaluation with team and individual mark parameters</p>
                         <div id="evaluation-stages-list" class="evaluation-stages-list">
                             <!-- Stages will be dynamically added -->
                         </div>
                         <div class="add-stage-section">
                             <div class="form-row">
                                 <input type="text" id="new-stage-name" placeholder="Stage name (e.g., Proposal, Mid-term, Final)" class="stage-input" style="flex: 2;">
-                                <input type="number" id="new-stage-marks" placeholder="Marks (e.g., 100)" class="stage-input" min="1" value="100" style="flex: 1;">
                                 <button type="button" class="btn btn-primary" id="add-evaluation-stage-btn" onclick="app.addEvaluationStage()">
                                     <i class="fas fa-plus"></i> Add Stage
                                 </button>
@@ -1093,6 +1092,63 @@ Bob Johnson,GHI789</pre>
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Evaluation Stage Modal -->
+    <div id="edit-stage-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeEditStageModal()">
+        <div class="modal-content modal-large" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-edit"></i> Configure Mark Parameters</h2>
+                <button type="button" class="modal-close" onclick="app.closeEditStageModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-stage-index">
+                <div id="edit-stage-name-display" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 8px;">
+                    <strong style="color: var(--text-primary); font-size: 1.1rem;" id="edit-stage-name-text"></strong>
+                </div>
+                
+                <!-- Team Marks Parameters -->
+                <div class="mark-params-section">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-users"></i> Team Marks Parameters
+                    </h4>
+                    <div id="team-params-list" class="params-list">
+                        <!-- Team parameters will be added here -->
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.addMarkParameter('team')" style="margin-top: 0.75rem;">
+                        <i class="fas fa-plus"></i> Add Team Parameter
+                    </button>
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                        <strong>Total Team Marks: <span id="team-total-marks">0</span></strong>
+                    </div>
+                </div>
+                
+                <!-- Individual Marks Parameters -->
+                <div class="mark-params-section" style="margin-top: 2rem;">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-user"></i> Individual Marks Parameters
+                    </h4>
+                    <div id="individual-params-list" class="params-list">
+                        <!-- Individual parameters will be added here -->
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.addMarkParameter('individual')" style="margin-top: 0.75rem;">
+                        <i class="fas fa-plus"></i> Add Individual Parameter
+                    </button>
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                        <strong>Total Individual Marks: <span id="individual-total-marks">0</span></strong>
+                    </div>
+                </div>
+                
+                <div class="modal-actions" style="margin-top: 2rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeEditStageModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.saveStageMarkParameters()">
+                        <i class="fas fa-save"></i> Save Parameters
+                    </button>
+                </div>
             </div>
         </div>
     </div>
