@@ -2045,9 +2045,9 @@ const app = {
                             <button class="btn btn-secondary btn-sm" onclick="app.showHabitDetails(${habit.id})" title="View habit details">
                                 <i class="fas fa-info-circle"></i> Details
                             </button>
-                            <button class="btn-icon" onclick="app.deleteHabit(${habit.id})" title="Delete habit">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                        <button class="btn-icon" onclick="app.deleteHabit(${habit.id})" title="Delete habit">
+                            <i class="fas fa-trash"></i>
+                        </button>
                         </div>
                     </div>
                     <div class="habit-item-controls">
@@ -3295,10 +3295,10 @@ const app = {
                         <button class="btn btn-primary btn-sm" onclick="app.editStageMarkParameters(${index})" title="Configure marks">
                             <i class="fas fa-cog"></i> Configure
                         </button>
-                        <button class="btn-icon" onclick="app.deleteEvaluationStage(${index})" title="Delete stage">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
+                    <button class="btn-icon" onclick="app.deleteEvaluationStage(${index})" title="Delete stage">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
                 </div>
             `;
             }).join('');
@@ -3786,8 +3786,8 @@ const app = {
                             <i class="fas fa-edit"></i> Edit
                         </button>
                         <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteGuide('${guide.id}')">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
                     </div>
                 </div>
             `).join('');
@@ -3910,9 +3910,9 @@ const app = {
                 const data = doc.data();
                 if (!data.deleted) { // Filter out deleted teams
                     teams.push({
-                        id: doc.id,
+                    id: doc.id,
                         ...data
-                    });
+                });
                 }
             });
             
@@ -3939,7 +3939,7 @@ const app = {
                         <div class="detail-item">
                             <strong>Members:</strong> ${(team.members || []).length} student(s)
                         </div>
-                    </div>
+                        </div>
                     <div class="team-actions">
                         <button class="btn btn-primary btn-sm" onclick="app.editProjectTeam('${team.id}')">
                             <i class="fas fa-edit"></i> Edit
@@ -4039,17 +4039,17 @@ const app = {
                     guideResults.style.display = 'none';
                     return;
                 }
-                
-                try {
-                    const guidesQuery = query(
-                        collection(window.firebaseDb, 'users'),
-                        where('role', '==', 'guide')
-                    );
-                    const guidesSnapshot = await getDocs(guidesQuery);
-                    
+        
+        try {
+            const guidesQuery = query(
+                collection(window.firebaseDb, 'users'),
+                where('role', '==', 'guide')
+            );
+            const guidesSnapshot = await getDocs(guidesQuery);
+            
                     const matches = [];
-                    guidesSnapshot.forEach(doc => {
-                        const data = doc.data();
+            guidesSnapshot.forEach(doc => {
+                const data = doc.data();
                         const name = (data.name || '').toLowerCase();
                         const email = (data.email || '').toLowerCase();
                         
@@ -4074,7 +4074,7 @@ const app = {
                         guideResults.innerHTML = '<div class="search-result-item" style="color: var(--text-secondary);">No guides found</div>';
                         guideResults.style.display = 'block';
                     }
-                } catch (error) {
+        } catch (error) {
                     console.error('Error searching guides:', error);
                 }
             });
@@ -4325,9 +4325,9 @@ const app = {
                 const data = doc.data();
                 if (!data.deleted) {
                     teams.push({
-                        id: doc.id,
+                    id: doc.id,
                         ...data
-                    });
+                });
                 }
             });
             
@@ -4892,126 +4892,170 @@ const app = {
             container.innerHTML = `
                 <div class="miniproject-card">
                     <div class="project-header">
-                        <h2>${this.escapeHtml(studentTeam.groupName || 'My Project Team')}</h2>
+                        <h2><i class="fas fa-project-diagram"></i> ${this.escapeHtml(studentTeam.groupName || 'My Project Team')}</h2>
                     </div>
-                    <div class="project-details">
-                        <div class="detail-section">
-                            <h3><i class="fas fa-users"></i> Team Members</h3>
-                            <div class="members-list">
-                                ${(studentTeam.members || []).map(member => `
-                                    <div class="member-item">${this.escapeHtml(member.name || member.ktuid)}</div>
+                    <div class="project-info-grid">
+                        <div class="info-card info-card-blue">
+                            <div class="info-card-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="info-card-content">
+                                <h4>Team Members</h4>
+                                <div class="members-list-compact">
+                                    ${(studentTeam.members || []).map(member => `
+                                        <span class="member-badge">${this.escapeHtml(member.name || member.ktuid)}</span>
                                 `).join('')}
                             </div>
                         </div>
-                        <div class="detail-section">
-                            <h3><i class="fas fa-book"></i> Project Details</h3>
-                            <div class="detail-item">
-                                <strong>Topic:</strong> ${this.escapeHtml(studentTeam.topic || 'Not assigned')}
                             </div>
-                            ${studentTeam.area ? `<div class="detail-item"><strong>Area:</strong> ${this.escapeHtml(studentTeam.area)}</div>` : ''}
-                            ${studentTeam.subArea ? `<div class="detail-item"><strong>Sub Area:</strong> ${this.escapeHtml(studentTeam.subArea)}</div>` : ''}
+                        <div class="info-card info-card-green">
+                            <div class="info-card-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
+                                <i class="fas fa-book"></i>
+                            </div>
+                            <div class="info-card-content">
+                                <h4>Project Topic</h4>
+                                <p class="info-card-text">${this.escapeHtml(studentTeam.topic || 'Not assigned')}</p>
+                                ${studentTeam.area ? `<div class="info-card-meta"><i class="fas fa-tag"></i> ${this.escapeHtml(studentTeam.area)}</div>` : ''}
+                                ${studentTeam.subArea ? `<div class="info-card-meta"><i class="fas fa-tags"></i> ${this.escapeHtml(studentTeam.subArea)}</div>` : ''}
+                            </div>
                         </div>
-                        <div class="detail-section">
-                            <h3><i class="fas fa-user-tie"></i> Guide</h3>
-                            <p>${this.escapeHtml(studentTeam.guideName || 'Not assigned')}</p>
+                        <div class="info-card info-card-purple">
+                            <div class="info-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                                <i class="fas fa-user-tie"></i>
                         </div>
+                            <div class="info-card-content">
+                                <h4>Guide</h4>
+                                <p class="info-card-text">${this.escapeHtml(studentTeam.guideName || 'Not assigned')}</p>
+                            </div>
+                        </div>
+                    </div>
                         
                         ${stages.length > 0 ? `
-                            <div class="detail-section">
-                                <h3><i class="fas fa-clipboard-check"></i> Evaluations</h3>
-                                ${stages.map((stage, index) => {
-                                    const evalData = evaluations[index];
-                                    if (!evalData) {
-                                        return `
-                                            <div class="evaluation-item" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid var(--border-color);">
-                                                <h4 style="margin-bottom: 0.5rem; color: var(--text-primary);">${this.escapeHtml(stage.name)}</h4>
-                                                <p style="color: var(--text-secondary); font-size: 0.9rem;">Evaluation not yet completed.</p>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Get student's individual evaluation
-                                    const studentEval = evalData.individualEvaluations?.[studentUserId] || 
-                                                       evalData.individualEvaluations?.[studentKtuid] || null;
-                                    
-                                    // Get mark parameters
+                            <div class="evaluations-section">
+                                <h3 class="section-title"><i class="fas fa-clipboard-check"></i> Evaluations</h3>
+                                <div class="evaluations-grid">
+                                    ${stages.map((stage, index) => {
+                                        const evalData = evaluations[index];
+                                    // Get mark parameters (even for pending evaluations)
                                     const teamParams = stage.teamMarkParams || [];
                                     const individualParams = stage.individualMarkParams || [];
                                     const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                     const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                     
-                                    // Get team marks data (parameter-based or legacy)
-                                    const teamMarksData = evalData.teamMarksData || {};
-                                    const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
-                                    
-                                    return `
-                                        <div class="evaluation-item" style="margin-bottom: 1.5rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                                            <h4 style="margin-bottom: 1rem; color: var(--text-primary);">
-                                                <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)}
-                                            </h4>
-                                            
-                                            ${teamMarks !== null && teamMarks !== undefined ? `
-                                                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-color); border-radius: 6px;">
-                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                                                        <strong style="color: var(--text-primary);"><i class="fas fa-users"></i> Team Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${teamMarks} / ${teamTotal || (stage.marks || 100)}</span>
+                                    if (!evalData) {
+                                        return `
+                                            <div class="evaluation-card evaluation-pending">
+                                                <div class="evaluation-header">
+                                                    <h4><i class="fas fa-clock"></i> ${this.escapeHtml(stage.name)}</h4>
+                                                    <span class="status-badge status-pending">Pending</span>
+                                                </div>
+                                                <p class="evaluation-status-text">Evaluation not yet completed.</p>
+                                                ${teamTotal > 0 || individualTotal > 0 ? `
+                                                    <div class="marks-section marks-pending-info">
+                                                        ${teamTotal > 0 ? `
+                                                            <div class="marks-header">
+                                                                <span class="marks-label"><i class="fas fa-users"></i> Team Marks (Total)</span>
+                                                                <span class="marks-value marks-pending">0 / ${teamTotal}</span>
+                                                            </div>
+                                                        ` : ''}
+                                                        ${individualTotal > 0 ? `
+                                                            <div class="marks-header" style="margin-top: 0.75rem;">
+                                                                <span class="marks-label"><i class="fas fa-user"></i> Individual Marks (Total)</span>
+                                                                <span class="marks-value marks-pending">0 / ${individualTotal}</span>
+                                                            </div>
+                                                        ` : ''}
                                                     </div>
-                                                    ${teamParams.length > 0 && Object.keys(teamMarksData).length > 0 ? `
-                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                                                            ${teamParams.map(param => {
-                                                                const paramMarks = teamMarksData[param.name] || 0;
-                                                                return `
-                                                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                                                                        <span style="color: var(--text-secondary);">${this.escapeHtml(param.name)}:</span>
-                                                                        <span style="color: var(--text-primary); font-weight: 500;">${paramMarks} / ${param.maxMarks}</span>
-                                                                    </div>
-                                                                `;
-                                                            }).join('')}
-                                                        </div>
-                                                    ` : ''}
-                                                    ${evalData.teamComments ? `
-                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                                                            <strong style="color: var(--text-secondary); font-size: 0.9rem;">Team Comments:</strong>
-                                                            <p style="margin-top: 0.5rem; color: var(--text-primary); line-height: 1.6;">${this.escapeHtml(evalData.teamComments)}</p>
-                                                        </div>
-                                                    ` : ''}
+                                                ` : ''}
+                                            </div>
+                                        `;
+                                    }
+                                        
+                                        // Get student's individual evaluation
+                                        const studentEval = evalData.individualEvaluations?.[studentUserId] || 
+                                                           evalData.individualEvaluations?.[studentKtuid] || null;
+                                        
+                                        // Get team marks data (parameter-based or legacy)
+                                        const teamMarksData = evalData.teamMarksData || {};
+                                        const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                                        
+                                        return `
+                                            <div class="evaluation-card evaluation-completed">
+                                                <div class="evaluation-header">
+                                                    <h4><i class="fas fa-check-circle"></i> ${this.escapeHtml(stage.name)}</h4>
+                                                    <span class="status-badge status-completed">Completed</span>
                                                 </div>
-                                            ` : ''}
-                                            
-                                            ${studentEval ? `
-                                                <div style="padding: 1rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 6px; border-left: 3px solid var(--primary-color);">
-                                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                                                        <strong style="color: var(--text-primary);"><i class="fas fa-user"></i> Your Individual Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 'N/A'} / ${individualTotal || (stage.marks || 100)}</span>
+                                                
+                                                ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
+                                                    <div class="marks-section team-marks">
+                                                        <div class="marks-header">
+                                                            <span class="marks-label"><i class="fas fa-users"></i> Team Marks</span>
+                                                            <span class="marks-value marks-team">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</span>
+                                                        </div>
+                                                        ${teamParams.length > 0 ? `
+                                                            <div class="marks-breakdown">
+                                                                ${teamParams.map(param => {
+                                                                    const paramMarks = teamMarksData[param.name] || 0;
+                                                                    return `
+                                                                        <div class="breakdown-item">
+                                                                            <span class="breakdown-label">${this.escapeHtml(param.name)}</span>
+                                                                            <span class="breakdown-value">${paramMarks} / ${param.maxMarks}</span>
+                                                                        </div>
+                                                                    `;
+                                                                }).join('')}
+                                                                <div class="breakdown-total">
+                                                                    <span class="breakdown-label"><strong>Total:</strong></span>
+                                                                    <span class="breakdown-value"><strong>${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</strong></span>
+                                                                </div>
+                                                            </div>
+                                                        ` : ''}
+                                                        ${evalData.teamComments ? `
+                                                            <div class="comments-section">
+                                                                <div class="comments-label"><i class="fas fa-comment"></i> Team Comments</div>
+                                                                <p class="comments-text">${this.escapeHtml(evalData.teamComments)}</p>
+                                                            </div>
+                                                        ` : ''}
                                                     </div>
-                                                    ${individualParams.length > 0 && studentEval.marksData && Object.keys(studentEval.marksData).length > 0 ? `
-                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                                                            ${individualParams.map(param => {
-                                                                const paramMarks = studentEval.marksData[param.name] || 0;
-                                                                return `
-                                                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                                                                        <span style="color: var(--text-secondary);">${this.escapeHtml(param.name)}:</span>
-                                                                        <span style="color: var(--text-primary); font-weight: 500;">${paramMarks} / ${param.maxMarks}</span>
-                                                                    </div>
-                                                                `;
-                                                            }).join('')}
+                                                ` : ''}
+                                                
+                                                ${individualTotal > 0 || studentEval ? `
+                                                    <div class="marks-section individual-marks">
+                                                        <div class="marks-header">
+                                                            <span class="marks-label"><i class="fas fa-user"></i> Your Individual Marks</span>
+                                                            <span class="marks-value marks-individual">${studentEval && studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 0} / ${individualTotal}</span>
                                                         </div>
-                                                    ` : ''}
-                                                    ${studentEval.comments ? `
-                                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
-                                                            <strong style="color: var(--text-secondary); font-size: 0.9rem;">Individual Comments:</strong>
-                                                            <p style="margin-top: 0.5rem; color: var(--text-primary); line-height: 1.6;">${this.escapeHtml(studentEval.comments)}</p>
-                                                        </div>
-                                                    ` : ''}
-                                                </div>
-                                            ` : `
-                                                <div style="padding: 1rem; background: var(--bg-color); border-radius: 6px;">
-                                                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Your individual evaluation is not yet available.</p>
-                                                </div>
-                                            `}
-                                        </div>
-                                    `;
-                                }).join('')}
+                                                        ${individualParams.length > 0 ? `
+                                                            <div class="marks-breakdown">
+                                                                ${individualParams.map(param => {
+                                                                    const paramMarks = studentEval?.marksData?.[param.name] || 0;
+                                                                    return `
+                                                                        <div class="breakdown-item">
+                                                                            <span class="breakdown-label">${this.escapeHtml(param.name)}</span>
+                                                                            <span class="breakdown-value">${paramMarks} / ${param.maxMarks}</span>
+                                                                        </div>
+                                                                    `;
+                                                                }).join('')}
+                                                                <div class="breakdown-total">
+                                                                    <span class="breakdown-label"><strong>Total:</strong></span>
+                                                                    <span class="breakdown-value"><strong>${studentEval && studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 0} / ${individualTotal}</strong></span>
+                                                                </div>
+                                                            </div>
+                                                        ` : ''}
+                                                        ${studentEval?.comments ? `
+                                                            <div class="comments-section">
+                                                                <div class="comments-label"><i class="fas fa-comment"></i> Individual Comments</div>
+                                                                <p class="comments-text">${this.escapeHtml(studentEval.comments)}</p>
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
+                                                ` : `
+                                                    <div class="marks-section individual-marks pending">
+                                                        <p class="evaluation-status-text"><i class="fas fa-hourglass-half"></i> Your individual evaluation is not yet available.</p>
+                                                    </div>
+                                                `}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
                             </div>
                         ` : ''}
                     </div>
