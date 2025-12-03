@@ -3283,6 +3283,9 @@ const app = {
                 <div class="evaluation-stage-item">
                     <span class="stage-number">${index + 1}</span>
                     <span class="stage-name">${this.escapeHtml(stage.name)}</span>
+                    <span class="stage-marks" style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 1rem;">
+                        (${stage.marks || 100} marks)
+                    </span>
                     <button class="btn-icon" onclick="app.deleteEvaluationStage(${index})" title="Delete stage">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -3400,11 +3403,18 @@ const app = {
     },
     
     async addEvaluationStage() {
-        const input = document.getElementById('new-stage-name');
-        const stageName = input.value.trim();
+        const nameInput = document.getElementById('new-stage-name');
+        const marksInput = document.getElementById('new-stage-marks');
+        const stageName = nameInput.value.trim();
+        const stageMarks = parseInt(marksInput.value) || 100;
         
         if (!stageName) {
             alert('Please enter a stage name!');
+            return;
+        }
+        
+        if (stageMarks < 1) {
+            alert('Marks must be at least 1!');
             return;
         }
         
@@ -3412,14 +3422,18 @@ const app = {
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const currentStages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             
-            currentStages.push({ name: stageName });
+            currentStages.push({ 
+                name: stageName,
+                marks: stageMarks
+            });
             
             await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
                 evaluationStages: currentStages,
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
-            input.value = '';
+            nameInput.value = '';
+            marksInput.value = '100';
             await this.loadEvaluationStages();
         } catch (error) {
             console.error('Error adding evaluation stage:', error);
@@ -4181,32 +4195,80 @@ const app = {
         
         // Load data when switching to evaluations tab
         if (tabName === 'evaluations') {
-            this.loadEvaluationTeamsDropdown();
             this.loadEvaluationStagesDropdown();
         }
     },
     
     // Evaluation Management Functions
-    async loadEvaluationTeamsDropdown() {
-        const select = document.getElementById('eval-team-select');
-        if (!select) return;
+    async loadTeamsForEvaluation() {
+        const stageSelect = document.getElementById('eval-stage-select');
+        const teamsContainer = document.getElementById('teams-list-container');
+        const teamsList = document.getElementById('eval-teams-list');
+        const formContainer = document.getElementById('evaluation-form-container');
+        
+        if (!stageSelect || !teamsContainer || !teamsList) return;
+        
+        const stageIndex = stageSelect.value;
+        
+        // Hide form and teams list when stage changes
+        formContainer.style.display = 'none';
+        teamsContainer.style.display = 'none';
+        
+        if (stageIndex === '') {
+            return;
+        }
         
         try {
+            // Load all teams
             const teamsQuery = query(collection(window.firebaseDb, 'projectGroups')); // Keep collection name for backward compatibility
             const teamsSnapshot = await getDocs(teamsQuery);
             
-            select.innerHTML = '<option value="">-- Select a team --</option>';
-            
+            const teams = [];
             teamsSnapshot.forEach(doc => {
                 const data = doc.data();
                 if (!data.deleted) {
-                    select.innerHTML += `<option value="${doc.id}">${this.escapeHtml(data.groupName || 'Unnamed Team')}</option>`;
+                    teams.push({
+                        id: doc.id,
+                        groupName: data.groupName || 'Unnamed Team',
+                        ...data
+                    });
                 }
             });
+            
+            // Sort teams alphabetically by name
+            teams.sort((a, b) => {
+                const nameA = (a.groupName || '').toLowerCase();
+                const nameB = (b.groupName || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            if (teams.length === 0) {
+                teamsList.innerHTML = '<p class="empty-state">No teams available.</p>';
+                teamsContainer.style.display = 'block';
+                return;
+            }
+            
+            // Display teams as clickable cards
+            teamsList.innerHTML = teams.map(team => `
+                <div class="eval-team-card" onclick="app.selectTeamForEvaluation('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')">
+                    <div class="eval-team-name">${this.escapeHtml(team.groupName)}</div>
+                    <div class="eval-team-info">
+                        <span><i class="fas fa-users"></i> ${(team.members || []).length} member(s)</span>
+                        ${team.guideName ? `<span><i class="fas fa-user-tie"></i> ${this.escapeHtml(team.guideName)}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            teamsContainer.style.display = 'block';
         } catch (error) {
             console.error('Error loading teams for evaluation:', error);
-            select.innerHTML = '<option value="">Error loading teams</option>';
+            teamsList.innerHTML = '<p class="error-message">Error loading teams.</p>';
+            teamsContainer.style.display = 'block';
         }
+    },
+    
+    async selectTeamForEvaluation(teamId, teamName, stageIndex) {
+        await this.loadEvaluationForm(teamId, stageIndex);
     },
     
     async loadEvaluationStagesDropdown() {
@@ -4228,35 +4290,11 @@ const app = {
         }
     },
     
-    async loadTeamEvaluations() {
-        const teamSelect = document.getElementById('eval-team-select');
-        const stageSelect = document.getElementById('eval-stage-select');
+    async loadEvaluationForm(teamId, stageIndex) {
         const formContainer = document.getElementById('evaluation-form-container');
+        const teamsContainer = document.getElementById('teams-list-container');
         
-        if (!teamSelect || !stageSelect || !formContainer) return;
-        
-        const teamId = teamSelect.value;
-        const stageIndex = stageSelect.value;
-        
-        // Reset stage select when team changes
-        stageSelect.value = '';
-        formContainer.style.display = 'none';
-        
-        if (!teamId) return;
-        
-        // Reload stages dropdown
-        await this.loadEvaluationStagesDropdown();
-    },
-    
-    async loadEvaluationForm() {
-        const teamSelect = document.getElementById('eval-team-select');
-        const stageSelect = document.getElementById('eval-stage-select');
-        const formContainer = document.getElementById('evaluation-form-container');
-        
-        if (!teamSelect || !stageSelect || !formContainer) return;
-        
-        const teamId = teamSelect.value;
-        const stageIndex = stageSelect.value;
+        if (!formContainer) return;
         
         if (!teamId || stageIndex === '') {
             formContainer.style.display = 'none';
@@ -4288,11 +4326,15 @@ const app = {
             const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
             const evalData = evalDoc.exists() ? evalDoc.data() : {};
             
+            // Get max marks for this stage (default to 100 for backward compatibility)
+            const maxMarks = stage.marks || 100;
+            
             // Build form HTML
             formContainer.innerHTML = `
                 <div class="evaluation-form">
                     <h4 style="margin-bottom: 1.5rem; color: var(--text-primary);">
                         <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)} - ${this.escapeHtml(teamData.groupName || 'Team')}
+                        <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Max: ${maxMarks} marks)</span>
                     </h4>
                     
                     <!-- Team Marks & Comments -->
@@ -4302,8 +4344,8 @@ const app = {
                         </h5>
                         <div class="form-row">
                             <div class="form-group" style="flex: 1;">
-                                <label for="team-marks">Team Marks (out of 100)</label>
-                                <input type="number" id="team-marks" class="form-input" min="0" max="100" 
+                                <label for="team-marks">Team Marks (out of ${maxMarks})</label>
+                                <input type="number" id="team-marks" class="form-input" min="0" max="${maxMarks}" 
                                        value="${evalData.teamMarks || ''}" placeholder="Enter team marks">
                             </div>
                         </div>
@@ -4331,9 +4373,9 @@ const app = {
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group" style="flex: 1;">
-                                                <label for="individual-marks-${index}">Individual Marks (out of 100)</label>
+                                                <label for="individual-marks-${index}">Individual Marks (out of ${maxMarks})</label>
                                                 <input type="number" id="individual-marks-${index}" 
-                                                       class="form-input" min="0" max="100" 
+                                                       class="form-input" min="0" max="${maxMarks}" 
                                                        data-user-id="${member.userId || member.ktuid}"
                                                        value="${memberEval.marks || ''}" 
                                                        placeholder="Enter individual marks">
@@ -4372,8 +4414,24 @@ const app = {
     
     async saveEvaluationData(teamId, stageIndex) {
         try {
-            const teamMarks = document.getElementById('team-marks').value.trim();
+            // Get stage max marks for validation
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            const maxMarks = stage?.marks || 100;
+            
+            const teamMarksInput = document.getElementById('team-marks');
+            const teamMarks = teamMarksInput.value.trim();
             const teamComments = document.getElementById('team-comments').value.trim();
+            
+            // Validate team marks
+            if (teamMarks) {
+                const marks = parseFloat(teamMarks);
+                if (marks < 0 || marks > maxMarks) {
+                    alert(`Team marks must be between 0 and ${maxMarks}!`);
+                    return;
+                }
+            }
             
             // Get individual evaluations
             const individualEvaluations = {};
@@ -4387,8 +4445,19 @@ const app = {
                 
                 if (marksInput && commentsInput) {
                     const userId = member.userId || member.ktuid;
+                    const marksValue = marksInput.value.trim();
+                    
+                    // Validate individual marks
+                    if (marksValue) {
+                        const marks = parseFloat(marksValue);
+                        if (marks < 0 || marks > maxMarks) {
+                            alert(`Individual marks for ${member.name || member.ktuid} must be between 0 and ${maxMarks}!`);
+                            return;
+                        }
+                    }
+                    
                     individualEvaluations[userId] = {
-                        marks: marksInput.value.trim() ? parseFloat(marksInput.value) : null,
+                        marks: marksValue ? parseFloat(marksValue) : null,
                         comments: commentsInput.value.trim() || '',
                         studentName: member.name || member.ktuid,
                         ktuid: member.ktuid || ''
@@ -4528,17 +4597,21 @@ const app = {
                                     const studentEval = evalData.individualEvaluations?.[studentUserId] || 
                                                        evalData.individualEvaluations?.[studentKtuid] || null;
                                     
+                                    // Get max marks for this stage (default to 100 for backward compatibility)
+                                    const maxMarks = stage.marks || 100;
+                                    
                                     return `
                                         <div class="evaluation-item" style="margin-bottom: 1.5rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--primary-color);">
                                             <h4 style="margin-bottom: 1rem; color: var(--text-primary);">
                                                 <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)}
+                                                <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Max: ${maxMarks} marks)</span>
                                             </h4>
                                             
                                             ${evalData.teamMarks !== null && evalData.teamMarks !== undefined ? `
                                                 <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-color); border-radius: 6px;">
                                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                                         <strong style="color: var(--text-primary);"><i class="fas fa-users"></i> Team Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${evalData.teamMarks} / 100</span>
+                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${evalData.teamMarks} / ${maxMarks}</span>
                                                     </div>
                                                     ${evalData.teamComments ? `
                                                         <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
@@ -4553,7 +4626,7 @@ const app = {
                                                 <div style="padding: 1rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 6px; border-left: 3px solid var(--primary-color);">
                                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                                         <strong style="color: var(--text-primary);"><i class="fas fa-user"></i> Your Individual Marks:</strong>
-                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 'N/A'} / 100</span>
+                                                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">${studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 'N/A'} / ${maxMarks}</span>
                                                     </div>
                                                     ${studentEval.comments ? `
                                                         <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
