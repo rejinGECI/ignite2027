@@ -893,7 +893,7 @@ const app = {
                     await this.loadAdminSettings();
                 } else if (pageId === 'admin-miniproject') {
                     await this.loadGuidesList();
-                    await this.loadProjectGroups();
+                    await this.loadProjectTeams();
                 } else if (pageId === 'guide-dashboard') {
                     await this.loadGuideDashboard();
                 } else if (pageId === 'miniproject') {
@@ -3567,9 +3567,14 @@ const app = {
                         <strong>${this.escapeHtml(guide.name)}</strong>
                         <span class="guide-email">${this.escapeHtml(guide.email)}</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" onclick="app.deleteGuide('${guide.id}')">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
+                    <div class="guide-actions">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="app.editGuide('${guide.id}')">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteGuide('${guide.id}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
                 </div>
             `).join('');
         } catch (error) {
@@ -3580,6 +3585,79 @@ const app = {
                 container.innerHTML = '<p class="error-message">Error loading guides.</p>';
             }
         }
+    },
+    
+    async editGuide(guideId) {
+        try {
+            // Load guide data
+            const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideId));
+            if (!guideDoc.exists()) {
+                alert('Guide not found!');
+                return;
+            }
+            
+            const guideData = guideDoc.data();
+            
+            // Populate form fields
+            document.getElementById('edit-guide-id').value = guideId;
+            document.getElementById('edit-guide-name').value = guideData.name || '';
+            document.getElementById('edit-guide-email').value = guideData.email || '';
+            
+            // Show modal
+            document.getElementById('edit-guide-modal').style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading guide for editing:', error);
+            alert('Error loading guide data. Please try again.');
+        }
+    },
+    
+    async saveGuideChanges(event) {
+        event.preventDefault();
+        
+        const guideId = document.getElementById('edit-guide-id').value;
+        const name = document.getElementById('edit-guide-name').value.trim();
+        const email = document.getElementById('edit-guide-email').value.trim();
+        
+        if (!name || !email) {
+            alert('Name and email are required!');
+            return;
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert('Please enter a valid email address!');
+            return;
+        }
+        
+        try {
+            // Update guide document
+            await updateDoc(doc(window.firebaseDb, 'users', guideId), {
+                name: name,
+                email: email,
+                username: email.split('@')[0],
+                updatedAt: new Date().toISOString()
+            });
+            
+            // Note: In production, you might also want to update the Firebase Auth email
+            // For now, we'll just update the Firestore document
+            
+            alert('Guide updated successfully!');
+            this.closeEditGuideModal();
+            await this.loadGuidesList();
+        } catch (error) {
+            console.error('Error saving guide changes:', error);
+            if (error.code === 'permission-denied') {
+                alert('Permission denied. Please check Firestore security rules.');
+            } else {
+                alert('Error saving changes. Please try again.');
+            }
+        }
+    },
+    
+    closeEditGuideModal() {
+        document.getElementById('edit-guide-modal').style.display = 'none';
+        document.getElementById('edit-guide-form').reset();
     },
     
     async deleteGuide(guideId) {
@@ -3602,58 +3680,57 @@ const app = {
         }
     },
     
-    // Project Groups Management
-    async loadProjectGroups() {
+    // Project Teams Management
+    async loadProjectTeams() {
         if (!this.isAdmin) return;
         
-        const container = document.getElementById('project-groups-list');
+        const container = document.getElementById('project-teams-list');
         if (!container) return;
         
         try {
-            const groupsQuery = query(collection(window.firebaseDb, 'projectGroups'));
-            const groupsSnapshot = await getDocs(groupsQuery);
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups')); // Keep collection name for backward compatibility
+            const teamsSnapshot = await getDocs(teamsQuery);
             
-            const groups = [];
-            groupsSnapshot.forEach(doc => {
-                groups.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) { // Filter out deleted teams
+                    teams.push({
+                        id: doc.id,
+                        ...data
+                    });
+                }
             });
             
-            if (groups.length === 0) {
-                container.innerHTML = '<p class="empty-state">No project groups created yet.</p>';
+            if (teams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No project teams created yet.</p>';
                 return;
             }
             
-            container.innerHTML = groups.map(group => `
-                <div class="project-group-item">
-                    <div class="group-header">
-                        <h4>${this.escapeHtml(group.groupName || 'Unnamed Group')}</h4>
-                        <span class="group-id">Group ID: ${group.id.substring(0, 8)}...</span>
+            container.innerHTML = teams.map(team => `
+                <div class="project-team-item">
+                    <div class="team-header">
+                        <h4>${this.escapeHtml(team.groupName || 'Unnamed Team')}</h4>
+                        <span class="team-id">Team ID: ${team.id.substring(0, 8)}...</span>
                     </div>
-                    <div class="group-details">
+                    <div class="team-details">
                         <div class="detail-item">
-                            <strong>Topic:</strong> ${this.escapeHtml(group.topic || 'Not assigned')}
+                            <strong>Topic:</strong> ${this.escapeHtml(team.topic || 'Not assigned')}
+                        </div>
+                        ${team.area ? `<div class="detail-item"><strong>Area:</strong> ${this.escapeHtml(team.area)}</div>` : ''}
+                        ${team.subArea ? `<div class="detail-item"><strong>Sub Area:</strong> ${this.escapeHtml(team.subArea)}</div>` : ''}
+                        <div class="detail-item">
+                            <strong>Guide:</strong> ${this.escapeHtml(team.guideName || 'Not assigned')}
                         </div>
                         <div class="detail-item">
-                            <strong>Area:</strong> ${this.escapeHtml(group.area || 'Not assigned')}
-                        </div>
-                        <div class="detail-item">
-                            <strong>Sub Area:</strong> ${this.escapeHtml(group.subArea || 'Not assigned')}
-                        </div>
-                        <div class="detail-item">
-                            <strong>Guide:</strong> ${this.escapeHtml(group.guideName || 'Not assigned')}
-                        </div>
-                        <div class="detail-item">
-                            <strong>Members:</strong> ${(group.members || []).length} student(s)
+                            <strong>Members:</strong> ${(team.members || []).length} student(s)
                         </div>
                     </div>
-                    <div class="group-actions">
-                        <button class="btn btn-primary btn-sm" onclick="app.editProjectGroup('${group.id}')">
+                    <div class="team-actions">
+                        <button class="btn btn-primary btn-sm" onclick="app.editProjectTeam('${team.id}')">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="app.deleteProjectGroup('${group.id}')">
+                        <button class="btn btn-danger btn-sm" onclick="app.deleteProjectTeam('${team.id}')">
                             <i class="fas fa-trash"></i> Delete
                         </button>
                     </div>
@@ -3663,25 +3740,23 @@ const app = {
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
                 container.innerHTML = '<p class="error-message">Permission denied. Please update Firestore security rules to allow access to projectGroups collection.</p>';
             } else {
-                console.error('Error loading project groups:', error);
-                container.innerHTML = '<p class="error-message">Error loading project groups.</p>';
+                console.error('Error loading project teams:', error);
+                container.innerHTML = '<p class="error-message">Error loading project teams.</p>';
             }
         }
     },
     
-    showCreateGroupModal() {
-        // For now, we'll use a simple prompt-based approach
-        // In production, you'd want a proper modal
-        const groupName = prompt('Enter group name:');
-        if (!groupName) return;
+    showCreateTeamModal() {
+        const teamName = prompt('Enter team name:');
+        if (!teamName) return;
         
-        this.createProjectGroup(groupName);
+        this.createProjectTeam(teamName);
     },
     
-    async createProjectGroup(groupName) {
+    async createProjectTeam(teamName) {
         try {
-            const groupRef = await addDoc(collection(window.firebaseDb, 'projectGroups'), {
-                groupName: groupName,
+            const teamRef = await addDoc(collection(window.firebaseDb, 'projectGroups'), { // Keep collection name for backward compatibility
+                groupName: teamName,
                 members: [],
                 topic: '',
                 area: '',
@@ -3691,74 +3766,217 @@ const app = {
                 createdAt: new Date().toISOString()
             });
             
-            alert('Project group created! Now you can edit it to assign members, topic, and guide.');
-            await this.loadProjectGroups();
+            alert('Project team created! Now you can edit it to assign members, topic, and guide.');
+            await this.loadProjectTeams();
         } catch (error) {
-            console.error('Error creating project group:', error);
-            alert('Error creating project group. Please try again.');
+            console.error('Error creating project team:', error);
+            alert('Error creating project team. Please try again.');
         }
     },
     
-    async editProjectGroup(groupId) {
+    async editProjectTeam(teamId) {
         try {
-            // Load group data
-            const groupDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', groupId));
-            if (!groupDoc.exists()) {
-                alert('Project group not found!');
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId)); // Keep collection name for backward compatibility
+            if (!teamDoc.exists()) {
+                alert('Project team not found!');
                 return;
             }
             
-            const groupData = groupDoc.data();
+            const teamData = teamDoc.data();
             
             // Populate form fields
-            document.getElementById('edit-group-id').value = groupId;
-            document.getElementById('edit-group-name').value = groupData.groupName || '';
-            document.getElementById('edit-group-topic').value = groupData.topic || '';
-            document.getElementById('edit-group-area').value = groupData.area || '';
-            document.getElementById('edit-group-subarea').value = groupData.subArea || '';
+            document.getElementById('edit-team-id').value = teamId;
+            document.getElementById('edit-team-name').value = teamData.groupName || '';
+            document.getElementById('edit-team-topic').value = teamData.topic || '';
+            document.getElementById('edit-team-area').value = teamData.area || '';
+            document.getElementById('edit-team-subarea').value = teamData.subArea || '';
             
-            // Load guides dropdown
-            await this.loadGuidesDropdown(groupData.guideId || '');
+            // Set selected guide
+            if (teamData.guideId) {
+                document.getElementById('edit-team-guide-id').value = teamData.guideId;
+                document.getElementById('selected-guide-name').textContent = teamData.guideName || 'Selected Guide';
+                document.getElementById('selected-guide-display').style.display = 'flex';
+            }
             
             // Load members list
-            await this.loadMembersList(groupData.members || []);
+            await this.loadMembersList(teamData.members || []);
+            
+            // Setup search handlers
+            this.setupTeamSearchHandlers();
             
             // Show modal
-            document.getElementById('edit-group-modal').style.display = 'flex';
+            document.getElementById('edit-team-modal').style.display = 'flex';
         } catch (error) {
-            console.error('Error loading group for editing:', error);
-            alert('Error loading group data. Please try again.');
+            console.error('Error loading team for editing:', error);
+            alert('Error loading team data. Please try again.');
         }
     },
     
-    async loadGuidesDropdown(selectedGuideId = '') {
-        const guideSelect = document.getElementById('edit-group-guide');
-        if (!guideSelect) return;
+    setupTeamSearchHandlers() {
+        // Setup guide search
+        const guideSearchInput = document.getElementById('search-guide-input');
+        const guideResults = document.getElementById('search-guide-results');
         
-        try {
-            const guidesQuery = query(
-                collection(window.firebaseDb, 'users'),
-                where('role', '==', 'guide')
-            );
-            const guidesSnapshot = await getDocs(guidesQuery);
-            
-            guideSelect.innerHTML = '<option value="">Select a guide...</option>';
-            
-            guidesSnapshot.forEach(doc => {
-                const data = doc.data();
-                const guideId = doc.id;
-                const guideName = data.name || data.email || 'Unknown Guide';
-                const selected = guideId === selectedGuideId ? 'selected' : '';
-                guideSelect.innerHTML += `<option value="${guideId}" data-name="${this.escapeHtml(guideName)}" ${selected}>${this.escapeHtml(guideName)}</option>`;
+        if (guideSearchInput) {
+            guideSearchInput.addEventListener('input', async (e) => {
+                const searchTerm = e.target.value.trim().toLowerCase();
+                if (searchTerm.length < 2) {
+                    guideResults.style.display = 'none';
+                    return;
+                }
+                
+                try {
+                    const guidesQuery = query(
+                        collection(window.firebaseDb, 'users'),
+                        where('role', '==', 'guide')
+                    );
+                    const guidesSnapshot = await getDocs(guidesQuery);
+                    
+                    const matches = [];
+                    guidesSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        const name = (data.name || '').toLowerCase();
+                        const email = (data.email || '').toLowerCase();
+                        
+                        if (name.includes(searchTerm) || email.includes(searchTerm)) {
+                            matches.push({
+                                id: doc.id,
+                                name: data.name || data.email || 'Unknown Guide',
+                                email: data.email || ''
+                            });
+                        }
+                    });
+                    
+                    if (matches.length > 0) {
+                        guideResults.innerHTML = matches.map(guide => `
+                            <div class="search-result-item" onclick="app.selectGuide('${guide.id}', '${this.escapeHtml(guide.name)}')">
+                                <strong>${this.escapeHtml(guide.name)}</strong>
+                                ${guide.email ? `<span style="color: var(--text-secondary); font-size: 0.85rem;">${this.escapeHtml(guide.email)}</span>` : ''}
+                            </div>
+                        `).join('');
+                        guideResults.style.display = 'block';
+                    } else {
+                        guideResults.innerHTML = '<div class="search-result-item" style="color: var(--text-secondary);">No guides found</div>';
+                        guideResults.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Error searching guides:', error);
+                }
             });
-        } catch (error) {
-            console.error('Error loading guides:', error);
-            guideSelect.innerHTML = '<option value="">Error loading guides</option>';
         }
+        
+        // Setup student search
+        const studentSearchInput = document.getElementById('search-student-input');
+        const studentResults = document.getElementById('search-student-results');
+        
+        if (studentSearchInput) {
+            studentSearchInput.addEventListener('input', async (e) => {
+                const searchTerm = e.target.value.trim().toLowerCase();
+                if (searchTerm.length < 2) {
+                    if (studentResults) studentResults.style.display = 'none';
+                    return;
+                }
+                
+                try {
+                    const studentsQuery = query(
+                        collection(window.firebaseDb, 'users'),
+                        where('role', '==', 'student')
+                    );
+                    const studentsSnapshot = await getDocs(studentsQuery);
+                    
+                    const matches = [];
+                    studentsSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        const name = (data.name || '').toLowerCase();
+                        const ktuid = (data.username || '').toLowerCase();
+                        const email = (data.email || '').toLowerCase();
+                        
+                        if (name.includes(searchTerm) || ktuid.includes(searchTerm) || email.includes(searchTerm)) {
+                            matches.push({
+                                id: doc.id,
+                                name: data.name || data.username || 'Unknown',
+                                ktuid: data.username || '',
+                                email: data.email || ''
+                            });
+                        }
+                    });
+                    
+                    if (matches.length > 0) {
+                        if (studentResults) {
+                            studentResults.innerHTML = matches.map(student => `
+                                <div class="search-result-item" onclick="app.selectStudent('${student.id}', '${this.escapeHtml(student.name)}', '${this.escapeHtml(student.ktuid)}')">
+                                    <strong>${this.escapeHtml(student.name)}</strong>
+                                    ${student.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.85rem;">(${this.escapeHtml(student.ktuid)})</span>` : ''}
+                                </div>
+                            `).join('');
+                            studentResults.style.display = 'block';
+                        }
+                    } else {
+                        if (studentResults) {
+                            studentResults.innerHTML = '<div class="search-result-item" style="color: var(--text-secondary);">No students found</div>';
+                            studentResults.style.display = 'block';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error searching students:', error);
+                }
+            });
+        }
+        
+        // Close search results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (guideResults && !guideSearchInput.contains(e.target) && !guideResults.contains(e.target)) {
+                guideResults.style.display = 'none';
+            }
+            if (studentResults && studentSearchInput && !studentSearchInput.contains(e.target) && !studentResults.contains(e.target)) {
+                studentResults.style.display = 'none';
+            }
+        });
+    },
+    
+    selectGuide(guideId, guideName) {
+        document.getElementById('edit-team-guide-id').value = guideId;
+        document.getElementById('selected-guide-name').textContent = guideName;
+        document.getElementById('selected-guide-display').style.display = 'flex';
+        document.getElementById('search-guide-input').value = '';
+        document.getElementById('search-guide-results').style.display = 'none';
+    },
+    
+    clearSelectedGuide() {
+        document.getElementById('edit-team-guide-id').value = '';
+        document.getElementById('selected-guide-display').style.display = 'none';
+    },
+    
+    selectStudent(studentId, studentName, studentKtuid) {
+        if (!this.currentEditingMembers) {
+            this.currentEditingMembers = [];
+        }
+        
+        // Check if already added
+        if (this.currentEditingMembers.some(m => m.userId === studentId || m.ktuid === studentKtuid)) {
+            alert('This student is already a member of the team!');
+            return;
+        }
+        
+        // Add student
+        this.currentEditingMembers.push({
+            userId: studentId,
+            ktuid: studentKtuid,
+            name: studentName
+        });
+        
+        // Reload members list
+        this.loadMembersList(this.currentEditingMembers);
+        
+        // Clear search
+        document.getElementById('search-student-input').value = '';
+        const studentResults = document.getElementById('search-student-results');
+        if (studentResults) studentResults.style.display = 'none';
     },
     
     async loadMembersList(members) {
-        const container = document.getElementById('edit-group-members-list');
+        const container = document.getElementById('edit-team-members-list');
         if (!container) return;
         
         // Store members data for editing
@@ -3778,7 +3996,7 @@ const app = {
                         <strong>${this.escapeHtml(memberName)}</strong>
                         ${memberKtuid ? `<span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.5rem;">(${this.escapeHtml(memberKtuid)})</span>` : ''}
                     </div>
-                    <button type="button" class="remove-member" onclick="app.removeMemberFromGroup(${index})">
+                    <button type="button" class="remove-member" onclick="app.removeMemberFromTeam(${index})">
                         <i class="fas fa-times"></i> Remove
                     </button>
                 </div>
@@ -3786,64 +4004,7 @@ const app = {
         }).join('');
     },
     
-    async addMemberToGroup() {
-        const ktuidInput = document.getElementById('add-member-ktuid');
-        const ktuid = ktuidInput.value.trim().toUpperCase();
-        
-        if (!ktuid) {
-            alert('Please enter a KTU ID!');
-            return;
-        }
-        
-        try {
-            // Find student by KTU ID
-            const usersQuery = query(
-                collection(window.firebaseDb, 'users'),
-                where('username', '==', ktuid),
-                where('role', '==', 'student')
-            );
-            const usersSnapshot = await getDocs(usersQuery);
-            
-            if (usersSnapshot.empty) {
-                alert(`Student with KTU ID "${ktuid}" not found. Please check the KTU ID.`);
-                return;
-            }
-            
-            const studentDoc = usersSnapshot.docs[0];
-            const studentData = studentDoc.data();
-            
-            // Initialize currentEditingMembers if not exists
-            if (!this.currentEditingMembers) {
-                this.currentEditingMembers = [];
-            }
-            
-            // Check if member already exists
-            if (this.currentEditingMembers.some(m => m.ktuid === ktuid || m.userId === studentDoc.id)) {
-                alert('This student is already a member of the group!');
-                return;
-            }
-            
-            // Add new member
-            const newMember = {
-                userId: studentDoc.id,
-                ktuid: ktuid,
-                name: studentData.name || ktuid
-            };
-            
-            this.currentEditingMembers.push(newMember);
-            
-            // Reload members list
-            await this.loadMembersList(this.currentEditingMembers);
-            
-            // Clear input
-            ktuidInput.value = '';
-        } catch (error) {
-            console.error('Error adding member:', error);
-            alert('Error adding member. Please try again.');
-        }
-    },
-    
-    removeMemberFromGroup(index) {
+    removeMemberFromTeam(index) {
         if (!this.currentEditingMembers || index < 0 || index >= this.currentEditingMembers.length) {
             return;
         }
@@ -3855,20 +4016,19 @@ const app = {
         this.loadMembersList(this.currentEditingMembers);
     },
     
-    async saveProjectGroupChanges(event) {
+    async saveProjectTeamChanges(event) {
         event.preventDefault();
         
-        const groupId = document.getElementById('edit-group-id').value;
-        const groupName = document.getElementById('edit-group-name').value.trim();
-        const topic = document.getElementById('edit-group-topic').value.trim();
-        const area = document.getElementById('edit-group-area').value.trim();
-        const subArea = document.getElementById('edit-group-subarea').value.trim();
-        const guideSelect = document.getElementById('edit-group-guide');
-        const guideId = guideSelect.value;
-        const guideName = guideSelect.options[guideSelect.selectedIndex]?.getAttribute('data-name') || '';
+        const teamId = document.getElementById('edit-team-id').value;
+        const teamName = document.getElementById('edit-team-name').value.trim();
+        const topic = document.getElementById('edit-team-topic').value.trim();
+        const area = document.getElementById('edit-team-area').value.trim();
+        const subArea = document.getElementById('edit-team-subarea').value.trim();
+        const guideId = document.getElementById('edit-team-guide-id').value;
+        const guideName = document.getElementById('selected-guide-name').textContent || '';
         
-        if (!groupName) {
-            alert('Group name is required!');
+        if (!teamName) {
+            alert('Team name is required!');
             return;
         }
         
@@ -3876,48 +4036,54 @@ const app = {
         const members = this.currentEditingMembers || [];
         
         try {
-            await updateDoc(doc(window.firebaseDb, 'projectGroups', groupId), {
-                groupName: groupName,
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', teamId), { // Keep collection name for backward compatibility
+                groupName: teamName,
                 topic: topic,
-                area: area,
-                subArea: subArea,
+                area: area || '',
+                subArea: subArea || '',
                 guideId: guideId,
                 guideName: guideName,
                 members: members,
                 updatedAt: new Date().toISOString()
             });
             
-            alert('Project group updated successfully!');
-            this.closeEditGroupModal();
-            await this.loadProjectGroups();
+            alert('Project team updated successfully!');
+            this.closeEditTeamModal();
+            await this.loadProjectTeams();
         } catch (error) {
-            console.error('Error saving group changes:', error);
+            console.error('Error saving team changes:', error);
             alert('Error saving changes. Please try again.');
         }
     },
     
-    closeEditGroupModal() {
-        document.getElementById('edit-group-modal').style.display = 'none';
-        document.getElementById('edit-group-form').reset();
-        document.getElementById('edit-group-members-list').innerHTML = '';
+    closeEditTeamModal() {
+        document.getElementById('edit-team-modal').style.display = 'none';
+        document.getElementById('edit-team-form').reset();
+        document.getElementById('edit-team-members-list').innerHTML = '';
+        document.getElementById('search-guide-input').value = '';
+        document.getElementById('search-student-input').value = '';
+        document.getElementById('search-guide-results').style.display = 'none';
+        const studentResults = document.getElementById('search-student-results');
+        if (studentResults) studentResults.style.display = 'none';
+        document.getElementById('selected-guide-display').style.display = 'none';
         this.currentEditingMembers = [];
     },
     
-    async deleteProjectGroup(groupId) {
-        if (!confirm('Are you sure you want to delete this project group? This action cannot be undone.')) {
+    async deleteProjectTeam(teamId) {
+        if (!confirm('Are you sure you want to delete this project team? This action cannot be undone.')) {
             return;
         }
         
         try {
-            await updateDoc(doc(window.firebaseDb, 'projectGroups', groupId), {
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', teamId), { // Keep collection name for backward compatibility
                 deleted: true,
                 deletedAt: new Date().toISOString()
             });
             
-            await this.loadProjectGroups();
+            await this.loadProjectTeams();
         } catch (error) {
-            console.error('Error deleting project group:', error);
-            alert('Error deleting project group. Please try again.');
+            console.error('Error deleting project team:', error);
+            alert('Error deleting project team. Please try again.');
         }
     },
     
@@ -3925,50 +4091,54 @@ const app = {
     async loadGuideDashboard() {
         if (this.userRole !== 'guide') return;
         
-        // Load groups assigned to this guide
-        await this.loadGuideGroups();
+        // Load teams assigned to this guide
+        await this.loadGuideTeams();
     },
     
-    async loadGuideGroups() {
-        const container = document.getElementById('guide-groups-list');
+    async loadGuideTeams() {
+        const container = document.getElementById('guide-teams-list');
         if (!container) return;
         
         try {
-            const groupsQuery = query(
-                collection(window.firebaseDb, 'projectGroups'),
+            const teamsQuery = query(
+                collection(window.firebaseDb, 'projectGroups'), // Keep collection name for backward compatibility
                 where('guideId', '==', this.currentUser.uid)
             );
-            const groupsSnapshot = await getDocs(groupsQuery);
+            const teamsSnapshot = await getDocs(teamsQuery);
             
-            const groups = [];
-            groupsSnapshot.forEach(doc => {
-                groups.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) {
+                    teams.push({
+                        id: doc.id,
+                        ...data
+                    });
+                }
             });
             
             // Update stats
-            document.getElementById('guide-groups-count').textContent = groups.length;
+            const teamsCountEl = document.getElementById('guide-teams-count');
+            if (teamsCountEl) teamsCountEl.textContent = teams.length;
             
-            if (groups.length === 0) {
-                container.innerHTML = '<p class="empty-state">No groups assigned to you yet.</p>';
+            if (teams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No teams assigned to you yet.</p>';
                 return;
             }
             
-            container.innerHTML = groups.map(group => `
-                <div class="guide-group-card">
-                    <h4>${this.escapeHtml(group.groupName || 'Unnamed Group')}</h4>
-                    <div class="group-members-list">
+            container.innerHTML = teams.map(team => `
+                <div class="guide-team-card">
+                    <h4>${this.escapeHtml(team.groupName || 'Unnamed Team')}</h4>
+                    <div class="team-members-list">
                         <strong>Members:</strong>
-                        ${(group.members || []).map(member => `
+                        ${(team.members || []).map(member => `
                             <span class="member-tag">${this.escapeHtml(member.name || member.ktuid)}</span>
                         `).join('')}
                     </div>
-                    <div class="group-topic">
-                        <strong>Topic:</strong> ${this.escapeHtml(group.topic || 'Not assigned')}
+                    <div class="team-topic">
+                        <strong>Topic:</strong> ${this.escapeHtml(team.topic || 'Not assigned')}
                     </div>
-                    <button class="btn btn-primary" onclick="app.viewGroupDetails('${group.id}')">
+                    <button class="btn btn-primary" onclick="app.viewTeamDetails('${team.id}')">
                         <i class="fas fa-eye"></i> View Details
                     </button>
                 </div>
@@ -3977,14 +4147,14 @@ const app = {
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
                 container.innerHTML = '<p class="error-message">Permission denied. Please update Firestore security rules.</p>';
             } else {
-                console.error('Error loading guide groups:', error);
-                container.innerHTML = '<p class="error-message">Error loading groups.</p>';
+                console.error('Error loading guide teams:', error);
+                container.innerHTML = '<p class="error-message">Error loading teams.</p>';
             }
         }
     },
     
-    viewGroupDetails(groupId) {
-        alert('Group details view - Implementation in progress...');
+    viewTeamDetails(teamId) {
+        alert('Team details view - Implementation in progress...');
     },
     
     // Student Mini Project View
@@ -3995,19 +4165,21 @@ const app = {
         if (!container) return;
         
         try {
-            // Find group where this student is a member
-            const groupsQuery = query(collection(window.firebaseDb, 'projectGroups'));
-            const groupsSnapshot = await getDocs(groupsQuery);
+            // Find team where this student is a member
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups')); // Keep collection name for backward compatibility
+            const teamsSnapshot = await getDocs(teamsQuery);
             
-            let studentGroup = null;
+            let studentTeam = null;
             // Get student's KTU ID from user data
             const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
             const userData = userDoc.exists() ? userDoc.data() : {};
             const studentKtuid = userData.username || '';
             
-            groupsSnapshot.forEach(doc => {
-                const group = doc.data();
-                const members = group.members || [];
+            teamsSnapshot.forEach(doc => {
+                const team = doc.data();
+                if (team.deleted) return; // Skip deleted teams
+                
+                const members = team.members || [];
                 // Check if student is a member by KTU ID or user ID
                 const isMember = members.some(m => 
                     (m.ktuid && m.ktuid === studentKtuid) || 
@@ -4015,18 +4187,18 @@ const app = {
                     (typeof m === 'string' && m === studentKtuid)
                 );
                 if (isMember) {
-                    studentGroup = {
+                    studentTeam = {
                         id: doc.id,
-                        ...group
+                        ...team
                     };
                 }
             });
             
-            if (!studentGroup) {
+            if (!studentTeam) {
                 container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
-                        <p>You haven't been assigned to a project group yet.</p>
+                        <p>You haven't been assigned to a project team yet.</p>
                     </div>
                 `;
                 return;
@@ -4035,13 +4207,13 @@ const app = {
             container.innerHTML = `
                 <div class="miniproject-card">
                     <div class="project-header">
-                        <h2>${this.escapeHtml(studentGroup.groupName || 'My Project Group')}</h2>
+                        <h2>${this.escapeHtml(studentTeam.groupName || 'My Project Team')}</h2>
                     </div>
                     <div class="project-details">
                         <div class="detail-section">
-                            <h3><i class="fas fa-users"></i> Group Members</h3>
+                            <h3><i class="fas fa-users"></i> Team Members</h3>
                             <div class="members-list">
-                                ${(studentGroup.members || []).map(member => `
+                                ${(studentTeam.members || []).map(member => `
                                     <div class="member-item">${this.escapeHtml(member.name || member.ktuid)}</div>
                                 `).join('')}
                             </div>
@@ -4049,18 +4221,14 @@ const app = {
                         <div class="detail-section">
                             <h3><i class="fas fa-book"></i> Project Details</h3>
                             <div class="detail-item">
-                                <strong>Topic:</strong> ${this.escapeHtml(studentGroup.topic || 'Not assigned')}
+                                <strong>Topic:</strong> ${this.escapeHtml(studentTeam.topic || 'Not assigned')}
                             </div>
-                            <div class="detail-item">
-                                <strong>Area:</strong> ${this.escapeHtml(studentGroup.area || 'Not assigned')}
-                            </div>
-                            <div class="detail-item">
-                                <strong>Sub Area:</strong> ${this.escapeHtml(studentGroup.subArea || 'Not assigned')}
-                            </div>
+                            ${studentTeam.area ? `<div class="detail-item"><strong>Area:</strong> ${this.escapeHtml(studentTeam.area)}</div>` : ''}
+                            ${studentTeam.subArea ? `<div class="detail-item"><strong>Sub Area:</strong> ${this.escapeHtml(studentTeam.subArea)}</div>` : ''}
                         </div>
                         <div class="detail-section">
                             <h3><i class="fas fa-user-tie"></i> Guide</h3>
-                            <p>${this.escapeHtml(studentGroup.guideName || 'Not assigned')}</p>
+                            <p>${this.escapeHtml(studentTeam.guideName || 'Not assigned')}</p>
                         </div>
                     </div>
                 </div>
@@ -4068,7 +4236,7 @@ const app = {
         } catch (error) {
             // Handle permission errors gracefully
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
-                console.warn('Project groups not accessible. Please update Firestore security rules.');
+                console.warn('Project teams not accessible. Please update Firestore security rules.');
                 container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
