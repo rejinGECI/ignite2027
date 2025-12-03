@@ -1367,7 +1367,7 @@ const app = {
         
         // Calculate streak
         const streak = await this.calculateStreak(timeLog);
-        document.getElementById('current-streak').textContent = streak.current;
+        document.getElementById('longest-streak').textContent = streak.longest;
         
         // Calculate total minutes (from filtered logs)
         const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
@@ -1377,13 +1377,9 @@ const app = {
         const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
         document.getElementById('total-days').textContent = uniqueDays;
         
-        // Calculate completion rate (based on 20 min goal)
-        const today = new Date().toISOString().split('T')[0];
-        const todayLog = filteredTimeLog.find(log => log.date === today);
-        const todayMinutes = todayLog ? todayLog.minutes : 0;
-        // Completion rate based on 20 minute goal
-        const completionRate = Math.min(100, Math.round((todayMinutes / 20) * 100));
-        document.getElementById('completion-rate').textContent = `${completionRate}%`;
+        // Calculate total hours
+        const totalHours = Math.floor(totalMinutes / 60);
+        document.getElementById('total-hours').textContent = totalHours;
         
         // Today's progress based on 20 minute goal
         const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
