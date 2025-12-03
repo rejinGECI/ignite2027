@@ -1367,24 +1367,33 @@ const app = {
         
         // Calculate streak
         const streak = await this.calculateStreak(timeLog);
-        document.getElementById('longest-streak').textContent = streak.longest;
+        const longestStreakEl = document.getElementById('longest-streak');
+        if (longestStreakEl) longestStreakEl.textContent = streak.longest;
         
         // Calculate total minutes (from filtered logs)
         const totalMinutes = filteredTimeLog.reduce((sum, log) => sum + log.minutes, 0);
-        document.getElementById('total-minutes').textContent = totalMinutes;
+        const totalMinutesEl = document.getElementById('total-minutes');
+        if (totalMinutesEl) totalMinutesEl.textContent = totalMinutes;
         
         // Calculate total days (from filtered logs)
         const uniqueDays = new Set(filteredTimeLog.map(log => log.date)).size;
-        document.getElementById('total-days').textContent = uniqueDays;
+        const totalDaysEl = document.getElementById('total-days');
+        if (totalDaysEl) totalDaysEl.textContent = uniqueDays;
         
         // Calculate total hours
         const totalHours = Math.floor(totalMinutes / 60);
-        document.getElementById('total-hours').textContent = totalHours;
+        const totalHoursEl = document.getElementById('total-hours');
+        if (totalHoursEl) totalHoursEl.textContent = totalHours;
         
         // Today's progress based on 20 minute goal
+        const today = new Date().toISOString().split('T')[0];
+        const todayLog = filteredTimeLog.find(log => log.date === today);
+        const todayMinutes = todayLog ? todayLog.minutes : 0;
         const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
-        document.getElementById('today-progress').style.width = `${progressPercent}%`;
-        document.getElementById('today-minutes').textContent = `${todayMinutes} / 20 minutes`;
+        const todayProgressEl = document.getElementById('today-progress');
+        if (todayProgressEl) todayProgressEl.style.width = `${progressPercent}%`;
+        const todayMinutesEl = document.getElementById('today-minutes');
+        if (todayMinutesEl) todayMinutesEl.textContent = `${todayMinutes} / 20 minutes`;
     },
     
     async updateStatistics() {
