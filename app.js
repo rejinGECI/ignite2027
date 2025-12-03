@@ -4480,7 +4480,7 @@ const app = {
             }
             
             // Get student's individual evaluation data
-            const studentKtuid = userData.username || '';
+            // studentKtuid already declared above
             const studentUserId = this.currentUser.uid;
             
             container.innerHTML = `
