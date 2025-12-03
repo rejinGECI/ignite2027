@@ -4774,27 +4774,45 @@ const app = {
                     }
                 }
                 
-                individualEvaluations[userId] = {
+                // Build individual evaluation object
+                const individualEval = {
                     marks: marks,
-                    marksData: Object.keys(marksData).length > 0 ? marksData : undefined,
-                    comments: comments,
+                    comments: comments || '',
                     studentName: member.name || member.ktuid,
                     ktuid: member.ktuid || ''
                 };
+                
+                // Only include marksData if it has values
+                if (Object.keys(marksData).length > 0) {
+                    individualEval.marksData = marksData;
+                }
+                
+                individualEvaluations[userId] = individualEval;
             });
             
-            // Save to Firestore
-            const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
-            await setDoc(evalRef, {
+            // Build evaluation data object, only including fields with values
+            const evalData = {
                 teamId: teamId,
                 stageIndex: parseInt(stageIndex),
-                teamMarks: teamMarks,
-                teamMarksData: Object.keys(teamMarksData).length > 0 ? teamMarksData : undefined,
-                teamComments: teamComments,
+                teamComments: teamComments || '',
                 individualEvaluations: individualEvaluations,
                 updatedAt: new Date().toISOString(),
                 updatedBy: this.currentUser.uid
-            }, { merge: true });
+            };
+            
+            // Only include teamMarks if it has a value
+            if (teamMarks !== null && teamMarks !== undefined) {
+                evalData.teamMarks = teamMarks;
+            }
+            
+            // Only include teamMarksData if it has values
+            if (Object.keys(teamMarksData).length > 0) {
+                evalData.teamMarksData = teamMarksData;
+            }
+            
+            // Save to Firestore
+            const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
+            await setDoc(evalRef, evalData, { merge: true });
             
             alert('Evaluation data saved successfully!');
         } catch (error) {
