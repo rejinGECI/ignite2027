@@ -1297,14 +1297,14 @@ const app = {
         modal.className = 'modal';
         modal.style.display = 'flex';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-                <div class="modal-header">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header" style="flex-shrink: 0;">
                     <h2>All Activities</h2>
                     <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-                <div class="modal-body" style="padding: 1.5rem;">
+                <div class="modal-body" style="padding: 1.5rem; flex: 1; overflow-y: auto; min-height: 0;">
                     ${allActivities.length === 0 
                         ? '<p class="empty-state">No activities yet. Start your journey today!</p>'
                         : allActivities.map(activity => {
@@ -2107,14 +2107,14 @@ const app = {
         modal.className = 'modal';
         modal.style.display = 'flex';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-                <div class="modal-header">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header" style="flex-shrink: 0;">
                     <h2>${this.escapeHtml(habit.name)} - Details</h2>
                     <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-                <div class="modal-body" style="padding: 1.5rem;">
+                <div class="modal-body" style="padding: 1.5rem; flex: 1; overflow-y: auto; min-height: 0;">
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem;">
                         <div style="text-align: center; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
                             <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">${completionRate}%</div>
@@ -2179,14 +2179,14 @@ const app = {
         modal.className = 'modal';
         modal.style.display = 'flex';
         modal.innerHTML = `
-            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-                <div class="modal-header">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header" style="flex-shrink: 0;">
                     <h2>Reading History</h2>
                     <button class="btn-icon" onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-primary);">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-                <div class="modal-body" style="padding: 1.5rem;">
+                <div class="modal-body" style="padding: 1.5rem; flex: 1; overflow-y: auto; min-height: 0;">
                     ${reading.length === 0 
                         ? '<p class="empty-state">No reading entries yet. Start reading!</p>'
                         : reading.map(entry => {
