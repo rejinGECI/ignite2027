@@ -4588,11 +4588,23 @@ const app = {
                             ? '<p class="empty-state">No team members found.</p>'
                             : members.map((member, index) => {
                                 const memberEval = evalData.individualEvaluations?.[member.userId || member.ktuid] || {};
+                                const isAbsent = memberEval.isAbsent || false;
                                 return `
-                                    <div class="individual-eval-item" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                                        <div style="margin-bottom: 0.75rem;">
-                                            <strong style="color: var(--text-primary);">${this.escapeHtml(member.name || member.ktuid)}</strong>
-                                            ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                    <div class="individual-eval-item" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid var(--primary-color); ${isAbsent ? 'opacity: 0.7;' : ''}">
+                                        <div style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <strong style="color: var(--text-primary);">${this.escapeHtml(member.name || member.ktuid)}</strong>
+                                                ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                            </div>
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" id="absent-${index}" class="absent-checkbox" 
+                                                       ${isAbsent ? 'checked' : ''} 
+                                                       onchange="app.toggleAbsentStatus(${index})"
+                                                       style="width: 18px; height: 18px; cursor: pointer;">
+                                                <span style="color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
+                                                    <i class="fas fa-user-times"></i> Absent
+                                                </span>
+                                            </label>
                                         </div>
                                         ${individualParams.length > 0 ? `
                                             ${individualParams.map((param, paramIdx) => {
@@ -4605,8 +4617,10 @@ const app = {
                                                                min="0" max="${param.maxMarks}" 
                                                                data-user-id="${member.userId || member.ktuid}"
                                                                data-param-name="${this.escapeHtml(param.name)}"
+                                                               data-member-index="${index}"
                                                                value="${paramMarks}" 
-                                                               placeholder="Enter marks">
+                                                               placeholder="Enter marks"
+                                                               ${isAbsent ? 'disabled' : ''}>
                                                     </div>
                                                 `;
                                             }).join('')}
@@ -4620,8 +4634,10 @@ const app = {
                                                     <input type="number" id="individual-marks-${index}" 
                                                            class="form-input" min="0" 
                                                            data-user-id="${member.userId || member.ktuid}"
+                                                           data-member-index="${index}"
                                                            value="${memberEval.marks || ''}" 
-                                                           placeholder="Enter individual marks">
+                                                           placeholder="Enter individual marks"
+                                                           ${isAbsent ? 'disabled' : ''}>
                                                 </div>
                                             </div>
                                         `}
@@ -4703,6 +4719,42 @@ const app = {
         }
     },
     
+    toggleAbsentStatus(memberIndex) {
+        const absentCheckbox = document.getElementById(`absent-${memberIndex}`);
+        const isAbsent = absentCheckbox.checked;
+        
+        // Disable/enable all input fields for this member
+        const memberInputs = document.querySelectorAll(`[data-member-index="${memberIndex}"]`);
+        memberInputs.forEach(input => {
+            input.disabled = isAbsent;
+            if (isAbsent) {
+                input.value = '';
+            }
+        });
+        
+        // Update the individual marks total to 0 if absent
+        if (isAbsent) {
+            const totalEl = document.getElementById(`individual-marks-total-${memberIndex}`);
+            if (totalEl) totalEl.textContent = '0';
+        } else {
+            // Recalculate total if not absent
+            const firstInput = memberInputs[0];
+            if (firstInput && firstInput.dataset.userId) {
+                this.calculateIndividualMarksTotal(firstInput.dataset.userId);
+            }
+        }
+        
+        // Update visual appearance
+        const evalItem = absentCheckbox.closest('.individual-eval-item');
+        if (evalItem) {
+            if (isAbsent) {
+                evalItem.style.opacity = '0.7';
+            } else {
+                evalItem.style.opacity = '1';
+            }
+        }
+    },
+    
     async saveEvaluationData(teamId, stageIndex) {
         try {
             // Get stage and parameters
@@ -4750,40 +4802,48 @@ const app = {
                 const commentsInput = document.getElementById(`individual-comments-${index}`);
                 const comments = commentsInput ? commentsInput.value.trim() : '';
                 
+                // Check if student is marked as absent
+                const absentCheckbox = document.getElementById(`absent-${index}`);
+                const isAbsent = absentCheckbox ? absentCheckbox.checked : false;
+                
                 let marks = null;
                 let marksData = {};
                 
-                if (individualParams.length > 0) {
-                    // Parameter-based marks
-                    individualParams.forEach((param, paramIdx) => {
-                        const input = document.getElementById(`individual-param-${index}-${paramIdx}`);
-                        if (input) {
-                            const value = parseFloat(input.value) || 0;
-                            if (value > 0) {
-                                marksData[param.name] = value;
+                if (!isAbsent) {
+                    // Only calculate marks if not absent
+                    if (individualParams.length > 0) {
+                        // Parameter-based marks
+                        individualParams.forEach((param, paramIdx) => {
+                            const input = document.getElementById(`individual-param-${index}-${paramIdx}`);
+                            if (input) {
+                                const value = parseFloat(input.value) || 0;
+                                if (value > 0) {
+                                    marksData[param.name] = value;
+                                }
                             }
+                        });
+                        marks = Object.values(marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                    } else {
+                        // Legacy single marks
+                        const marksInput = document.getElementById(`individual-marks-${index}`);
+                        if (marksInput) {
+                            const value = marksInput.value.trim();
+                            marks = value ? parseFloat(value) : null;
                         }
-                    });
-                    marks = Object.values(marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
-                } else {
-                    // Legacy single marks
-                    const marksInput = document.getElementById(`individual-marks-${index}`);
-                    if (marksInput) {
-                        const value = marksInput.value.trim();
-                        marks = value ? parseFloat(value) : null;
                     }
                 }
                 
                 // Build individual evaluation object
                 const individualEval = {
-                    marks: marks,
+                    marks: isAbsent ? 0 : marks,
                     comments: comments || '',
                     studentName: member.name || member.ktuid,
-                    ktuid: member.ktuid || ''
+                    ktuid: member.ktuid || '',
+                    isAbsent: isAbsent
                 };
                 
-                // Only include marksData if it has values
-                if (Object.keys(marksData).length > 0) {
+                // Only include marksData if it has values and not absent
+                if (!isAbsent && Object.keys(marksData).length > 0) {
                     individualEval.marksData = marksData;
                 }
                 
@@ -5018,12 +5078,20 @@ const app = {
                                                 ` : ''}
                                                 
                                                 ${individualTotal > 0 || studentEval ? `
-                                                    <div class="marks-section individual-marks">
+                                                    <div class="marks-section individual-marks ${studentEval?.isAbsent ? 'marks-absent' : ''}">
                                                         <div class="marks-header">
-                                                            <span class="marks-label"><i class="fas fa-user"></i> Your Individual Marks</span>
+                                                            <span class="marks-label">
+                                                                <i class="fas fa-user"></i> Your Individual Marks
+                                                                ${studentEval?.isAbsent ? '<span class="absent-badge"><i class="fas fa-user-times"></i> Absent</span>' : ''}
+                                                            </span>
                                                             <span class="marks-value marks-individual">${studentEval && studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 0} / ${individualTotal}</span>
                                                         </div>
-                                                        ${individualParams.length > 0 ? `
+                                                        ${studentEval?.isAbsent ? `
+                                                            <div class="absent-notice">
+                                                                <i class="fas fa-info-circle"></i> You were marked as absent for this evaluation.
+                                                            </div>
+                                                        ` : ''}
+                                                        ${!studentEval?.isAbsent && individualParams.length > 0 ? `
                                                             <div class="marks-breakdown">
                                                                 ${individualParams.map(param => {
                                                                     const paramMarks = studentEval?.marksData?.[param.name] || 0;
