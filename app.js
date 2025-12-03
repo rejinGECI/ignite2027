@@ -1200,11 +1200,26 @@ const app = {
             timestamp: new Date().toISOString()
         });
         
+        // Check if today's progress is less than 20 minutes, if so, mark as completed (20 minutes)
+        const existingLog = data.timeLog.find(log => log.date === today);
+        if (existingLog) {
+            if (existingLog.minutes < 20) {
+                existingLog.minutes = 20; // Mark as completed
+            }
+        } else {
+            // No time log for today, create one with 20 minutes
+            data.timeLog.push({
+                date: today,
+                minutes: 20
+            });
+        }
+        
         await this.saveUserData(data);
         document.getElementById('activity-log').value = '';
         this.renderTodayActivities();
         this.renderRecentActivities();
         await this.updateDashboard();
+        await this.updateStatistics();
         alert('Activity saved! Keep up the great work! 💪');
     },
     
