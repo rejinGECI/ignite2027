@@ -4434,11 +4434,13 @@ const app = {
                 }
             });
             
-            // Sort teams alphabetically by name
+            // Sort teams alphabetically by name (case-insensitive)
             teams.sort((a, b) => {
-                const nameA = (a.groupName || '').toLowerCase();
-                const nameB = (b.groupName || '').toLowerCase();
-                return nameA.localeCompare(nameB);
+                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+                if (nameA < nameB) return -1;
+                if (nameA > nameB) return 1;
+                return 0;
             });
             
             if (teams.length === 0) {
