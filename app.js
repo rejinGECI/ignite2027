@@ -894,7 +894,6 @@ const app = {
                 } else if (pageId === 'admin-miniproject') {
                     await this.loadGuidesList();
                     await this.loadProjectTeams();
-                    await this.loadEvaluationTeamsDropdown();
                     await this.loadEvaluationStagesDropdown();
                 } else if (pageId === 'guide-dashboard') {
                     await this.loadGuideDashboard();
