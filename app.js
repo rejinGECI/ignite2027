@@ -4540,10 +4540,20 @@ const app = {
                                 const teamMarksData = evalData?.teamMarksData || {};
                                 const teamMarks = evalData?.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                                 
-                                const hasTeamComments = evalData?.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>';
+                                // Check for team comments - be more lenient
+                                const teamCommentsText = evalData?.teamComments || '';
+                                const hasTeamComments = teamCommentsText && 
+                                    teamCommentsText.trim() !== '' && 
+                                    teamCommentsText.trim() !== '<p><br></p>' &&
+                                    teamCommentsText.trim() !== '<p></p>' &&
+                                    teamCommentsText.trim() !== '<br>';
+                                
                                 const hasIndividualEvals = evalData?.individualEvaluations && Object.keys(evalData.individualEvaluations).length > 0;
                                 
                                 const isComplete = teamMarks > 0 || hasTeamComments || hasIndividualEvals;
+                                
+                                // Always show evaluation section if evaluation data exists
+                                const showEvaluationDetails = evalData !== undefined;
                                 
                                 return `
                                     <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid ${isComplete ? 'var(--success-color)' : 'var(--warning-color)'};">
@@ -4555,19 +4565,19 @@ const app = {
                                                 ${isComplete ? 'Completed' : 'Pending'}
                                             </span>
                                         </div>
-                                        ${isComplete ? `
-                                            ${teamTotal > 0 ? `
+                                        ${showEvaluationDetails ? `
+                                            ${teamTotal > 0 && (teamMarks > 0 || teamMarksData) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
                                                     <i class="fas fa-users"></i> Team: ${teamMarks || 0} / ${teamTotal} marks
                                                 </div>
                                             ` : ''}
-                                            ${hasTeamComments ? `
+                                            ${hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-primary); margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid var(--border-color);">
-                                                    <div style="font-weight: 600; margin-bottom: 0.25rem; color: var(--text-primary);">
+                                                    <div style="font-weight: 600; margin-bottom: 0.25rem; color: var(--text-primary); font-size: 0.85rem;">
                                                         <i class="fas fa-comment"></i> Team Comments
                                                     </div>
-                                                    <div class="formatted-content" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);">
-                                                        ${evalData.teamComments}
+                                                    <div class="formatted-content" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); min-height: 20px;">
+                                                        ${teamCommentsText}
                                                     </div>
                                                 </div>
                                             ` : ''}
@@ -4580,7 +4590,14 @@ const app = {
                                                         const member = (team.members || []).find(m => (m.userId || m.ktuid) === userId) || {};
                                                         const studentName = individualEval.studentName || member.name || member.ktuid || userId;
                                                         const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
-                                                        const hasComments = individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>';
+                                                        const individualCommentsText = individualEval.comments || '';
+                                                        // More lenient check - show if there's any meaningful content
+                                                        const hasIndividualComments = individualCommentsText && 
+                                                            individualCommentsText.trim() !== '' && 
+                                                            individualCommentsText.trim() !== '<p><br></p>' &&
+                                                            individualCommentsText.trim() !== '<p></p>' &&
+                                                            individualCommentsText.trim() !== '<br>' &&
+                                                            individualCommentsText.trim().length > 0;
                                                         
                                                         return `
                                                             <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid var(--primary-color);">
@@ -4595,10 +4612,13 @@ const app = {
                                                                         </span>
                                                                     ` : ''}
                                                                 </div>
-                                                                ${hasComments ? `
-                                                                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; padding: 0.4rem; background: var(--bg-color); border-radius: 4px;">
-                                                                        <div class="formatted-content" style="font-size: 0.8rem; line-height: 1.4;">
-                                                                            ${individualEval.comments}
+                                                                ${hasIndividualComments || (individualCommentsText && individualCommentsText.trim().length > 10) ? `
+                                                                    <div style="margin-top: 0.25rem; padding: 0.4rem; background: var(--bg-color); border-radius: 4px;">
+                                                                        <div style="font-weight: 600; margin-bottom: 0.25rem; font-size: 0.75rem; color: var(--text-primary);">
+                                                                            <i class="fas fa-comment"></i> Comments
+                                                                        </div>
+                                                                        <div class="formatted-content" style="font-size: 0.8rem; line-height: 1.4; color: var(--text-secondary); min-height: 20px;">
+                                                                            ${individualCommentsText}
                                                                         </div>
                                                                     </div>
                                                                 ` : ''}

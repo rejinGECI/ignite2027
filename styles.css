@@ -3121,6 +3121,17 @@ body.mobile-menu-open {
 /* Formatted content from Quill.js */
 .formatted-content {
     word-wrap: break-word;
+    display: block;
+    visibility: visible;
+    opacity: 1;
+}
+
+.guide-team-card .formatted-content {
+    word-wrap: break-word;
+    display: block;
+    visibility: visible;
+    opacity: 1;
+    color: var(--text-secondary);
 }
 
 .formatted-content p {
