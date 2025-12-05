@@ -3118,6 +3118,58 @@ body.mobile-menu-open {
     border-radius: 6px;
 }
 
+/* Formatted content from Quill.js */
+.formatted-content {
+    word-wrap: break-word;
+}
+
+.formatted-content p {
+    margin: 0 0 0.75rem 0;
+}
+
+.formatted-content p:last-child {
+    margin-bottom: 0;
+}
+
+.formatted-content ul,
+.formatted-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.formatted-content li {
+    margin: 0.25rem 0;
+}
+
+.formatted-content strong {
+    font-weight: 600;
+}
+
+.formatted-content em {
+    font-style: italic;
+}
+
+.formatted-content u {
+    text-decoration: underline;
+}
+
+.formatted-content a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.formatted-content a:hover {
+    text-decoration: underline;
+}
+
+.formatted-content blockquote {
+    border-left: 3px solid var(--border-color);
+    padding-left: 1rem;
+    margin: 0.75rem 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
 /* Absent Status Styles */
 .absent-checkbox {
     accent-color: #ef4444;

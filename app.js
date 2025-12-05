@@ -4579,6 +4579,11 @@ const app = {
                     <h4 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">
                         <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)} - ${this.escapeHtml(teamData.groupName || 'Team')}
                     </h4>
+                    ${teamData.guideName ? `
+                        <div style="margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--bg-color); border-radius: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                            <i class="fas fa-user-tie"></i> Guide: <strong style="color: var(--text-primary);">${this.escapeHtml(teamData.guideName)}</strong>
+                        </div>
+                    ` : ''}
                     
                     <!-- Team Marks & Comments -->
                     <div class="evaluation-section">
@@ -5169,7 +5174,7 @@ const app = {
                                                         ${evalData.teamComments ? `
                                                             <div class="comments-section">
                                                                 <div class="comments-label"><i class="fas fa-comment"></i> Team Comments</div>
-                                                                <p class="comments-text">${this.escapeHtml(evalData.teamComments)}</p>
+                                                                <div class="comments-text formatted-content">${evalData.teamComments}</div>
                                                             </div>
                                                         ` : ''}
                                                     </div>
@@ -5209,7 +5214,7 @@ const app = {
                                                         ${studentEval?.comments ? `
                                                             <div class="comments-section">
                                                                 <div class="comments-label"><i class="fas fa-comment"></i> Individual Comments</div>
-                                                                <p class="comments-text">${this.escapeHtml(studentEval.comments)}</p>
+                                                                <div class="comments-text formatted-content">${studentEval.comments}</div>
                                                             </div>
                                                         ` : ''}
                                                     </div>
