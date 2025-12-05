@@ -3867,7 +3867,6 @@ const app = {
         const guideId = document.getElementById('edit-guide-id').value;
         const name = document.getElementById('edit-guide-name').value.trim();
         const email = document.getElementById('edit-guide-email').value.trim();
-        const currentPassword = document.getElementById('edit-guide-current-password').value;
         const newPassword = document.getElementById('edit-guide-password').value;
         
         if (!name || !email) {
@@ -3883,15 +3882,9 @@ const app = {
         }
         
         // Validate password if provided
-        if (newPassword) {
-            if (newPassword.length < 6) {
-                alert('New password must be at least 6 characters long!');
-                return;
-            }
-            if (!currentPassword) {
-                alert('Current password is required to change the password!');
-                return;
-            }
+        if (newPassword && newPassword.length < 6) {
+            alert('New password must be at least 6 characters long!');
+            return;
         }
         
         try {
@@ -3908,60 +3901,31 @@ const app = {
             });
             
             // If new password is provided, update it
-            if (newPassword && currentPassword) {
-                // Confirm with admin before proceeding (they'll need to sign back in)
-                const confirmUpdate = confirm(
-                    'To update the guide\'s password, you will be temporarily signed out and signed in as the guide.\n\n' +
-                    'After the password is updated, you will need to sign back in as admin.\n\n' +
-                    'Do you want to continue?'
-                );
-                
-                if (!confirmUpdate) {
-                    return; // User cancelled
-                }
-                
+            if (newPassword) {
                 try {
                     // Get guide's current email from the document
                     const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideId));
                     const guideData = guideDoc.data();
                     const guideEmail = guideData.email || email;
                     
-                    // Store admin email for reference (we can't store password for security)
-                    const adminUser = this.currentUser;
-                    const adminEmail = adminUser?.email;
+                    // Send password reset email (simple, no logout required)
+                    // The guide will receive an email with a link to reset their password
+                    await sendPasswordResetEmail(window.firebaseAuth, guideEmail, {
+                        url: window.location.origin + '/index.html',
+                        handleCodeInApp: false
+                    });
                     
-                    // Temporarily sign out admin
-                    await signOut(window.firebaseAuth);
-                    
-                    // Sign in as guide with current password
-                    const guideCredential = await signInWithEmailAndPassword(window.firebaseAuth, guideEmail, currentPassword);
-                    
-                    // Update password
-                    await updatePassword(guideCredential.user, newPassword);
-                    
-                    // Sign out guide
-                    await signOut(window.firebaseAuth);
-                    
-                    // Inform admin and show login
-                    alert('Guide password updated successfully!\n\nPlease sign back in as admin to continue.');
-                    this.showLogin();
-                    return; // Exit early since we've signed out
+                    alert(`Password reset email sent to ${guideEmail}.\n\nThe guide can use the link in the email to set a new password.\n\nIf you want them to use a specific password, share it with them separately.`);
                     
                 } catch (passwordError) {
-                    console.error('Error updating password:', passwordError);
+                    console.error('Error sending password reset email:', passwordError);
                     
-                    // Show login screen since we're signed out
-                    this.showLogin();
-                    
-                    // Show appropriate error message
-                    if (passwordError.code === 'auth/wrong-password' || passwordError.code === 'auth/invalid-credential') {
-                        alert('Current password is incorrect. Please check and try again.\n\nYou will need to sign back in as admin.');
-                    } else if (passwordError.code === 'auth/weak-password') {
-                        alert('New password is too weak. Please choose a stronger password.\n\nYou will need to sign back in as admin.');
+                    if (passwordError.code === 'auth/user-not-found') {
+                        alert('Guide email not found in Firebase Auth. Please ensure the guide account exists.');
                     } else {
-                        alert('Error updating password: ' + (passwordError.message || 'Unknown error') + '\n\nYou will need to sign back in as admin.');
+                        alert('Error sending password reset email: ' + (passwordError.message || 'Unknown error'));
                     }
-                    return; // Don't continue if password update failed
+                    // Don't return - continue with other updates
                 }
             }
             
@@ -3981,8 +3945,7 @@ const app = {
     closeEditGuideModal() {
         document.getElementById('edit-guide-modal').style.display = 'none';
         document.getElementById('edit-guide-form').reset();
-        // Clear password fields
-        document.getElementById('edit-guide-current-password').value = '';
+        // Clear password field
         document.getElementById('edit-guide-password').value = '';
     },
     
