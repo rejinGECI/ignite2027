@@ -4448,13 +4448,50 @@ const app = {
                 return;
             }
             
-            // Display teams as clickable cards
-            teamsList.innerHTML = teams.map(team => `
-                <div class="eval-team-card" onclick="app.selectTeamForEvaluation('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')">
+            // Check evaluation status for each team
+            const teamsWithStatus = await Promise.all(teams.map(async (team) => {
+                try {
+                    const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
+                    const evalData = evalDoc.exists() ? evalDoc.data() : null;
+                    
+                    // Determine if evaluation is complete
+                    // Complete if: has team marks OR has team comments OR has individual evaluations
+                    let isComplete = false;
+                    if (evalData) {
+                        const hasTeamMarks = (evalData.teamMarks !== null && evalData.teamMarks !== undefined) || 
+                                           (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0);
+                        const hasTeamComments = evalData.teamComments && evalData.teamComments.trim() !== '' && 
+                                             evalData.teamComments.trim() !== '<p><br></p>';
+                        const hasIndividualEvals = evalData.individualEvaluations && 
+                                                Object.keys(evalData.individualEvaluations).length > 0;
+                        
+                        isComplete = hasTeamMarks || hasTeamComments || hasIndividualEvals;
+                    }
+                    
+                    return {
+                        ...team,
+                        evaluationStatus: isComplete ? 'completed' : 'pending'
+                    };
+                } catch (error) {
+                    console.error(`Error checking evaluation for team ${team.id}:`, error);
+                    return {
+                        ...team,
+                        evaluationStatus: 'pending'
+                    };
+                }
+            }));
+            
+            // Display teams as clickable cards with status colors
+            teamsList.innerHTML = teamsWithStatus.map(team => `
+                <div class="eval-team-card eval-team-${team.evaluationStatus}" onclick="app.selectTeamForEvaluation('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')">
                     <div class="eval-team-name">${this.escapeHtml(team.groupName)}</div>
                     <div class="eval-team-info">
                         <span><i class="fas fa-users"></i> ${(team.members || []).length} member(s)</span>
                         ${team.guideName ? `<span><i class="fas fa-user-tie"></i> ${this.escapeHtml(team.guideName)}</span>` : ''}
+                        <span class="eval-status-badge">
+                            <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : 'fa-clock'}"></i>
+                            ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
+                        </span>
                     </div>
                 </div>
             `).join('');

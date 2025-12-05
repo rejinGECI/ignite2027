@@ -245,6 +245,53 @@ body.mobile-menu-open {
     gap: 0.5rem;
 }
 
+.eval-team-card {
+    border-left: 4px solid var(--border-color);
+}
+
+/* Completed evaluation - Green */
+.eval-team-completed {
+    border-left-color: var(--success-color);
+    background: linear-gradient(to right, rgba(16, 185, 129, 0.08), var(--card-bg));
+}
+
+.eval-team-completed:hover {
+    border-color: var(--success-color);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+}
+
+/* Pending evaluation - Orange/Warning */
+.eval-team-pending {
+    border-left-color: var(--warning-color);
+    background: linear-gradient(to right, rgba(245, 158, 11, 0.08), var(--card-bg));
+}
+
+.eval-team-pending:hover {
+    border-color: var(--warning-color);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+}
+
+.eval-status-badge {
+    margin-top: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.eval-team-completed .eval-status-badge {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+}
+
+.eval-team-pending .eval-status-badge {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: var(--warning-color);
+}
+
 /* Increase comment textarea width */
 #team-comments,
 .individual-eval-item textarea,
