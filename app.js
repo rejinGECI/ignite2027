@@ -4562,13 +4562,49 @@ const app = {
                                                 </div>
                                             ` : ''}
                                             ${hasTeamComments ? `
-                                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; max-height: 40px; overflow: hidden;">
-                                                    <i class="fas fa-comment"></i> Comments: ${this.escapeHtml(evalData.teamComments.replace(/<[^>]*>/g, '').substring(0, 50))}${evalData.teamComments.length > 50 ? '...' : ''}
+                                                <div style="font-size: 0.8rem; color: var(--text-primary); margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid var(--border-color);">
+                                                    <div style="font-weight: 600; margin-bottom: 0.25rem; color: var(--text-primary);">
+                                                        <i class="fas fa-comment"></i> Team Comments
+                                                    </div>
+                                                    <div class="formatted-content" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);">
+                                                        ${evalData.teamComments}
+                                                    </div>
                                                 </div>
                                             ` : ''}
                                             ${hasIndividualEvals ? `
-                                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                                    <i class="fas fa-user"></i> ${Object.keys(evalData.individualEvaluations).length} individual evaluation(s)
+                                                <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+                                                    <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
+                                                        <i class="fas fa-user"></i> Individual Evaluations
+                                                    </div>
+                                                    ${Object.entries(evalData.individualEvaluations).map(([userId, individualEval]) => {
+                                                        const member = (team.members || []).find(m => (m.userId || m.ktuid) === userId) || {};
+                                                        const studentName = individualEval.studentName || member.name || member.ktuid || userId;
+                                                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                                                        const hasComments = individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>';
+                                                        
+                                                        return `
+                                                            <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid var(--primary-color);">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                                                    <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">
+                                                                        ${this.escapeHtml(studentName)}
+                                                                        ${individualEval.isAbsent ? '<span style="font-size: 0.75rem; color: var(--danger-color); margin-left: 0.5rem;">(Absent)</span>' : ''}
+                                                                    </span>
+                                                                    ${individualTotal > 0 ? `
+                                                                        <span style="font-size: 0.75rem; color: var(--text-secondary);">
+                                                                            ${studentMarks} / ${individualTotal} marks
+                                                                        </span>
+                                                                    ` : ''}
+                                                                </div>
+                                                                ${hasComments ? `
+                                                                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; padding: 0.4rem; background: var(--bg-color); border-radius: 4px;">
+                                                                        <div class="formatted-content" style="font-size: 0.8rem; line-height: 1.4;">
+                                                                            ${individualEval.comments}
+                                                                        </div>
+                                                                    </div>
+                                                                ` : ''}
+                                                            </div>
+                                                        `;
+                                                    }).join('')}
                                                 </div>
                                             ` : ''}
                                         ` : `
