@@ -98,7 +98,7 @@
                 <p>Ignite Your Dreams</p>
             </div>
             <div id="login-form" class="auth-form active">
-                <input type="text" id="login-username" placeholder="Username" required>
+                <input type="text" id="login-username" placeholder="Username or Email" required>
                 <div class="password-input-wrapper">
                     <input type="password" id="login-password" placeholder="Password" required>
                     <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">
@@ -934,6 +934,41 @@ Bob Johnson,GHI789</pre>
             }
         }
         
+        // Edit guide password visibility toggle functions
+        function toggleEditGuidePasswordVisibility() {
+            const passwordInput = document.getElementById('edit-guide-password');
+            const eyeIcon = document.getElementById('edit-guide-password-eye-icon');
+            
+            if (passwordInput && eyeIcon) {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    eyeIcon.classList.remove('fa-eye');
+                    eyeIcon.classList.add('fa-eye-slash');
+                } else {
+                    passwordInput.type = 'password';
+                    eyeIcon.classList.remove('fa-eye-slash');
+                    eyeIcon.classList.add('fa-eye');
+                }
+            }
+        }
+        
+        function toggleEditGuideCurrentPasswordVisibility() {
+            const passwordInput = document.getElementById('edit-guide-current-password');
+            const eyeIcon = document.getElementById('edit-guide-current-password-eye-icon');
+            
+            if (passwordInput && eyeIcon) {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    eyeIcon.classList.remove('fa-eye');
+                    eyeIcon.classList.add('fa-eye-slash');
+                } else {
+                    passwordInput.type = 'password';
+                    eyeIcon.classList.remove('fa-eye-slash');
+                    eyeIcon.classList.add('fa-eye');
+                }
+            }
+        }
+        
         // Setup password toggle button with mobile support
         document.addEventListener('DOMContentLoaded', function() {
             const passwordToggle = document.querySelector('.password-toggle');
@@ -1010,6 +1045,29 @@ Bob Johnson,GHI789</pre>
                         <input type="email" id="edit-guide-email" class="form-input" required>
                         <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
                             <em>Note: Changing email will not update Firebase Auth email. The guide will need to use the original email to log in.</em>
+                        </p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-guide-current-password">Current Password (Required to change password)</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="edit-guide-current-password" class="form-input" placeholder="Enter guide's current password">
+                            <button type="button" class="password-toggle" onclick="toggleEditGuideCurrentPasswordVisibility()">
+                                <i class="fas fa-eye" id="edit-guide-current-password-eye-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-guide-password">New Password</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="edit-guide-password" class="form-input" placeholder="Leave blank to keep current password" minlength="6">
+                            <button type="button" class="password-toggle" onclick="toggleEditGuidePasswordVisibility()">
+                                <i class="fas fa-eye" id="edit-guide-password-eye-icon"></i>
+                            </button>
+                        </div>
+                        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                            <em>Enter a new password (minimum 6 characters). Leave blank to keep the current password. You must provide the current password above to change it.</em>
                         </p>
                     </div>
                     

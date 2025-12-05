@@ -3,7 +3,11 @@ import {
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword,
     signOut,
-    onAuthStateChanged
+    onAuthStateChanged,
+    updatePassword,
+    reauthenticateWithCredential,
+    EmailAuthProvider,
+    sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
     doc,
@@ -373,9 +377,9 @@ const app = {
         try {
             let email, userCredential;
             
-            // Try admin login first (admin@admin.local format)
+            // Determine email format based on username
             if (username.includes('@')) {
-                // If username contains @, treat as email (for admin accounts)
+                // If username contains @, treat as email (for admin or guide accounts)
                 email = username;
             } else {
                 // Otherwise, try as student (ktuid format)
@@ -393,17 +397,43 @@ const app = {
                     const userData = userDoc.data();
                     this.userRole = userData.role || 'student';
                     this.isAdmin = this.userRole === 'admin';
+                    this.isGuide = this.userRole === 'guide';
                     
                     // Show app first
                     this.showApp();
                     
-                    // Navigate to appropriate page and load data
+                    // Navigate to appropriate page and load data based on role
                     if (this.isAdmin) {
                         // Show admin progress page (home page) and load data
                         this.showPage('admin-progress');
+                    } else if (this.isGuide) {
+                        // Load guide data and show guide dashboard
+                        await this.loadUserData();
+                        this.showPage('guide-dashboard');
                     } else {
                         // Load student data
                         await this.loadUserData();
+                    }
+                } else {
+                    // User document doesn't exist - might be a new account
+                    // Try to determine role from email format
+                    if (email.includes('@student.local')) {
+                        this.userRole = 'student';
+                        this.isAdmin = false;
+                        this.isGuide = false;
+                        this.showApp();
+                        await this.loadUserData();
+                    } else {
+                        // For email-based logins without user doc, show error
+                        errorDiv.innerHTML = `
+                            <div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                                <strong style="color: #991b1b;">⚠️ Account Not Found</strong><br>
+                                <p style="margin: 8px 0; color: #7f1d1d; font-size: 0.9rem;">
+                                    Your account is not registered in the system. Please contact an administrator.
+                                </p>
+                            </div>
+                        `;
+                        return;
                     }
                 }
             }
@@ -417,6 +447,11 @@ const app = {
                         <strong style="color: #991b1b;">⚠️ Invalid Credentials</strong><br>
                         <p style="margin: 8px 0; color: #7f1d1d; font-size: 0.9rem;">
                             The username or password you entered is incorrect. Please check your credentials and try again.
+                        </p>
+                        <p style="margin: 4px 0; color: #7f1d1d; font-size: 0.85rem;">
+                            <strong>Login formats:</strong><br>
+                            • Students: Enter your KTU ID<br>
+                            • Admins/Guides: Enter your email address
                         </p>
                     </div>
                 `;
@@ -445,6 +480,7 @@ const app = {
         
         this.currentUser = null;
         this.isAdmin = false;
+        this.isGuide = false;
         this.userRole = null;
         this.showLogin();
     },
@@ -3831,6 +3867,8 @@ const app = {
         const guideId = document.getElementById('edit-guide-id').value;
         const name = document.getElementById('edit-guide-name').value.trim();
         const email = document.getElementById('edit-guide-email').value.trim();
+        const currentPassword = document.getElementById('edit-guide-current-password').value;
+        const newPassword = document.getElementById('edit-guide-password').value;
         
         if (!name || !email) {
             alert('Name and email are required!');
@@ -3844,7 +3882,23 @@ const app = {
             return;
         }
         
+        // Validate password if provided
+        if (newPassword) {
+            if (newPassword.length < 6) {
+                alert('New password must be at least 6 characters long!');
+                return;
+            }
+            if (!currentPassword) {
+                alert('Current password is required to change the password!');
+                return;
+            }
+        }
+        
         try {
+            // Store current admin user for restoration
+            const currentAdminUser = this.currentUser;
+            const currentAdminEmail = currentAdminUser?.email;
+            
             // Update guide document
             await updateDoc(doc(window.firebaseDb, 'users', guideId), {
                 name: name,
@@ -3853,8 +3907,63 @@ const app = {
                 updatedAt: new Date().toISOString()
             });
             
-            // Note: In production, you might also want to update the Firebase Auth email
-            // For now, we'll just update the Firestore document
+            // If new password is provided, update it
+            if (newPassword && currentPassword) {
+                // Confirm with admin before proceeding (they'll need to sign back in)
+                const confirmUpdate = confirm(
+                    'To update the guide\'s password, you will be temporarily signed out and signed in as the guide.\n\n' +
+                    'After the password is updated, you will need to sign back in as admin.\n\n' +
+                    'Do you want to continue?'
+                );
+                
+                if (!confirmUpdate) {
+                    return; // User cancelled
+                }
+                
+                try {
+                    // Get guide's current email from the document
+                    const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideId));
+                    const guideData = guideDoc.data();
+                    const guideEmail = guideData.email || email;
+                    
+                    // Store admin email for reference (we can't store password for security)
+                    const adminUser = this.currentUser;
+                    const adminEmail = adminUser?.email;
+                    
+                    // Temporarily sign out admin
+                    await signOut(window.firebaseAuth);
+                    
+                    // Sign in as guide with current password
+                    const guideCredential = await signInWithEmailAndPassword(window.firebaseAuth, guideEmail, currentPassword);
+                    
+                    // Update password
+                    await updatePassword(guideCredential.user, newPassword);
+                    
+                    // Sign out guide
+                    await signOut(window.firebaseAuth);
+                    
+                    // Inform admin and show login
+                    alert('Guide password updated successfully!\n\nPlease sign back in as admin to continue.');
+                    this.showLogin();
+                    return; // Exit early since we've signed out
+                    
+                } catch (passwordError) {
+                    console.error('Error updating password:', passwordError);
+                    
+                    // Show login screen since we're signed out
+                    this.showLogin();
+                    
+                    // Show appropriate error message
+                    if (passwordError.code === 'auth/wrong-password' || passwordError.code === 'auth/invalid-credential') {
+                        alert('Current password is incorrect. Please check and try again.\n\nYou will need to sign back in as admin.');
+                    } else if (passwordError.code === 'auth/weak-password') {
+                        alert('New password is too weak. Please choose a stronger password.\n\nYou will need to sign back in as admin.');
+                    } else {
+                        alert('Error updating password: ' + (passwordError.message || 'Unknown error') + '\n\nYou will need to sign back in as admin.');
+                    }
+                    return; // Don't continue if password update failed
+                }
+            }
             
             alert('Guide updated successfully!');
             this.closeEditGuideModal();
@@ -3872,6 +3981,9 @@ const app = {
     closeEditGuideModal() {
         document.getElementById('edit-guide-modal').style.display = 'none';
         document.getElementById('edit-guide-form').reset();
+        // Clear password fields
+        document.getElementById('edit-guide-current-password').value = '';
+        document.getElementById('edit-guide-password').value = '';
     },
     
     async deleteGuide(guideId) {
