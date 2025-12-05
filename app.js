@@ -126,13 +126,34 @@ const app = {
     
     // Authentication
     checkAuthState: function() {
-        // Check Firebase auth for all users (admin and students)
+        // Check Firebase auth for admin and students (guides use Firestore login)
         // Only check if Firebase is initialized
         if (window.firebaseAuth) {
             onAuthStateChanged(window.firebaseAuth, async (user) => {
                 // Prevent navigation when creating a guide account
                 if (this.isCreatingGuide) {
                     return;
+                }
+                
+                // Check if guide is logged in (stored in sessionStorage)
+                const guideSession = sessionStorage.getItem('guideSession');
+                if (guideSession) {
+                    try {
+                        const guideData = JSON.parse(guideSession);
+                        this.currentUser = {
+                            uid: guideData.uid,
+                            email: guideData.email,
+                            displayName: guideData.name
+                        };
+                        this.userRole = 'guide';
+                        this.isAdmin = false;
+                        this.isGuide = true;
+                        await this.loadUserData();
+                        this.showApp();
+                        return;
+                    } catch (e) {
+                        sessionStorage.removeItem('guideSession');
+                    }
                 }
                 
                 if (user) {
@@ -386,7 +407,58 @@ const app = {
                 email = `${username}@student.local`;
             }
             
-            // Attempt Firebase authentication
+            // First, check if it's a guide by querying Firestore
+            const guidesQuery = query(
+                collection(window.firebaseDb, 'users'),
+                where('role', '==', 'guide'),
+                where('email', '==', email)
+            );
+            const guidesSnapshot = await getDocs(guidesQuery);
+            
+            if (!guidesSnapshot.empty) {
+                // It's a guide - check password from Firestore
+                const guideDoc = guidesSnapshot.docs[0];
+                const guideData = guideDoc.data();
+                
+                // Check password from Firestore
+                if (guideData.password === password) {
+                    // Password matches - create a simple user object for guides
+                    this.currentUser = {
+                        uid: guideDoc.id,
+                        email: guideData.email,
+                        displayName: guideData.name
+                    };
+                    this.userRole = 'guide';
+                    this.isAdmin = false;
+                    this.isGuide = true;
+                    
+                    // Store guide session
+                    sessionStorage.setItem('guideSession', JSON.stringify({
+                        uid: guideDoc.id,
+                        email: guideData.email,
+                        name: guideData.name
+                    }));
+                    
+                    // Show app
+                    this.showApp();
+                    await this.loadUserData();
+                    this.showPage('guide-dashboard');
+                    return; // Exit early for guide login
+                } else {
+                    // Wrong password for guide
+                    errorDiv.innerHTML = `
+                        <div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                            <strong style="color: #991b1b;">⚠️ Invalid Credentials</strong><br>
+                            <p style="margin: 8px 0; color: #7f1d1d; font-size: 0.9rem;">
+                                The username or password you entered is incorrect. Please check your credentials and try again.
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+            }
+            
+            // Not a guide, try Firebase Auth for admin/student
             userCredential = await signInWithEmailAndPassword(window.firebaseAuth, email, password);
             
             // After successful login, check user role
@@ -471,8 +543,15 @@ const app = {
     },
     
     async logout() {
-        if (this.currentUser) {
-            await signOut(window.firebaseAuth);
+        // Clear guide session if exists
+        sessionStorage.removeItem('guideSession');
+        
+        if (this.currentUser && window.firebaseAuth) {
+            try {
+                await signOut(window.firebaseAuth);
+            } catch (e) {
+                // Ignore errors if not using Firebase Auth
+            }
         }
         
         // Clear saved page state on logout
@@ -3715,21 +3794,15 @@ const app = {
         }
         
         try {
-            // Store admin info before creating guide
-            const adminUser = this.currentUser;
-            const adminEmail = adminUser?.email;
+            // Create guide document directly in Firestore (no Firebase Auth needed)
+            const guideRef = doc(collection(window.firebaseDb, 'users'));
             
-            // Set flag to prevent navigation during guide creation
-            this.isCreatingGuide = true;
-            
-            // Create Firebase auth account (this will auto-sign in the guide)
-            const userCredential = await createUserWithEmailAndPassword(window.firebaseAuth, email, password);
-            
-            // Create user document with guide role
-            await setDoc(doc(window.firebaseDb, 'users', userCredential.user.uid), {
+            // Create user document with guide role and password
+            await setDoc(guideRef, {
                 name: name,
                 email: email,
                 username: email.split('@')[0],
+                password: password, // Store password directly in Firestore
                 role: 'guide',
                 createdAt: new Date().toISOString()
             });
@@ -3739,7 +3812,7 @@ const app = {
             document.getElementById('guide-email').value = '';
             document.getElementById('guide-password').value = '';
             
-            // Add guide to the list immediately (before signing out)
+            // Add guide to the list immediately
             const container = document.getElementById('guides-list');
             if (container) {
                 const existingGuides = container.querySelectorAll('.guide-item');
@@ -3757,9 +3830,14 @@ const app = {
                         <strong>${this.escapeHtml(name)}</strong>
                         <span class="guide-email">${this.escapeHtml(email)}</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" onclick="app.deleteGuide('${userCredential.user.uid}')">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
+                    <div class="guide-actions">
+                        <button class="btn btn-primary btn-sm" onclick="app.editGuide('${guideRef.id}')">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="app.deleteGuide('${guideRef.id}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
                 `;
                 container.insertBefore(guideItem, container.firstChild);
             }
@@ -3767,11 +3845,8 @@ const app = {
             // Show success message
             alert(`Guide account created!\n\nUsername: ${email}\nPassword: ${password}\n\nPlease share these credentials with the guide.`);
             
-            // Sign out the guide immediately (don't navigate to guide dashboard)
-            await signOut(window.firebaseAuth);
-            
-            // Clear the flag
-            this.isCreatingGuide = false;
+            // Reload guides list to ensure consistency
+            await this.loadGuidesList();
         } catch (error) {
             console.error('Error creating guide:', error);
             if (error.code === 'auth/email-already-in-use') {
@@ -3903,70 +3978,29 @@ const app = {
                 updatedAt: new Date().toISOString()
             });
             
-            // If new password is provided, update it directly
+            // If new password is provided, update it directly in Firestore
             if (newPassword && currentPassword) {
                 try {
-                    // Get guide's current email from the document
+                    // Get guide's current data
                     const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideId));
                     const guideData = guideDoc.data();
-                    const guideEmail = guideData.email || email;
                     
-                    // Store admin credentials temporarily
-                    const adminUser = this.currentUser;
-                    const adminEmail = adminUser?.email;
-                    
-                    // Sign out admin temporarily
-                    await signOut(window.firebaseAuth);
-                    
-                    // Sign in as guide
-                    const guideCredential = await signInWithEmailAndPassword(window.firebaseAuth, guideEmail, currentPassword);
-                    
-                    // Update password
-                    await updatePassword(guideCredential.user, newPassword);
-                    
-                    // Sign out guide
-                    await signOut(window.firebaseAuth);
-                    
-                    // Sign back in as admin - we need admin password
-                    const adminPassword = prompt(`Password updated! Enter your admin password to continue:\n\nEmail: ${adminEmail}`);
-                    if (adminPassword) {
-                        await signInWithEmailAndPassword(window.firebaseAuth, adminEmail, adminPassword);
-                        alert('Guide password updated successfully!');
-                    } else {
-                        alert('Guide password updated successfully! Please sign back in as admin.');
-                        this.showLogin();
+                    // Verify current password
+                    if (guideData.password !== currentPassword) {
+                        alert('Current password is incorrect. Password was not updated.');
                         return;
                     }
                     
+                    // Update password in Firestore
+                    await updateDoc(doc(window.firebaseDb, 'users', guideId), {
+                        password: newPassword
+                    });
+                    
+                    alert('Guide password updated successfully!');
+                    
                 } catch (passwordError) {
                     console.error('Error updating password:', passwordError);
-                    
-                    // Try to sign back in as admin
-                    const adminUser = this.currentUser;
-                    const adminEmail = adminUser?.email || (await getDoc(doc(window.firebaseDb, 'users', this.currentUser?.uid)))?.data()?.email;
-                    
-                    if (adminEmail) {
-                        const adminPassword = prompt(`Password update failed. Enter your admin password to sign back in:\n\nEmail: ${adminEmail}`);
-                        if (adminPassword) {
-                            try {
-                                await signInWithEmailAndPassword(window.firebaseAuth, adminEmail, adminPassword);
-                            } catch (signInError) {
-                                this.showLogin();
-                            }
-                        } else {
-                            this.showLogin();
-                        }
-                    } else {
-                        this.showLogin();
-                    }
-                    
-                    if (passwordError.code === 'auth/wrong-password' || passwordError.code === 'auth/invalid-credential') {
-                        alert('Guide\'s current password is incorrect. Password was not updated.');
-                    } else if (passwordError.code === 'auth/weak-password') {
-                        alert('New password is too weak. Please choose a stronger password.');
-                    } else {
-                        alert('Error updating password: ' + (passwordError.message || 'Unknown error'));
-                    }
+                    alert('Error updating password: ' + (passwordError.message || 'Unknown error'));
                     return; // Don't continue if password update failed
                 }
             }
