@@ -3942,7 +3942,6 @@ const app = {
         const guideId = document.getElementById('edit-guide-id').value;
         const name = document.getElementById('edit-guide-name').value.trim();
         const email = document.getElementById('edit-guide-email').value.trim();
-        const currentPassword = document.getElementById('edit-guide-current-password').value;
         const newPassword = document.getElementById('edit-guide-password').value;
         
         if (!name || !email) {
@@ -3958,15 +3957,9 @@ const app = {
         }
         
         // Validate password if provided
-        if (newPassword) {
-            if (newPassword.length < 6) {
-                alert('New password must be at least 6 characters long!');
-                return;
-            }
-            if (!currentPassword) {
-                alert('Current password is required to change the password!');
-                return;
-            }
+        if (newPassword && newPassword.length < 6) {
+            alert('Password must be at least 6 characters long!');
+            return;
         }
         
         try {
@@ -3979,25 +3972,12 @@ const app = {
             });
             
             // If new password is provided, update it directly in Firestore
-            if (newPassword && currentPassword) {
+            if (newPassword) {
                 try {
-                    // Get guide's current data
-                    const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideId));
-                    const guideData = guideDoc.data();
-                    
-                    // Verify current password
-                    if (guideData.password !== currentPassword) {
-                        alert('Current password is incorrect. Password was not updated.');
-                        return;
-                    }
-                    
-                    // Update password in Firestore
+                    // Simply update password in Firestore - no verification needed
                     await updateDoc(doc(window.firebaseDb, 'users', guideId), {
                         password: newPassword
                     });
-                    
-                    alert('Guide password updated successfully!');
-                    
                 } catch (passwordError) {
                     console.error('Error updating password:', passwordError);
                     alert('Error updating password: ' + (passwordError.message || 'Unknown error'));
@@ -4021,8 +4001,7 @@ const app = {
     closeEditGuideModal() {
         document.getElementById('edit-guide-modal').style.display = 'none';
         document.getElementById('edit-guide-form').reset();
-        // Clear password fields
-        document.getElementById('edit-guide-current-password').value = '';
+        // Clear password field
         document.getElementById('edit-guide-password').value = '';
     },
     
