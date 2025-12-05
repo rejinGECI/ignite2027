@@ -4445,9 +4445,16 @@ const app = {
         if (!container) return;
         
         try {
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            // Get guide's email to match teams
+            const guideEmail = this.currentUser.email;
+            
+            // Query teams by guideId (Firestore document ID) or guideName (email)
             const teamsQuery = query(
-                collection(window.firebaseDb, 'projectGroups'), // Keep collection name for backward compatibility
-                where('guideId', '==', this.currentUser.uid)
+                collection(window.firebaseDb, 'projectGroups') // Keep collection name for backward compatibility
             );
             const teamsSnapshot = await getDocs(teamsQuery);
             
@@ -4455,12 +4462,35 @@ const app = {
             teamsSnapshot.forEach(doc => {
                 const data = doc.data();
                 if (!data.deleted) {
-                    teams.push({
-                    id: doc.id,
-                        ...data
-                });
+                    // Match by guideId (Firestore document ID) or guideName (email)
+                    const matchesGuide = data.guideId === this.currentUser.uid || 
+                                       data.guideName === guideEmail ||
+                                       (data.guideId && data.guideId === this.currentUser.uid);
+                    
+                    if (matchesGuide) {
+                        teams.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    }
                 }
             });
+            
+            // Load evaluation data for all teams
+            const teamsWithEvaluations = await Promise.all(teams.map(async (team) => {
+                const evaluations = {};
+                for (let i = 0; i < stages.length; i++) {
+                    try {
+                        const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${i}`));
+                        if (evalDoc.exists()) {
+                            evaluations[i] = evalDoc.data();
+                        }
+                    } catch (error) {
+                        console.error(`Error loading evaluation for team ${team.id}, stage ${i}:`, error);
+                    }
+                }
+                return { ...team, evaluations };
+            }));
             
             // Update stats
             const teamsCountEl = document.getElementById('guide-teams-count');
@@ -4471,23 +4501,89 @@ const app = {
                 return;
             }
             
-            container.innerHTML = teams.map(team => `
+            container.innerHTML = teamsWithEvaluations.map(team => {
+                // Calculate evaluation summary
+                const completedEvals = Object.keys(team.evaluations || {}).length;
+                const totalEvals = stages.length;
+                
+                return `
                 <div class="guide-team-card">
-                    <h4>${this.escapeHtml(team.groupName || 'Unnamed Team')}</h4>
-                    <div class="team-members-list">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                        <h4 style="margin: 0; font-size: 1.1rem;">${this.escapeHtml(team.groupName || 'Unnamed Team')}</h4>
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);">
+                            ${completedEvals}/${totalEvals} Evaluations
+                        </span>
+                    </div>
+                    <div class="team-members-list" style="margin-bottom: 0.5rem; font-size: 0.9rem;">
                         <strong>Members:</strong>
                         ${(team.members || []).map(member => `
                             <span class="member-tag">${this.escapeHtml(member.name || member.ktuid)}</span>
                         `).join('')}
                     </div>
-                    <div class="team-topic">
+                    <div class="team-topic" style="margin-bottom: 0.75rem; font-size: 0.9rem;">
                         <strong>Topic:</strong> ${this.escapeHtml(team.topic || 'Not assigned')}
                     </div>
-                    <button class="btn btn-primary" onclick="app.viewTeamDetails('${team.id}')">
-                        <i class="fas fa-eye"></i> View Details
-                    </button>
+                    
+                    ${stages.length > 0 ? `
+                        <div class="team-evaluations-summary" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                            <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
+                                <i class="fas fa-clipboard-check"></i> Evaluation Details
+                            </div>
+                            ${stages.map((stage, index) => {
+                                const evalData = team.evaluations[index];
+                                const teamParams = stage.teamMarkParams || [];
+                                const individualParams = stage.individualMarkParams || [];
+                                const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                
+                                // Get marks
+                                const teamMarksData = evalData?.teamMarksData || {};
+                                const teamMarks = evalData?.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                                
+                                const hasTeamComments = evalData?.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>';
+                                const hasIndividualEvals = evalData?.individualEvaluations && Object.keys(evalData.individualEvaluations).length > 0;
+                                
+                                const isComplete = teamMarks > 0 || hasTeamComments || hasIndividualEvals;
+                                
+                                return `
+                                    <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid ${isComplete ? 'var(--success-color)' : 'var(--warning-color)'};">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">
+                                                ${this.escapeHtml(stage.name)}
+                                            </span>
+                                            <span style="font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: ${isComplete ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${isComplete ? 'var(--success-color)' : 'var(--warning-color)'};">
+                                                ${isComplete ? 'Completed' : 'Pending'}
+                                            </span>
+                                        </div>
+                                        ${isComplete ? `
+                                            ${teamTotal > 0 ? `
+                                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                                    <i class="fas fa-users"></i> Team: ${teamMarks || 0} / ${teamTotal} marks
+                                                </div>
+                                            ` : ''}
+                                            ${hasTeamComments ? `
+                                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; max-height: 40px; overflow: hidden;">
+                                                    <i class="fas fa-comment"></i> Comments: ${this.escapeHtml(evalData.teamComments.replace(/<[^>]*>/g, '').substring(0, 50))}${evalData.teamComments.length > 50 ? '...' : ''}
+                                                </div>
+                                            ` : ''}
+                                            ${hasIndividualEvals ? `
+                                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                                    <i class="fas fa-user"></i> ${Object.keys(evalData.individualEvaluations).length} individual evaluation(s)
+                                                </div>
+                                            ` : ''}
+                                        ` : `
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                                Not yet evaluated
+                                            </div>
+                                        `}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
                 </div>
-            `).join('');
+            `;
+            }).join('');
         } catch (error) {
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
                 container.innerHTML = '<p class="error-message">Permission denied. Please update Firestore security rules.</p>';
