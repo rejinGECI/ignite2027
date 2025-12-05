@@ -166,19 +166,39 @@ body.mobile-menu-open {
 
 /* Evaluation Form */
 .evaluation-form {
-    padding: 1rem;
+    padding: 0.75rem;
 }
 
 .evaluation-section {
-    padding: 1.5rem;
+    padding: 1rem;
     background: var(--card-bg);
-    border-radius: 12px;
-    margin-bottom: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
     border: 1px solid var(--border-color);
 }
 
 .individual-eval-item {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem !important;
+}
+
+/* Compact form groups in evaluation sections */
+.evaluation-section .form-group {
+    margin-bottom: 0.75rem;
+}
+
+.evaluation-section .form-group label {
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.individual-eval-item .form-group {
+    margin-bottom: 0.5rem;
+}
+
+.individual-eval-item .form-group label {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
 }
 
 /* Evaluation Teams List */
@@ -308,17 +328,69 @@ body.mobile-menu-open {
     gap: 0.5rem;
 }
 
-/* Increase comment textarea width */
-#team-comments,
-.individual-eval-item textarea {
-    width: 100%;
-    min-width: 100%;
-    max-width: 100%;
+/* Quill Editor Styles - Compact Design */
+.evaluation-section .ql-container {
+    font-size: 0.9rem;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
 }
 
-.evaluation-section textarea {
-    width: 100% !important;
-    min-width: 100% !important;
+.evaluation-section .ql-toolbar {
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem;
+}
+
+.evaluation-section .ql-toolbar .ql-formats {
+    margin-right: 0.5rem;
+}
+
+.evaluation-section .ql-toolbar button {
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+}
+
+.evaluation-section .ql-editor {
+    min-height: 100px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.evaluation-section .ql-editor.ql-blank::before {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.individual-eval-item .ql-container {
+    font-size: 0.85rem;
+}
+
+.individual-eval-item .ql-toolbar {
+    padding: 0.4rem;
+}
+
+.individual-eval-item .ql-toolbar button {
+    width: 22px;
+    height: 22px;
+}
+
+.individual-eval-item .ql-editor {
+    min-height: 80px;
+    padding: 0.4rem;
+    font-size: 0.85rem;
+}
+
+/* Disabled Quill editor styling */
+.ql-disabled {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+}
+
+.ql-disabled .ql-editor {
+    color: #9ca3af;
 }
 
 .auth-form {

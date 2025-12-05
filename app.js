@@ -4539,49 +4539,50 @@ const app = {
             // Build form HTML
             formContainer.innerHTML = `
                 <div class="evaluation-form">
-                    <h4 style="margin-bottom: 1.5rem; color: var(--text-primary);">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">
                         <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(stage.name)} - ${this.escapeHtml(teamData.groupName || 'Team')}
                     </h4>
                     
                     <!-- Team Marks & Comments -->
                     <div class="evaluation-section">
-                        <h5 style="margin-bottom: 1rem; color: var(--text-primary);">
+                        <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem;">
                             <i class="fas fa-users"></i> Team Evaluation
-                            ${teamTotal > 0 ? `<span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
+                            ${teamTotal > 0 ? `<span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
                         </h5>
                         ${teamParams.length > 0 ? `
                             ${teamParams.map((param, idx) => `
-                                <div class="form-group" style="margin-bottom: 1rem;">
-                                    <label for="team-param-${idx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label for="team-param-${idx}" style="font-size: 0.9rem; margin-bottom: 0.25rem;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
                                     <input type="number" id="team-param-${idx}" class="form-input team-param-input" 
                                            min="0" max="${param.maxMarks}" 
                                            data-param-name="${this.escapeHtml(param.name)}"
                                            value="${teamMarksData[param.name] || ''}" 
-                                           placeholder="Enter marks">
+                                           placeholder="Enter marks"
+                                           style="padding: 0.5rem; font-size: 0.9rem;">
                                 </div>
                             `).join('')}
-                            <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.9rem;">
                                 <strong>Total Team Marks: <span id="team-marks-total">${teamMarksTotal || 0}</span> / ${teamTotal}</strong>
                             </div>
                         ` : `
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
-                                    <label for="team-marks">Team Marks</label>
+                                    <label for="team-marks" style="font-size: 0.9rem; margin-bottom: 0.25rem;">Team Marks</label>
                                     <input type="number" id="team-marks" class="form-input" min="0" 
-                                           value="${teamMarksTotal || ''}" placeholder="Enter team marks">
+                                           value="${teamMarksTotal || ''}" placeholder="Enter team marks"
+                                           style="padding: 0.5rem; font-size: 0.9rem;">
                                 </div>
                             </div>
                         `}
-                        <div class="form-group" style="margin-top: 1.5rem;">
-                            <label for="team-comments">Team Comments</label>
-                            <textarea id="team-comments" class="form-input" rows="4" 
-                                      placeholder="Enter team evaluation comments...">${this.escapeHtml(evalData.teamComments || '')}</textarea>
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="team-comments" style="font-size: 0.9rem; margin-bottom: 0.25rem;">Team Comments</label>
+                            <div id="team-comments-editor" style="min-height: 120px; background: white; border: 1px solid var(--border-color); border-radius: 6px;"></div>
                         </div>
                     </div>
                     
                     <!-- Individual Marks & Comments -->
-                    <div class="evaluation-section" style="margin-top: 2rem;">
-                        <h5 style="margin-bottom: 1rem; color: var(--text-primary);">
+                    <div class="evaluation-section" style="margin-top: 1rem;">
+                        <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem;">
                             <i class="fas fa-user"></i> Individual Evaluations
                         </h5>
                         ${members.length === 0 
@@ -4590,18 +4591,18 @@ const app = {
                                 const memberEval = evalData.individualEvaluations?.[member.userId || member.ktuid] || {};
                                 const isAbsent = memberEval.isAbsent || false;
                                 return `
-                                    <div class="individual-eval-item" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid var(--primary-color); ${isAbsent ? 'opacity: 0.7;' : ''}">
-                                        <div style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="individual-eval-item" style="background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color); ${isAbsent ? 'opacity: 0.7;' : ''}">
+                                        <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
                                             <div>
-                                                <strong style="color: var(--text-primary);">${this.escapeHtml(member.name || member.ktuid)}</strong>
-                                                ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                                <strong style="color: var(--text-primary); font-size: 0.95rem;">${this.escapeHtml(member.name || member.ktuid)}</strong>
+                                                ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.8rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
                                             </div>
                                             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
                                                 <input type="checkbox" id="absent-${index}" class="absent-checkbox" 
                                                        ${isAbsent ? 'checked' : ''} 
                                                        onchange="app.toggleAbsentStatus(${index})"
-                                                       style="width: 18px; height: 18px; cursor: pointer;">
-                                                <span style="color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
+                                                       style="width: 16px; height: 16px; cursor: pointer;">
+                                                <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 500;">
                                                     <i class="fas fa-user-times"></i> Absent
                                                 </span>
                                             </label>
@@ -4610,8 +4611,8 @@ const app = {
                                             ${individualParams.map((param, paramIdx) => {
                                                 const paramMarks = memberEval.marksData?.[param.name] || '';
                                                 return `
-                                                    <div class="form-group" style="margin-bottom: 1rem;">
-                                                        <label for="individual-param-${index}-${paramIdx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                                                        <label for="individual-param-${index}-${paramIdx}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
                                                         <input type="number" id="individual-param-${index}-${paramIdx}" 
                                                                class="form-input individual-param-input" 
                                                                min="0" max="${param.maxMarks}" 
@@ -4620,33 +4621,32 @@ const app = {
                                                                data-member-index="${index}"
                                                                value="${paramMarks}" 
                                                                placeholder="Enter marks"
+                                                               style="padding: 0.5rem; font-size: 0.9rem;"
                                                                ${isAbsent ? 'disabled' : ''}>
                                                     </div>
                                                 `;
                                             }).join('')}
-                                            <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.85rem;">
                                                 <strong>Total Individual Marks: <span id="individual-marks-total-${index}">${memberEval.marks || 0}</span> / ${individualTotal}</strong>
                                             </div>
                                         ` : `
                                             <div class="form-row">
                                                 <div class="form-group" style="flex: 1;">
-                                                    <label for="individual-marks-${index}">Individual Marks</label>
+                                                    <label for="individual-marks-${index}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Individual Marks</label>
                                                     <input type="number" id="individual-marks-${index}" 
                                                            class="form-input" min="0" 
                                                            data-user-id="${member.userId || member.ktuid}"
                                                            data-member-index="${index}"
                                                            value="${memberEval.marks || ''}" 
                                                            placeholder="Enter individual marks"
+                                                           style="padding: 0.5rem; font-size: 0.9rem;"
                                                            ${isAbsent ? 'disabled' : ''}>
                                                 </div>
                                             </div>
                                         `}
-                                        <div class="form-group">
-                                            <label for="individual-comments-${index}">Individual Comments</label>
-                                            <textarea id="individual-comments-${index}" 
-                                                      class="form-input" rows="3" 
-                                                      data-user-id="${member.userId || member.ktuid}"
-                                                      placeholder="Enter individual evaluation comments...">${this.escapeHtml(memberEval.comments || '')}</textarea>
+                                        <div class="form-group" style="margin-top: 0.75rem;">
+                                            <label for="individual-comments-${index}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Individual Comments</label>
+                                            <div id="individual-comments-editor-${index}" style="min-height: 100px; background: white; border: 1px solid var(--border-color); border-radius: 6px;"></div>
                                         </div>
                                     </div>
                                 `;
@@ -4654,7 +4654,7 @@ const app = {
                         }
                     </div>
                     
-                    <div class="modal-actions" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                    <div class="modal-actions" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('evaluation-form-container').style.display = 'none'">
                             Cancel
                         </button>
@@ -4666,6 +4666,49 @@ const app = {
             `;
             
             formContainer.style.display = 'block';
+            
+            // Initialize Quill editors
+            this.quillEditors = this.quillEditors || {};
+            
+            // Team comments editor
+            const teamCommentsEditor = new Quill('#team-comments-editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        ['link'],
+                        ['clean']
+                    ]
+                },
+                placeholder: 'Enter team evaluation comments...'
+            });
+            if (evalData.teamComments) {
+                teamCommentsEditor.root.innerHTML = evalData.teamComments;
+            }
+            this.quillEditors['team-comments'] = teamCommentsEditor;
+            
+            // Individual comments editors
+            members.forEach((member, index) => {
+                const memberEval = evalData.individualEvaluations?.[member.userId || member.ktuid] || {};
+                const editorId = `individual-comments-editor-${index}`;
+                const individualEditor = new Quill(`#${editorId}`, {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            ['bold', 'italic', 'underline'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            ['link'],
+                            ['clean']
+                        ]
+                    },
+                    placeholder: 'Enter individual evaluation comments...'
+                });
+                if (memberEval.comments) {
+                    individualEditor.root.innerHTML = memberEval.comments;
+                }
+                this.quillEditors[`individual-comments-${index}`] = individualEditor;
+            });
             
             // Add event listeners for parameter-based marks calculation
             if (teamParams.length > 0) {
@@ -4732,6 +4775,15 @@ const app = {
             }
         });
         
+        // Disable/enable Quill editor for this member
+        if (this.quillEditors && this.quillEditors[`individual-comments-${memberIndex}`]) {
+            const editor = this.quillEditors[`individual-comments-${memberIndex}`];
+            editor.enable(!isAbsent);
+            if (isAbsent) {
+                editor.root.innerHTML = '<p><br></p>';
+            }
+        }
+        
         // Update the individual marks total to 0 if absent
         if (isAbsent) {
             const totalEl = document.getElementById(`individual-marks-total-${memberIndex}`);
@@ -4764,7 +4816,12 @@ const app = {
             const teamParams = stage?.teamMarkParams || [];
             const individualParams = stage?.individualMarkParams || [];
             
-            const teamComments = document.getElementById('team-comments').value.trim();
+            // Get team comments from Quill editor
+            let teamComments = '';
+            if (this.quillEditors && this.quillEditors['team-comments']) {
+                const html = this.quillEditors['team-comments'].root.innerHTML;
+                teamComments = html.trim() === '<p><br></p>' ? '' : html.trim();
+            }
             
             // Collect team marks (parameter-based or single)
             let teamMarks = null;
@@ -4799,8 +4856,12 @@ const app = {
             
             members.forEach((member, index) => {
                 const userId = member.userId || member.ktuid;
-                const commentsInput = document.getElementById(`individual-comments-${index}`);
-                const comments = commentsInput ? commentsInput.value.trim() : '';
+                // Get individual comments from Quill editor
+                let comments = '';
+                if (this.quillEditors && this.quillEditors[`individual-comments-${index}`]) {
+                    const html = this.quillEditors[`individual-comments-${index}`].root.innerHTML;
+                    comments = html.trim() === '<p><br></p>' ? '' : html.trim();
+                }
                 
                 // Check if student is marked as absent
                 const absentCheckbox = document.getElementById(`absent-${index}`);
