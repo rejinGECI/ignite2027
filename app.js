@@ -7856,7 +7856,7 @@ const app = {
                 <table style="width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);">
                     <thead>
                         <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Team Name</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 25%; min-width: 200px;">Team Name</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Guide</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Approved Topic</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Area/Technology</th>
@@ -7866,7 +7866,7 @@ const app = {
                     <tbody>
                         ${teamsWithApprovedTopics.map(team => `
                             <tr style="border-bottom: 1px solid var(--border-color); ${team.hasApproved ? '' : 'background: #fef2f2;'}">
-                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary);">
+                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 25%; min-width: 200px;">
                                     <i class="fas fa-users" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
                                     ${this.escapeHtml(team.teamName)}
                                 </td>
