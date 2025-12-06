@@ -7753,14 +7753,14 @@ const app = {
                                             ` : ''}
                                         </div>
                                     </div>
-                                    <div style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'};">
+                                    <div class="problem-container" style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'};">
                                         <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
                                             <i class="fas fa-file-alt"></i> Problem Statement:
                                         </div>
                                         <div style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word;">${this.escapeHtml(ps.problemStatement)}</div>
                                     </div>
                                     ${ps.solution ? `
-                                        <div style="background: #f0fdf4; padding: 1.5rem;">
+                                        <div class="solution-container" style="background: #f0fdf4; padding: 1.5rem;">
                                             <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
                                                 <i class="fas fa-lightbulb"></i> Solution:
                                             </div>

@@ -751,36 +751,8 @@ body.mobile-menu-open {
 }
 
 /* Force full width for problem statement and solution text */
-#all-problem-statements-list,
-.team-problem-statements-group,
-.team-problem-statements-list {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.admin-problem-statement-item {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.admin-problem-statement-item > div {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.admin-problem-statement-item p {
-    width: 100% !important;
-    max-width: none !important;
-    min-width: 100% !important;
-    box-sizing: border-box !important;
-    display: block !important;
-    float: none !important;
-    clear: both !important;
+.problem-container, .solution-container {
+    width: 100%;
 }
 
 .csv-upload-area {
