@@ -2498,6 +2498,20 @@ body.mobile-menu-open {
     border-color: var(--primary-color);
 }
 
+/* Problem Statement Modal - Full width textareas */
+#problem-statement-modal .form-group {
+    width: 100%;
+}
+
+#problem-statement-modal textarea.form-input {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    display: block;
+    flex: none !important;
+}
+
 .guides-list {
     display: flex;
     flex-direction: column;
