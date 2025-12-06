@@ -7732,9 +7732,9 @@ const app = {
                     </div>
                     <div class="team-problem-statements-list">
                         ${teamGroup.problemStatements.map(ps => `
-                            <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden;">
-                                <div style="padding: 1.5rem;">
-                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                            <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden; width: 100%; box-sizing: border-box;">
+                                <div style="padding: 1.5rem; width: 100%; box-sizing: border-box;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; width: 100%;">
                                         <div style="flex: 1;">
                                             <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.15rem;">
                                                 ${this.escapeHtml(ps.title)}
@@ -7754,22 +7754,18 @@ const app = {
                                         ` : ''}
                                     </div>
                                 </div>
-                                <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; padding: 1.5rem;">
-                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
+                                <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; padding: 1.5rem; width: 100%; box-sizing: border-box; display: block;">
+                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; width: 100%;">
                                         <i class="fas fa-file-alt"></i> Problem Statement:
                                     </strong>
-                                    <div style="width: 100%;">
-                                        <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%;">${this.escapeHtml(ps.problemStatement)}</p>
-                                    </div>
+                                    <p style="margin: 0 !important; padding: 0 !important; color: var(--text-primary) !important; white-space: pre-wrap !important; line-height: 1.6 !important; font-size: 0.95rem !important; word-break: break-word !important; overflow-wrap: break-word !important; width: 100% !important; max-width: 100% !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important; float: none !important; clear: both !important; position: relative !important; left: 0 !important; right: 0 !important;">${this.escapeHtml(ps.problemStatement)}</p>
                                 </div>
                                 ${ps.solution ? `
-                                    <div style="background: #f0fdf4; border-top: 1px solid #bbf7d0; padding: 1.5rem;">
-                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
+                                    <div style="background: #f0fdf4; border-top: 1px solid #bbf7d0; padding: 1.5rem; width: 100%; box-sizing: border-box; display: block;">
+                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; width: 100%;">
                                             <i class="fas fa-lightbulb"></i> Solution:
                                         </strong>
-                                        <div style="width: 100%;">
-                                            <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%;">${this.escapeHtml(ps.solution)}</p>
-                                        </div>
+                                        <p style="margin: 0 !important; padding: 0 !important; color: var(--text-primary) !important; white-space: pre-wrap !important; line-height: 1.6 !important; font-size: 0.95rem !important; word-break: break-word !important; overflow-wrap: break-word !important; width: 100% !important; max-width: 100% !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important; float: none !important; clear: both !important; position: relative !important; left: 0 !important; right: 0 !important;">${this.escapeHtml(ps.solution)}</p>
                                     </div>
                                 ` : ''}
                             </div>

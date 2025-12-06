@@ -750,6 +750,17 @@ body.mobile-menu-open {
     color: var(--primary-color);
 }
 
+/* Force full width for problem statement and solution text */
+.admin-problem-statement-item p {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    float: none !important;
+    clear: both !important;
+}
+
 .csv-upload-area {
     margin: 1.5rem 0;
 }
