@@ -5852,45 +5852,45 @@ const app = {
                 ` : ''}
                 
                 <!-- Team Information -->
-                <div style="margin-bottom: ${skipHeader ? '12px' : '35px'}; padding: ${skipHeader ? '12px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '16px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '8px' : '25px'}; color: #1f2937; border-left: 4px solid #9333ea; padding-left: 12px; letter-spacing: 0.5px;">Team Information</h3>
-                    <div style="display: grid; gap: ${skipHeader ? '6px' : '15px'};">
-                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '6px 10px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '110px' : '150px'}; font-size: ${skipHeader ? '13px' : '15px'};">Team Name:</span>
-                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: ${skipHeader ? '14px' : '16px'};">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
+                <div style="margin-bottom: ${skipHeader ? '10px' : '35px'}; padding: ${skipHeader ? '10px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '6px' : '25px'}; color: #1f2937; border-left: 4px solid #9333ea; padding-left: ${skipHeader ? '10px' : '12px'}; letter-spacing: 0.5px;">Team Information</h3>
+                    <div style="display: grid; gap: ${skipHeader ? '4px' : '15px'};">
+                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '4px 8px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '100px' : '150px'}; font-size: ${skipHeader ? '12px' : '15px'};">Team Name:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: ${skipHeader ? '12px' : '16px'};">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
                         </div>
                         ${teamData.topic ? `
-                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '6px 10px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '110px' : '150px'}; font-size: ${skipHeader ? '13px' : '15px'};">Topic:</span>
-                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: ${skipHeader ? '14px' : '16px'};">${this.escapeHtml(teamData.topic)}</span>
+                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '4px 8px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '100px' : '150px'}; font-size: ${skipHeader ? '12px' : '15px'};">Topic:</span>
+                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: ${skipHeader ? '12px' : '16px'};">${this.escapeHtml(teamData.topic)}</span>
                         </div>
                         ` : ''}
                         ${teamData.guideName ? `
-                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '6px 10px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '110px' : '150px'}; font-size: ${skipHeader ? '13px' : '15px'};">Guide:</span>
-                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: ${skipHeader ? '14px' : '16px'};">${this.escapeHtml(teamData.guideName)}</span>
+                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '4px 8px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: ${skipHeader ? '100px' : '150px'}; font-size: ${skipHeader ? '12px' : '15px'};">Guide:</span>
+                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: ${skipHeader ? '12px' : '16px'};">${this.escapeHtml(teamData.guideName)}</span>
                         </div>
                         ` : ''}
                     </div>
                 </div>
                 
                 <!-- Team Members -->
-                <div style="margin-bottom: ${skipHeader ? '12px' : '35px'}; padding: ${skipHeader ? '12px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '16px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '8px' : '25px'}; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px; letter-spacing: 0.5px;">Team Members</h3>
+                <div style="margin-bottom: ${skipHeader ? '10px' : '35px'}; padding: ${skipHeader ? '10px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '6px' : '25px'}; color: #1f2937; border-left: 4px solid #0284c7; padding-left: ${skipHeader ? '10px' : '12px'}; letter-spacing: 0.5px;">Team Members</h3>
                     <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
                         <thead>
                             <tr>
-                                <th style="padding: ${skipHeader ? '8px 10px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '13px' : '15px'}; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Sl. No.</th>
-                                <th style="padding: ${skipHeader ? '8px 10px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '13px' : '15px'}; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Name</th>
-                                <th style="padding: ${skipHeader ? '8px 10px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '13px' : '15px'}; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: ${skipHeader ? '6px 8px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '12px' : '15px'}; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Sl. No.</th>
+                                <th style="padding: ${skipHeader ? '6px 8px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '12px' : '15px'}; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Name</th>
+                                <th style="padding: ${skipHeader ? '6px 8px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '12px' : '15px'}; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${members.map((member, index) => `
                                 <tr style="${index % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
-                                    <td style="padding: ${skipHeader ? '6px 10px' : '14px 18px'}; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: ${skipHeader ? '13px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
-                                    <td style="padding: ${skipHeader ? '6px 10px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '13px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
-                                    <td style="padding: ${skipHeader ? '6px 10px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '13px' : '15px'}; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                    <td style="padding: ${skipHeader ? '4px 8px' : '14px 18px'}; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: ${skipHeader ? '12px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+                                    <td style="padding: ${skipHeader ? '4px 8px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
+                                    <td style="padding: ${skipHeader ? '4px 8px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '15px'}; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -5946,8 +5946,8 @@ const app = {
                 
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
-                <div style="margin-bottom: ${skipHeader ? '12px' : '35px'}; padding: ${skipHeader ? '12px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '16px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '10px' : '20px'}; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 12px; letter-spacing: 0.5px;">Individual Evaluations</h3>
+                <div style="margin-bottom: ${skipHeader ? '10px' : '35px'}; padding: ${skipHeader ? '10px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '8px' : '20px'}; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: ${skipHeader ? '10px' : '12px'}; letter-spacing: 0.5px;">Individual Evaluations</h3>
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
@@ -5956,23 +5956,23 @@ const app = {
                         const isAbsent = individualEval.isAbsent || false;
                         
                         return `
-                            <div style="margin-bottom: ${index < members.length - 1 ? (skipHeader ? '10px' : '20px') : '0'}; padding-bottom: ${index < members.length - 1 ? (skipHeader ? '10px' : '20px') : '0'}; ${index < members.length - 1 ? 'border-bottom: 1px solid #e5e7eb;' : ''}">
-                                <div style="display: flex; align-items: center; gap: ${skipHeader ? '8px' : '12px'}; margin-bottom: ${skipHeader ? '8px' : '12px'};">
-                                    <span style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; font-weight: 600; color: #6b7280; min-width: ${skipHeader ? '20px' : '24px'};">${index + 1}.</span>
-                                    <span style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '16px'}; font-weight: 600; color: #1f2937;">${this.escapeHtml(member.name || member.ktuid || 'N/A')}</span>
-                                    ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 400; font-size: ${skipHeader ? '12px' : '14px'};">(${this.escapeHtml(member.ktuid)})</span>` : ''}
-                                    ${isAbsent ? ' <span style="padding: 3px 6px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 10px; font-weight: 600; font-family: \'Montserrat\', sans-serif;">Absent</span>' : ''}
-                                    <span style="margin-left: auto; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '13px' : '15px'}; font-weight: 600; color: #7e22ce;">${studentMarks} / ${individualTotal}</span>
+                            <div style="margin-bottom: ${index < members.length - 1 ? (skipHeader ? '8px' : '20px') : '0'}; padding-bottom: ${index < members.length - 1 ? (skipHeader ? '8px' : '20px') : '0'}; ${index < members.length - 1 ? 'border-bottom: 1px solid #e5e7eb;' : ''}">
+                                <div style="display: flex; align-items: center; gap: ${skipHeader ? '6px' : '12px'}; margin-bottom: ${skipHeader ? '6px' : '12px'};">
+                                    <span style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '11px' : '14px'}; font-weight: 600; color: #6b7280; min-width: ${skipHeader ? '18px' : '24px'};">${index + 1}.</span>
+                                    <span style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '16px'}; font-weight: 600; color: #1f2937;">${this.escapeHtml(member.name || member.ktuid || 'N/A')}</span>
+                                    ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 400; font-size: ${skipHeader ? '11px' : '14px'};">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                    ${isAbsent ? ' <span style="padding: 2px 5px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 9px; font-weight: 600; font-family: \'Montserrat\', sans-serif;">Absent</span>' : ''}
+                                    <span style="margin-left: auto; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '15px'}; font-weight: 600; color: #7e22ce;">${studentMarks} / ${individualTotal}</span>
                                 </div>
                                 ${individualParams.length > 0 && !isAbsent ? `
-                                    <table style="width: 100%; border-collapse: collapse; margin: ${skipHeader ? '6px' : '10px'} 0 ${skipHeader ? '8px' : '12px'} ${skipHeader ? '28px' : '36px'}; font-size: ${skipHeader ? '12px' : '13px'};">
+                                    <table style="width: 100%; border-collapse: collapse; margin: ${skipHeader ? '4px' : '10px'} 0 ${skipHeader ? '6px' : '12px'} ${skipHeader ? '24px' : '36px'}; font-size: ${skipHeader ? '11px' : '13px'};">
                                         <tbody>
                                             ${individualParams.map((param) => {
                                                 const paramMarks = individualEval.marksData?.[param.name] || 0;
                                                 return `
                                                     <tr>
-                                                        <td style="padding: ${skipHeader ? '3px 10px 3px 0' : '4px 12px 4px 0'}; color: #4b5563; font-family: 'Lato', sans-serif; width: 60%;">${this.escapeHtml(param.name)}</td>
-                                                        <td style="padding: ${skipHeader ? '3px 0' : '4px 0'}; text-align: right; color: #1f2937; font-family: 'Lato', sans-serif; font-weight: 500;">${paramMarks} / ${param.maxMarks}</td>
+                                                        <td style="padding: ${skipHeader ? '2px 8px 2px 0' : '4px 12px 4px 0'}; color: #4b5563; font-family: 'Lato', sans-serif; width: 60%;">${this.escapeHtml(param.name)}</td>
+                                                        <td style="padding: ${skipHeader ? '2px 0' : '4px 0'}; text-align: right; color: #1f2937; font-family: 'Lato', sans-serif; font-weight: 500;">${paramMarks} / ${param.maxMarks}</td>
                                                     </tr>
                                                 `;
                                             }).join('')}
@@ -5980,8 +5980,8 @@ const app = {
                                     </table>
                                 ` : ''}
                                 ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
-                                    <div style="margin-top: ${skipHeader ? '6px' : '8px'}; margin-left: ${skipHeader ? '28px' : '36px'}; padding: ${skipHeader ? '8px 10px' : '10px 12px'}; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
-                                        <div style="color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '13px'}; line-height: 1.6;">
+                                    <div style="margin-top: ${skipHeader ? '4px' : '8px'}; margin-left: ${skipHeader ? '24px' : '36px'}; padding: ${skipHeader ? '6px 8px' : '10px 12px'}; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
+                                        <div style="color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '11px' : '13px'}; line-height: ${skipHeader ? '1.5' : '1.6'};">
                                             ${individualComments}
                                         </div>
                                     </div>
