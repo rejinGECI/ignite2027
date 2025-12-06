@@ -760,6 +760,7 @@ body.mobile-menu-open {
     max-width: 100% !important;
     min-width: 100% !important;
     box-sizing: border-box !important;
+    display: block !important;
 }
 
 .problem-text,
@@ -777,6 +778,16 @@ body.mobile-menu-open {
     max-width: 100% !important;
     min-width: 100% !important;
     box-sizing: border-box !important;
+    display: block !important;
+}
+
+/* Ensure solution container matches problem container exactly */
+.solution-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    box-sizing: border-box !important;
+    display: block !important;
 }
 
 /* Ensure ALL parent containers are full width */
