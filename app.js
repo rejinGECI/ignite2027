@@ -7706,15 +7706,36 @@ const app = {
             // Sort problem statements within each team by createdAt (newest first)
             Object.keys(groupedByTeam).forEach(teamId => {
                 groupedByTeam[teamId].problemStatements.sort((a, b) => {
-                    const dateA = a.createdAt || '';
-                    const dateB = b.createdAt || '';
-                    return dateB.localeCompare(dateA);
+                const dateA = a.createdAt || '';
+                const dateB = b.createdAt || '';
+                return dateB.localeCompare(dateA);
                 });
             });
             
-            // Sort teams alphabetically by team name
-            const sortedTeams = Object.values(groupedByTeam).sort((a, b) => {
-                return a.teamName.localeCompare(b.teamName);
+            // Apply team order settings
+            const teamGroupsArray = Object.values(groupedByTeam);
+            // Convert to team objects for ordering
+            const teamsForOrdering = teamGroupsArray
+                .filter(tg => tg.teamData)
+                .map(tg => ({
+                    id: tg.teamId,
+                    ...tg.teamData
+                }));
+            
+            // Apply team order
+            const orderedTeams = await this.applyTeamOrder(teamsForOrdering);
+            
+            // Create a map of ordered team IDs
+            const orderMap = new Map();
+            orderedTeams.forEach((team, index) => {
+                orderMap.set(team.id, index);
+            });
+            
+            // Sort team groups according to the order
+            const sortedTeams = teamGroupsArray.sort((a, b) => {
+                const orderA = orderMap.has(a.teamId) ? orderMap.get(a.teamId) : 9999;
+                const orderB = orderMap.has(b.teamId) ? orderMap.get(b.teamId) : 9999;
+                return orderA - orderB;
             });
             
             // Render grouped by teams - SIMPLE CLEAN STRUCTURE with collapsible
@@ -7743,38 +7764,38 @@ const app = {
                                     <div style="margin-bottom: 2rem; background: white; border-radius: 8px; border: 1px solid #e2e8f0; ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden;">
                                         <div style="padding: 1.5rem; border-bottom: 1px solid #e2e8f0;">
                                             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                                <div style="flex: 1;">
+                        <div style="flex: 1;">
                                                     <h4 style="margin: 0 0 0.5rem 0; color: #1e293b; font-size: 1.15rem;">
-                                                        ${this.escapeHtml(ps.title)}
-                                                        ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
-                                                        ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
-                                                    </h4>
-                                                    <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
-                                                        <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
-                                                    </span>
-                                                </div>
-                                                ${!ps.approved ? `
+                                ${this.escapeHtml(ps.title)}
+                                ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
+                                ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
+                            </h4>
+                                <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                    <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
+                                </span>
+                        </div>
+                        ${!ps.approved ? `
                                                     <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')" style="margin-left: 1rem;">
-                                                        <i class="fas fa-check"></i> Approve
-                                                    </button>
-                                                ` : ''}
-                                            </div>
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                        ` : ''}
+                    </div>
                                         </div>
                                         <div class="problem-container" style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; width: 100%; max-width: 100%; min-width: 100%; box-sizing: border-box; display: block;">
                                             <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; width: 100%; display: block;">
                                                 <i class="fas fa-file-alt"></i> Problem Statement:
                                             </div>
                                             <div class="problem-text" style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%; max-width: 100%; min-width: 100%; display: block; box-sizing: border-box;">${this.escapeHtml(ps.problemStatement)}</div>
-                                        </div>
-                                        ${ps.solution ? `
+                    </div>
+                    ${ps.solution ? `
                                             <div class="solution-container" style="background: #f0fdf4; padding: 1.5rem; width: 100%; max-width: 100%; min-width: 100%; box-sizing: border-box; display: block;">
                                                 <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; width: 100%; display: block;">
                                                     <i class="fas fa-lightbulb"></i> Solution:
                                                 </div>
                                                 <div class="solution-text" style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%; max-width: 100%; min-width: 100%; display: block; box-sizing: border-box;">${this.escapeHtml(ps.solution)}</div>
-                                            </div>
-                                        ` : ''}
-                                    </div>
+                        </div>
+                    ` : ''}
+                </div>
                                 `;
                             }).join('')}
                         </div>
@@ -7839,12 +7860,30 @@ const app = {
                     approvedTopic: approvedPS ? approvedPS.title : 'Not approved',
                     approvedArea: approvedPS ? approvedPS.area : '-',
                     approvedProblemStatement: approvedPS ? approvedPS.problemStatement : '-',
-                    hasApproved: !!approvedPS
+                    hasApproved: !!approvedPS,
+                    team: team // Keep team object for ordering
                 });
             });
             
-            // Sort teams alphabetically
-            teamsWithApprovedTopics.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            // Apply team order settings
+            const teamsForOrdering = teamsWithApprovedTopics.map(t => ({
+                id: t.teamId,
+                ...t.team
+            }));
+            const orderedTeams = await this.applyTeamOrder(teamsForOrdering);
+            
+            // Create a map of ordered team IDs
+            const orderMap = new Map();
+            orderedTeams.forEach((team, index) => {
+                orderMap.set(team.id, index);
+            });
+            
+            // Sort teams according to the order
+            teamsWithApprovedTopics.sort((a, b) => {
+                const orderA = orderMap.has(a.teamId) ? orderMap.get(a.teamId) : 9999;
+                const orderB = orderMap.has(b.teamId) ? orderMap.get(b.teamId) : 9999;
+                return orderA - orderB;
+            });
             
             if (teamsWithApprovedTopics.length === 0) {
                 tableContainer.innerHTML = '<p class="empty-state">No teams found.</p>';
@@ -7941,15 +7980,23 @@ const app = {
                         body {
                             margin: 0;
                             padding: 0;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
                         }
                         .no-print {
                             display: none;
+                        }
+                        * {
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
                         }
                     }
                     * {
                         margin: 0;
                         padding: 0;
                         box-sizing: border-box;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     body {
                         font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -7957,15 +8004,20 @@ const app = {
                         padding: 30px;
                         color: #1e293b;
                         background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     .header {
                         text-align: center;
                         margin-bottom: 35px;
                         padding: 25px;
                         background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                        background-color: #6366f1;
                         border-radius: 12px;
                         box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
                         color: white;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     .header h1 {
                         margin: 0 0 15px 0;
@@ -8016,10 +8068,13 @@ const app = {
                         border-radius: 10px;
                         overflow: hidden;
                         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     th {
                         background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                        color: white;
+                        background-color: #6366f1;
+                        color: white !important;
                         padding: 16px 12px;
                         text-align: left;
                         font-weight: 700;
@@ -8029,6 +8084,8 @@ const app = {
                         letter-spacing: 0.5px;
                         border: none;
                         position: relative;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     th:not(:last-child)::after {
                         content: '';
@@ -8050,12 +8107,18 @@ const app = {
                     }
                     tr:nth-child(even) {
                         background: #f8fafc;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     tr.no-approval {
                         background: linear-gradient(90deg, #fef2f2 0%, #fee2e2 100%);
+                        background-color: #fef2f2;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     tr.no-approval:hover {
                         background: linear-gradient(90deg, #fee2e2 0%, #fecaca 100%);
+                        background-color: #fee2e2;
                     }
                     tr:hover:not(.no-approval) {
                         background: #f1f5f9;
@@ -8074,18 +8137,27 @@ const app = {
                     }
                     .badge-approved {
                         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                        color: white;
+                        background-color: #10b981;
+                        color: white !important;
                         box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     .badge-area {
                         background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-                        color: white;
+                        background-color: #6366f1;
+                        color: white !important;
                         box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     .badge-not-approved {
                         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-                        color: white;
+                        background-color: #ef4444;
+                        color: white !important;
                         box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
                     }
                     .team-name {
                         font-weight: 700;
