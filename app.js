@@ -6169,22 +6169,22 @@ const app = {
     generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
         let html = `
             <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: #ffffff;">
-                <!-- Header -->
-                <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
-                    <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: #f8fafc; border-radius: 12px; display: inline-block; color: #1f2937; border: 2px solid rgba(0, 0, 0, 0.08);">
-                        ${this.escapeHtml(stage.name)} - CONSOLIDATED REPORT
+                <!-- First Page - Centered Header and Total Teams -->
+                <div style="min-height: 80vh; display: flex; flex-direction: column; justify-content: center; align-items: center; page-break-after: always;">
+                    <!-- Header -->
+                    <div style="text-align: center; margin-bottom: 60px; padding: 40px 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                        <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                        <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
+                        <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: #f8fafc; border-radius: 12px; display: inline-block; color: #1f2937; border: 2px solid rgba(0, 0, 0, 0.08);">
+                            ${this.escapeHtml(stage.name)} - CONSOLIDATED REPORT
+                        </div>
                     </div>
-                </div>
-                
-                <!-- Summary -->
-                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #f59e0b; padding-left: 15px; letter-spacing: 0.5px;">Summary</h3>
-                    <div style="padding: 20px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b; max-width: 300px;">
-                        <div style="font-family: 'Montserrat', sans-serif; font-size: 14px; color: #92400e; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px;">Total Teams</div>
-                        <div style="font-family: 'Lato', sans-serif; font-size: 32px; font-weight: 700; color: #78350f;">${teamsWithEvaluations.length}</div>
+                    
+                    <!-- Total Teams -->
+                    <div style="padding: 24px 32px; background: #fef3c7; border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);">
+                        <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; color: #92400e; font-weight: 600; margin-bottom: 10px; letter-spacing: 0.5px; text-align: center;">Total Teams</div>
+                        <div style="font-family: 'Lato', sans-serif; font-size: 42px; font-weight: 700; color: #78350f; text-align: center;">${teamsWithEvaluations.length}</div>
                     </div>
                 </div>
         `;
