@@ -7946,22 +7946,6 @@ const app = {
                             </tr>
                         `;
                         }).join('')}
-                                <td style="padding: 1rem; color: var(--text-primary);">
-                                    ${team.hasApproved ? `
-                                        <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
-                                            <i class="fas fa-tag"></i> ${this.escapeHtml(team.approvedArea)}
-                                        </span>
-                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
-                                </td>
-                                <td style="padding: 1rem; color: var(--text-primary); max-width: 400px;">
-                                    ${team.hasApproved ? `
-                                        <div style="max-height: 100px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; font-size: 0.9rem; color: var(--text-secondary);">
-                                            ${this.escapeHtml(team.approvedProblemStatement.length > 150 ? team.approvedProblemStatement.substring(0, 150) + '...' : team.approvedProblemStatement)}
-                                        </div>
-                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
-                                </td>
-                            </tr>
-                        `).join('')}
                     </tbody>
                 </table>
             `;
