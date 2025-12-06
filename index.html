@@ -1187,6 +1187,34 @@ Bob Johnson,GHI789</pre>
         </div>
     </div>
     
+    <!-- Report Generation Modal -->
+    <div id="report-generation-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeReportGenerationModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-file-download"></i> Generate Evaluation Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeReportGenerationModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="report-format">Select Report Format *</label>
+                    <select id="report-format" class="form-input" required>
+                        <option value="pdf">PDF</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                    </select>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeReportGenerationModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateEvaluationReport()">
+                        <i class="fas fa-file-download"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
 </body>
 </html>
 

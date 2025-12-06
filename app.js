@@ -4766,16 +4766,25 @@ const app = {
             
             // Display teams as clickable cards with status colors
             teamsList.innerHTML = teamsWithStatus.map(team => `
-                <div class="eval-team-card eval-team-${team.evaluationStatus}" onclick="app.selectTeamForEvaluation('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')">
-                    <div class="eval-team-name">${this.escapeHtml(team.groupName)}</div>
-                    <div class="eval-team-info">
-                        <span><i class="fas fa-users"></i> ${(team.members || []).length} member(s)</span>
-                        ${team.guideName ? `<span><i class="fas fa-user-tie"></i> ${this.escapeHtml(team.guideName)}</span>` : ''}
-                        <span class="eval-status-badge">
-                            <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : 'fa-clock'}"></i>
-                            ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
-                        </span>
+                <div class="eval-team-card eval-team-${team.evaluationStatus}">
+                    <div onclick="app.selectTeamForEvaluation('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')" style="cursor: pointer;">
+                        <div class="eval-team-name">${this.escapeHtml(team.groupName)}</div>
+                        <div class="eval-team-info">
+                            <span><i class="fas fa-users"></i> ${(team.members || []).length} member(s)</span>
+                            ${team.guideName ? `<span><i class="fas fa-user-tie"></i> ${this.escapeHtml(team.guideName)}</span>` : ''}
+                            <span class="eval-status-badge">
+                                <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
+                            </span>
+                        </div>
                     </div>
+                    ${team.evaluationStatus === 'completed' ? `
+                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                            <button type="button" class="btn btn-primary" style="width: 100%; padding: 0.5rem; font-size: 0.85rem;" onclick="event.stopPropagation(); app.showReportGenerationOptions('${team.id}', '${stageIndex}')">
+                                <i class="fas fa-file-download"></i> Generate Report
+                            </button>
+                        </div>
+                    ` : ''}
                 </div>
             `).join('');
             
@@ -4979,13 +4988,18 @@ const app = {
                         }
                     </div>
                     
-                    <div class="modal-actions" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <div class="modal-actions" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: 0.75rem; justify-content: space-between;">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('evaluation-form-container').style.display = 'none'">
                             Cancel
                         </button>
-                        <button type="button" class="btn btn-primary" onclick="app.saveEvaluationData('${teamId}', '${stageIndex}')">
-                            <i class="fas fa-save"></i> Save Evaluation
-                        </button>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" onclick="app.showReportGenerationOptions('${teamId}', '${stageIndex}')">
+                                <i class="fas fa-file-download"></i> Generate Report
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="app.saveEvaluationData('${teamId}', '${stageIndex}')">
+                                <i class="fas fa-save"></i> Save Evaluation
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -5265,6 +5279,398 @@ const app = {
             console.error('Error saving evaluation data:', error);
             alert('Error saving evaluation data. Please try again.');
         }
+    },
+    
+    // Report Generation Functions
+    showReportGenerationOptions(teamId, stageIndex) {
+        if (!teamId || stageIndex === undefined) {
+            alert('Invalid team or evaluation stage selected.');
+            return;
+        }
+        
+        // Store the current team and stage for report generation
+        this.currentReportTeamId = teamId;
+        this.currentReportStageIndex = stageIndex;
+        
+        // Show the modal
+        const modal = document.getElementById('report-generation-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Reset format selection to PDF
+            const formatSelect = document.getElementById('report-format');
+            if (formatSelect) formatSelect.value = 'pdf';
+        }
+    },
+    
+    closeReportGenerationModal() {
+        const modal = document.getElementById('report-generation-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.currentReportTeamId = null;
+        this.currentReportStageIndex = null;
+    },
+    
+    async generateEvaluationReport() {
+        const teamId = this.currentReportTeamId;
+        const stageIndex = this.currentReportStageIndex;
+        const formatSelect = document.getElementById('report-format');
+        
+        if (!teamId || stageIndex === undefined || !formatSelect) {
+            alert('Invalid report parameters.');
+            return;
+        }
+        
+        const format = formatSelect.value;
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found!');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (!stage) {
+                alert('Evaluation stage not found!');
+                return;
+            }
+            
+            // Load evaluation data
+            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+            const evalData = evalDoc.exists() ? evalDoc.data() : {};
+            
+            // Get mark parameters
+            const teamParams = stage.teamMarkParams || [];
+            const individualParams = stage.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Generate report content
+            const reportContent = this.generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            
+            // Generate and download based on format
+            if (format === 'pdf') {
+                await this.generatePDFReport(reportContent, teamData, stage);
+            } else if (format === 'html') {
+                this.generateHTMLReport(reportContent, teamData, stage);
+            } else if (format === 'docx') {
+                await this.generateDOCXReport(reportContent, teamData, stage);
+            }
+            
+            // Close modal after generation
+            this.closeReportGenerationModal();
+        } catch (error) {
+            console.error('Error generating report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
+    generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal) {
+        // Get team marks
+        const teamMarksData = evalData.teamMarksData || {};
+        const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+        const teamComments = evalData.teamComments || '';
+        
+        // Get members
+        const members = teamData.members || [];
+        const individualEvaluations = evalData.individualEvaluations || {};
+        
+        // Build report HTML content
+        let html = `
+            <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+                <!-- Header -->
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-top: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; display: inline-block;">
+                        ${this.escapeHtml(stage.name)}
+                    </div>
+                </div>
+                
+                <!-- Team Information -->
+                <div style="margin-bottom: 25px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                        <tr>
+                            <td style="padding: 8px; font-weight: bold; width: 30%;">Team Name:</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.groupName || 'N/A')}</td>
+                        </tr>
+                        ${teamData.topic ? `
+                        <tr>
+                            <td style="padding: 8px; font-weight: bold;">Topic:</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.topic)}</td>
+                        </tr>
+                        ` : ''}
+                        ${teamData.guideName ? `
+                        <tr>
+                            <td style="padding: 8px; font-weight: bold;">Guide:</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.guideName)}</td>
+                        </tr>
+                        ` : ''}
+                    </table>
+                </div>
+                
+                <!-- Team Members -->
+                <div style="margin-bottom: 25px;">
+                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Team Members</h3>
+                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                        <thead>
+                            <tr style="background-color: #f0f0f0;">
+                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">Sl. No.</th>
+                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">Name</th>
+                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">KTU ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${members.map((member, index) => `
+                                <tr>
+                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${index + 1}</td>
+                                    <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(member.name || 'N/A')}</td>
+                                    <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Team Evaluation -->
+                ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
+                <div style="margin-bottom: 25px;">
+                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Team Evaluation</h3>
+                    ${teamParams.length > 0 ? `
+                        <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 15px;">
+                            <thead>
+                                <tr style="background-color: #f0f0f0;">
+                                    <th style="padding: 10px; border: 1px solid #000; text-align: left;">Parameter</th>
+                                    <th style="padding: 10px; border: 1px solid #000; text-align: center;">Marks Obtained</th>
+                                    <th style="padding: 10px; border: 1px solid #000; text-align: center;">Maximum Marks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teamParams.map(param => {
+                                    const paramMarks = teamMarksData[param.name] || 0;
+                                    return `
+                                        <tr>
+                                            <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(param.name)}</td>
+                                            <td style="padding: 8px; border: 1px solid #000; text-align: center;">${paramMarks}</td>
+                                            <td style="padding: 8px; border: 1px solid #000; text-align: center;">${param.maxMarks}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                                <tr style="font-weight: bold; background-color: #f9f9f9;">
+                                    <td style="padding: 8px; border: 1px solid #000;">Total</td>
+                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
+                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${teamTotal}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    ` : `
+                        <div style="margin-bottom: 15px;">
+                            <strong>Total Team Marks: ${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</strong>
+                        </div>
+                    `}
+                    ${teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>' ? `
+                        <div style="margin-top: 15px;">
+                            <h4 style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">Team Comments:</h4>
+                            <div style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
+                                ${teamComments}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+                
+                <!-- Individual Evaluations -->
+                ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
+                <div style="margin-bottom: 25px;">
+                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Individual Evaluations</h3>
+                    ${members.map((member, index) => {
+                        const userId = member.userId || member.ktuid;
+                        const individualEval = individualEvaluations[userId] || {};
+                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                        const individualComments = individualEval.comments || '';
+                        const isAbsent = individualEval.isAbsent || false;
+                        
+                        return `
+                            <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
+                                <h4 style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">
+                                    ${index + 1}. ${this.escapeHtml(member.name || member.ktuid || 'N/A')}
+                                    ${member.ktuid ? ` (${this.escapeHtml(member.ktuid)})` : ''}
+                                    ${isAbsent ? ' <span style="color: #dc3545;">[Absent]</span>' : ''}
+                                </h4>
+                                ${individualParams.length > 0 && !isAbsent ? `
+                                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 10px;">
+                                        <thead>
+                                            <tr style="background-color: #f0f0f0;">
+                                                <th style="padding: 8px; border: 1px solid #000; text-align: left;">Parameter</th>
+                                                <th style="padding: 8px; border: 1px solid #000; text-align: center;">Marks Obtained</th>
+                                                <th style="padding: 8px; border: 1px solid #000; text-align: center;">Maximum Marks</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${individualParams.map(param => {
+                                                const paramMarks = individualEval.marksData?.[param.name] || 0;
+                                                return `
+                                                    <tr>
+                                                        <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(param.name)}</td>
+                                                        <td style="padding: 8px; border: 1px solid #000; text-align: center;">${paramMarks}</td>
+                                                        <td style="padding: 8px; border: 1px solid #000; text-align: center;">${param.maxMarks}</td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                            <tr style="font-weight: bold; background-color: #f9f9f9;">
+                                                <td style="padding: 8px; border: 1px solid #000;">Total</td>
+                                                <td style="padding: 8px; border: 1px solid #000; text-align: center;">${studentMarks}</td>
+                                                <td style="padding: 8px; border: 1px solid #000; text-align: center;">${individualTotal}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                ` : `
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>Individual Marks: ${studentMarks} / ${individualTotal}</strong>
+                                    </div>
+                                `}
+                                ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
+                                    <div style="margin-top: 10px;">
+                                        <strong>Comments:</strong>
+                                        <div style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; margin-top: 5px;">
+                                            ${individualComments}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                ` : ''}
+                
+                <!-- Footer -->
+                <div style="margin-top: 40px; text-align: right; font-size: 12px; color: #666;">
+                    <div>Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    },
+    
+    async generatePDFReport(reportContent, teamData, stage) {
+        // Create a new window with the report content
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <style>
+                    @media print {
+                        @page {
+                            size: A4;
+                            margin: 1cm;
+                        }
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        
+        // Wait for content to load, then print/save as PDF
+        printWindow.onload = function() {
+            setTimeout(() => {
+                printWindow.print();
+            }, 250);
+        };
+    },
+    
+    generateHTMLReport(reportContent, teamData, stage) {
+        // Create a blob with the HTML content
+        const blob = new Blob([`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 20px;
+                        font-family: 'Times New Roman', serif;
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+            </body>
+            </html>
+        `], { type: 'text/html' });
+        
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    async generateDOCXReport(reportContent, teamData, stage) {
+        // For DOCX, we'll create an HTML file that can be opened in Word
+        // Word can open HTML files and save them as DOCX
+        const blob = new Blob([`
+            <!DOCTYPE html>
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head>
+                <meta charset='utf-8'>
+                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <!--[if gte mso 9]>
+                <xml>
+                    <w:WordDocument>
+                        <w:View>Print</w:View>
+                        <w:Zoom>90</w:Zoom>
+                        <w:DoNotOptimizeForBrowser/>
+                    </w:WordDocument>
+                </xml>
+                <![endif]-->
+                <style>
+                    @page {
+                        size: 8.5in 11in;
+                        margin: 1in;
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+            </body>
+            </html>
+        `], { type: 'application/msword' });
+        
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.doc`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     },
     
     // Student Mini Project View
