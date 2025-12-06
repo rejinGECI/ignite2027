@@ -7274,8 +7274,7 @@ const app = {
         try {
             const problemStatementsQuery = query(
                 collection(window.firebaseDb, 'problemStatements'),
-                where('teamId', '==', this.currentStudentTeamId),
-                orderBy('createdAt', 'desc')
+                where('teamId', '==', this.currentStudentTeamId)
             );
             const snapshot = await getDocs(problemStatementsQuery);
             
@@ -7285,6 +7284,13 @@ const app = {
                     id: doc.id,
                     ...doc.data()
                 });
+            });
+            
+            // Sort by createdAt in descending order (newest first)
+            problemStatements.sort((a, b) => {
+                const dateA = a.createdAt || '';
+                const dateB = b.createdAt || '';
+                return dateB.localeCompare(dateA);
             });
             
             if (problemStatements.length === 0) {
@@ -7408,8 +7414,7 @@ const app = {
         
         try {
             const problemStatementsQuery = query(
-                collection(window.firebaseDb, 'problemStatements'),
-                orderBy('createdAt', 'desc')
+                collection(window.firebaseDb, 'problemStatements')
             );
             const snapshot = await getDocs(problemStatementsQuery);
             
@@ -7429,6 +7434,13 @@ const app = {
                     ...ps,
                     team: teamsMap[ps.teamId] || null
                 });
+            });
+            
+            // Sort by createdAt in descending order (newest first)
+            problemStatements.sort((a, b) => {
+                const dateA = a.createdAt || '';
+                const dateB = b.createdAt || '';
+                return dateB.localeCompare(dateA);
             });
             
             if (problemStatements.length === 0) {
