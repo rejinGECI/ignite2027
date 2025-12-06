@@ -7000,6 +7000,46 @@ const app = {
                         </div>
                     </div>
                     
+                    <!-- PPT Link Section -->
+                    <div class="ppt-link-section" style="margin-top: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color);">
+                        <h3 class="section-title" style="margin-bottom: 1rem;"><i class="fas fa-file-powerpoint"></i> Project Presentation (PPT)</h3>
+                        <div id="ppt-link-container">
+                            <div id="ppt-current-link" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong style="color: var(--text-primary);"><i class="fas fa-file-powerpoint"></i> Current PPT Link:</strong>
+                                        <a id="ppt-link-url" href="#" target="_blank" style="margin-left: 0.5rem; color: var(--primary-color); text-decoration: none; word-break: break-all;">
+                                            <span id="ppt-link-text"></span>
+                                        </a>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.removeTeamPPT()">
+                                        <i class="fas fa-trash"></i> Remove
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="ppt-link-form">
+                                <div class="form-group">
+                                    <label for="team-ppt-link">PPT Link/URL *</label>
+                                    <input type="url" id="team-ppt-link" class="form-input" placeholder="https://drive.google.com/file/d/... or https://onedrive.live.com/...">
+                                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                        <em>Upload your PPT to Google Drive, OneDrive, Dropbox, or any file hosting service and paste the shareable link here.</em>
+                                    </p>
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                                        <strong style="color: #92400e; font-size: 0.85rem;">How to get a shareable link:</strong>
+                                        <ul style="margin: 0.5rem 0 0 1.25rem; color: #78350f; font-size: 0.85rem; line-height: 1.6;">
+                                            <li><strong>Google Drive:</strong> Right-click file → Share → Get link → Copy link</li>
+                                            <li><strong>OneDrive:</strong> Right-click file → Share → Copy link</li>
+                                            <li><strong>Dropbox:</strong> Right-click file → Share → Copy link</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="app.saveTeamPPT()">
+                                    <i class="fas fa-save"></i> Save PPT Link
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Problem Statement Section -->
                     <div class="problem-statements-section" style="margin-top: 2rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -7179,19 +7219,6 @@ const app = {
         
         // Reset form
         document.getElementById('problem-statement-form').reset();
-        document.getElementById('problem-ppt-preview').style.display = 'none';
-        
-        // Show file preview when file is selected
-        const fileInput = document.getElementById('problem-ppt');
-        fileInput.onchange = function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const preview = document.getElementById('problem-ppt-preview');
-                const nameSpan = document.getElementById('problem-ppt-name');
-                nameSpan.textContent = file.name;
-                preview.style.display = 'block';
-            }
-        };
         
         modal.style.display = 'flex';
     },
@@ -7201,7 +7228,6 @@ const app = {
         if (modal) {
             modal.style.display = 'none';
             document.getElementById('problem-statement-form').reset();
-            document.getElementById('problem-ppt-preview').style.display = 'none';
         }
     },
     
@@ -7215,7 +7241,6 @@ const app = {
         const problemStatement = document.getElementById('problem-statement').value.trim();
         const area = document.getElementById('problem-area').value.trim();
         const solution = document.getElementById('problem-solution').value.trim();
-        const pptFile = document.getElementById('problem-ppt').files[0];
         
         if (!title || !problemStatement || !area || !solution) {
             alert('Please fill in all required fields (Title, Problem Statement, Area/Technology, Solution).');
@@ -7223,22 +7248,6 @@ const app = {
         }
         
         try {
-            let pptUrl = '';
-            
-            // Upload PPT if provided
-            if (pptFile) {
-                if (pptFile.size > 10 * 1024 * 1024) { // 10MB limit
-                    alert('PPT file size must be less than 10MB.');
-                    return;
-                }
-                
-                const fileName = `problem_statements/${this.currentStudentTeamId}/${Date.now()}_${pptFile.name}`;
-                const storageRef = ref(window.firebaseStorage, fileName);
-                
-                await uploadBytes(storageRef, pptFile);
-                pptUrl = await getDownloadURL(storageRef);
-            }
-            
             // Save problem statement to Firestore
             const problemStatementData = {
                 teamId: this.currentStudentTeamId,
@@ -7246,8 +7255,6 @@ const app = {
                 problemStatement: problemStatement,
                 area: area,
                 solution: solution,
-                pptUrl: pptUrl,
-                pptFileName: pptFile ? pptFile.name : '',
                 preferred: false,
                 approved: false,
                 createdAt: new Date().toISOString(),
@@ -7319,12 +7326,7 @@ const app = {
                                     <i class="fas fa-star"></i>
                                 </button>
                             ` : ''}
-                            ${ps.pptUrl ? `
-                                <a href="${ps.pptUrl}" target="_blank" class="btn btn-secondary btn-sm" title="View PPT">
-                                    <i class="fas fa-file-powerpoint"></i>
-                                </a>
-                            ` : ''}
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteProblemStatement('${ps.id}', '${ps.pptUrl || ''}')" title="Delete">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteProblemStatement('${ps.id}')" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -7378,23 +7380,12 @@ const app = {
         }
     },
     
-    async deleteProblemStatement(problemStatementId, pptUrl) {
+    async deleteProblemStatement(problemStatementId) {
         if (!confirm('Are you sure you want to delete this problem statement?')) {
             return;
         }
         
         try {
-            // Delete PPT from storage if exists
-            if (pptUrl) {
-                try {
-                    const storageRef = ref(window.firebaseStorage, pptUrl);
-                    await deleteObject(storageRef);
-                } catch (error) {
-                    console.warn('Error deleting PPT file:', error);
-                    // Continue even if file deletion fails
-                }
-            }
-            
             // Delete from Firestore
             await deleteDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
             
@@ -7402,6 +7393,108 @@ const app = {
         } catch (error) {
             console.error('Error deleting problem statement:', error);
             alert('Error deleting problem statement. Please try again.');
+        }
+    },
+    
+    // Team PPT Link Functions
+    async loadTeamPPT() {
+        if (!this.currentStudentTeamId) return;
+        
+        try {
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+            if (!teamDoc.exists()) return;
+            
+            const teamData = teamDoc.data();
+            const pptUrl = teamData.pptUrl || '';
+            const pptFileName = teamData.pptFileName || '';
+            
+            const currentLinkDiv = document.getElementById('ppt-current-link');
+            const linkForm = document.getElementById('ppt-link-form');
+            const linkUrl = document.getElementById('ppt-link-url');
+            const linkText = document.getElementById('ppt-link-text');
+            const linkInput = document.getElementById('team-ppt-link');
+            
+            if (pptUrl) {
+                currentLinkDiv.style.display = 'block';
+                linkForm.style.display = 'none';
+                linkUrl.href = pptUrl;
+                linkText.textContent = pptFileName || pptUrl.substring(0, 60) + (pptUrl.length > 60 ? '...' : '');
+                if (linkInput) linkInput.value = pptUrl;
+            } else {
+                currentLinkDiv.style.display = 'none';
+                linkForm.style.display = 'block';
+                if (linkInput) linkInput.value = '';
+            }
+        } catch (error) {
+            console.error('Error loading team PPT:', error);
+        }
+    },
+    
+    async saveTeamPPT() {
+        if (!this.currentStudentTeamId) {
+            alert('Error: Team ID not found. Please refresh the page.');
+            return;
+        }
+        
+        const pptLink = document.getElementById('team-ppt-link').value.trim();
+        if (!pptLink) {
+            alert('Please enter a PPT link/URL.');
+            return;
+        }
+        
+        // Basic URL validation
+        try {
+            new URL(pptLink);
+        } catch (error) {
+            alert('Please enter a valid URL. Make sure it starts with http:// or https://');
+            return;
+        }
+        
+        try {
+            // Extract filename from URL if possible, otherwise use a default name
+            let fileName = 'Project PPT';
+            try {
+                const urlParts = pptLink.split('/');
+                const lastPart = urlParts[urlParts.length - 1];
+                if (lastPart && lastPart.includes('.')) {
+                    fileName = lastPart.split('?')[0]; // Remove query parameters
+                }
+            } catch (e) {
+                // Use default name if extraction fails
+            }
+            
+            // Update team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
+                pptUrl: pptLink,
+                pptFileName: fileName
+            });
+            
+            alert('PPT link saved successfully!');
+            await this.loadTeamPPT();
+        } catch (error) {
+            console.error('Error saving team PPT link:', error);
+            alert('Error saving PPT link. Please try again.');
+        }
+    },
+    
+    async removeTeamPPT() {
+        if (!confirm('Are you sure you want to remove the PPT link?')) {
+            return;
+        }
+        
+        if (!this.currentStudentTeamId) return;
+        
+        try {
+            // Remove PPT from team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
+                pptUrl: '',
+                pptFileName: ''
+            });
+            
+            await this.loadTeamPPT();
+        } catch (error) {
+            console.error('Error removing team PPT link:', error);
+            alert('Error removing PPT link. Please try again.');
         }
     },
     
@@ -7480,13 +7573,6 @@ const app = {
                         <div style="margin-bottom: 0.75rem;">
                             <strong style="font-size: 0.9rem; color: var(--text-secondary);">Solution:</strong>
                             <p style="margin: 0.25rem 0 0 0; color: var(--text-primary); white-space: pre-wrap;">${this.escapeHtml(ps.solution)}</p>
-                        </div>
-                    ` : ''}
-                    ${ps.pptUrl ? `
-                        <div style="margin-top: 0.75rem;">
-                            <a href="${ps.pptUrl}" target="_blank" class="btn btn-secondary btn-sm">
-                                <i class="fas fa-file-powerpoint"></i> View PPT
-                            </a>
                         </div>
                     ` : ''}
                 </div>
