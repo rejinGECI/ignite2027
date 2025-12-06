@@ -736,6 +736,9 @@ body.mobile-menu-open {
     border-radius: 12px;
     padding: 2rem;
     box-shadow: var(--shadow);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .admin-card h3 {
@@ -750,37 +753,51 @@ body.mobile-menu-open {
     color: var(--primary-color);
 }
 
-/* Force full width for problem statement and solution text */
-.problem-container, .solution-container {
+/* Force full width for problem statement and solution text - NUCLEAR OPTION */
+.problem-container, 
+.solution-container {
     width: 100% !important;
-    max-width: none !important;
-    box-sizing: border-box;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-/* Ensure parent containers don't constrain width */
+.problem-text,
+.solution-text {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    display: block !important;
+    box-sizing: border-box !important;
+}
+
+.problem-container > div,
+.solution-container > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Ensure ALL parent containers are full width */
 #all-problem-statements-list {
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 #all-problem-statements-list > div {
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-/* Fix any flex containers that might restrict width */
 #all-problem-statements-list > div > div {
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
     flex: 1 1 100% !important;
-}
-
-/* Ensure text content inside containers takes full width */
-.problem-container > div:last-child,
-.solution-container > div:last-child {
-    width: 100% !important;
-    max-width: none !important;
-    display: block !important;
+    flex-basis: 100% !important;
 }
 
 .csv-upload-area {

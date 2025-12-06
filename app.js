@@ -7753,18 +7753,18 @@ const app = {
                                             ` : ''}
                                         </div>
                                     </div>
-                                    <div class="problem-container" style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'};">
-                                        <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
+                                    <div class="problem-container" style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; width: 100%; max-width: 100%; box-sizing: border-box;">
+                                        <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; width: 100%;">
                                             <i class="fas fa-file-alt"></i> Problem Statement:
                                         </div>
-                                        <div style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word;">${this.escapeHtml(ps.problemStatement)}</div>
+                                        <div class="problem-text" style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%; max-width: 100%; display: block; box-sizing: border-box;">${this.escapeHtml(ps.problemStatement)}</div>
                                     </div>
                                     ${ps.solution ? `
-                                        <div class="solution-container" style="background: #f0fdf4; padding: 1.5rem;">
-                                            <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
+                                        <div class="solution-container" style="background: #f0fdf4; padding: 1.5rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+                                            <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; width: 100%;">
                                                 <i class="fas fa-lightbulb"></i> Solution:
                                             </div>
-                                            <div style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word;">${this.escapeHtml(ps.solution)}</div>
+                                            <div class="solution-text" style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%; max-width: 100%; display: block; box-sizing: border-box;">${this.escapeHtml(ps.solution)}</div>
                                         </div>
                                     ` : ''}
                                 </div>
