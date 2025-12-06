@@ -5311,7 +5311,6 @@ const app = {
         // Store the current team and stage for report generation
         this.currentReportTeamId = teamId;
         this.currentReportStageIndex = stageIndex;
-        this.currentReportType = 'single';
         
         // Show the modal
         const modal = document.getElementById('report-generation-modal');
@@ -5319,51 +5318,27 @@ const app = {
             modal.style.display = 'flex';
             // Reset format selection to PDF
             const formatSelect = document.getElementById('report-format');
-            const reportTypeSelect = document.getElementById('report-type');
             if (formatSelect) formatSelect.value = 'pdf';
-            if (reportTypeSelect) reportTypeSelect.value = 'single';
-            this.updateReportType();
         }
     },
     
     showConsolidatedReportOptions() {
         const stageSelect = document.getElementById('eval-stage-select');
-        if (!stageSelect || !stageSelect.value) {
+        if (!stageSelect || !stageSelect.value || stageSelect.value === '') {
             alert('Please select an evaluation stage first.');
             return;
         }
         
         // Store the stage for consolidated report generation
-        this.currentReportTeamId = null;
-        this.currentReportStageIndex = stageSelect.value;
-        this.currentReportType = 'consolidated';
+        this.currentConsolidatedStageIndex = stageSelect.value;
         
-        // Show the modal
-        const modal = document.getElementById('report-generation-modal');
+        // Show the consolidated report modal
+        const modal = document.getElementById('consolidated-report-modal');
         if (modal) {
             modal.style.display = 'flex';
-            // Set to consolidated and CSV as default
-            const formatSelect = document.getElementById('report-format');
-            const reportTypeSelect = document.getElementById('report-type');
+            // Set CSV as default
+            const formatSelect = document.getElementById('consolidated-report-format');
             if (formatSelect) formatSelect.value = 'csv';
-            if (reportTypeSelect) reportTypeSelect.value = 'consolidated';
-            this.updateReportType();
-        }
-    },
-    
-    updateReportType() {
-        const reportTypeSelect = document.getElementById('report-type');
-        const formatSelect = document.getElementById('report-format');
-        
-        if (!reportTypeSelect || !formatSelect) return;
-        
-        const reportType = reportTypeSelect.value;
-        
-        // For consolidated reports, suggest CSV or JSON
-        if (reportType === 'consolidated') {
-            if (formatSelect.value === 'pdf' || formatSelect.value === 'html' || formatSelect.value === 'docx') {
-                formatSelect.value = 'csv';
-            }
         }
     },
     
@@ -5374,21 +5349,87 @@ const app = {
         }
         this.currentReportTeamId = null;
         this.currentReportStageIndex = null;
-        this.currentReportType = null;
+    },
+    
+    closeConsolidatedReportModal() {
+        const modal = document.getElementById('consolidated-report-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.currentConsolidatedStageIndex = null;
     },
     
     async generateEvaluationReport() {
-        const reportType = this.currentReportType || 'single';
         const teamId = this.currentReportTeamId;
         const stageIndex = this.currentReportStageIndex;
         const formatSelect = document.getElementById('report-format');
         
-        if (stageIndex === undefined || stageIndex === null || !formatSelect) {
+        if (!teamId || stageIndex === undefined || stageIndex === null || !formatSelect) {
             alert('Invalid report parameters.');
             return;
         }
         
-        if (reportType === 'single' && !teamId) {
+        const format = formatSelect.value;
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found!');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (!stage) {
+                alert('Evaluation stage not found!');
+                return;
+            }
+            
+            // Load evaluation data
+            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+            const evalData = evalDoc.exists() ? evalDoc.data() : {};
+            
+            // Get mark parameters
+            const teamParams = stage.teamMarkParams || [];
+            const individualParams = stage.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Generate report content
+            const reportContent = this.generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            
+            // Generate and download based on format
+            if (format === 'pdf') {
+                await this.generatePDFReport(reportContent, teamData, stage);
+            } else if (format === 'html') {
+                this.generateHTMLReport(reportContent, teamData, stage);
+            } else if (format === 'docx') {
+                await this.generateDOCXReport(reportContent, teamData, stage);
+            } else if (format === 'csv') {
+                this.generateCSVReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            } else if (format === 'json') {
+                this.generateJSONReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            }
+            
+            // Close modal after generation
+            this.closeReportGenerationModal();
+        } catch (error) {
+            console.error('Error generating report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
+    async generateConsolidatedReportFromModal() {
+        const stageIndex = this.currentConsolidatedStageIndex;
+        const formatSelect = document.getElementById('consolidated-report-format');
+        
+        if (stageIndex === undefined || stageIndex === null || !formatSelect) {
             alert('Invalid report parameters.');
             return;
         }
@@ -5406,51 +5447,14 @@ const app = {
                 return;
             }
             
-            if (reportType === 'consolidated') {
-                // Generate consolidated report for all teams
-                await this.generateConsolidatedReport(stage, stageIndex, format);
-            } else {
-                // Generate single team report
-                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
-                if (!teamDoc.exists()) {
-                    alert('Team not found!');
-                    return;
-                }
-                
-                const teamData = teamDoc.data();
-                
-                // Load evaluation data
-                const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
-                const evalData = evalDoc.exists() ? evalDoc.data() : {};
-                
-                // Get mark parameters
-                const teamParams = stage.teamMarkParams || [];
-                const individualParams = stage.individualMarkParams || [];
-                const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-                const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-                
-                // Generate report content
-                const reportContent = this.generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
-                
-                // Generate and download based on format
-                if (format === 'pdf') {
-                    await this.generatePDFReport(reportContent, teamData, stage);
-                } else if (format === 'html') {
-                    this.generateHTMLReport(reportContent, teamData, stage);
-                } else if (format === 'docx') {
-                    await this.generateDOCXReport(reportContent, teamData, stage);
-                } else if (format === 'csv') {
-                    this.generateCSVReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
-                } else if (format === 'json') {
-                    this.generateJSONReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
-                }
-            }
+            // Generate consolidated report for all teams
+            await this.generateConsolidatedReport(stage, stageIndex, format);
             
             // Close modal after generation
-            this.closeReportGenerationModal();
+            this.closeConsolidatedReportModal();
         } catch (error) {
-            console.error('Error generating report:', error);
-            alert('Error generating report. Please try again.');
+            console.error('Error generating consolidated report:', error);
+            alert('Error generating consolidated report. Please try again.');
         }
     },
     
@@ -5466,56 +5470,57 @@ const app = {
         
         // Build report HTML content
         let html = `
-            <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 30px; line-height: 1.6; color: #1f2937; background: linear-gradient(to bottom, #f8fafc, #ffffff);">
                 <!-- Header -->
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
-                    <div style="font-size: 18px; font-weight: bold; margin-top: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; display: inline-block;">
+                <div style="text-align: center; margin-bottom: 40px; padding: 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); color: white;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: 1px; opacity: 0.95;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: 1px; opacity: 0.95;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 20px; letter-spacing: 1px; opacity: 0.95;">ITD 334 MINI PROJECT</div>
+                    <div style="font-size: 24px; font-weight: 700; margin-top: 20px; padding: 15px 30px; background: rgba(255,255,255,0.2); border-radius: 8px; display: inline-block; backdrop-filter: blur(10px); border: 2px solid rgba(255,255,255,0.3);">
                         ${this.escapeHtml(stage.name)}
                     </div>
                 </div>
                 
                 <!-- Team Information -->
-                <div style="margin-bottom: 25px;">
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-                        <tr>
-                            <td style="padding: 8px; font-weight: bold; width: 30%;">Team Name:</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.groupName || 'N/A')}</td>
-                        </tr>
+                <div style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
+                    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #4f46e5; border-left: 4px solid #4f46e5; padding-left: 12px;">Team Information</h3>
+                    <div style="display: grid; gap: 15px;">
+                        <div style="display: flex; align-items: center; padding: 12px; background: #f8fafc; border-radius: 8px;">
+                            <span style="font-weight: 600; color: #6b7280; min-width: 140px; font-size: 14px;">Team Name:</span>
+                            <span style="font-weight: 600; color: #1f2937; font-size: 15px;">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
+                        </div>
                         ${teamData.topic ? `
-                        <tr>
-                            <td style="padding: 8px; font-weight: bold;">Topic:</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.topic)}</td>
-                        </tr>
+                        <div style="display: flex; align-items: center; padding: 12px; background: #f8fafc; border-radius: 8px;">
+                            <span style="font-weight: 600; color: #6b7280; min-width: 140px; font-size: 14px;">Topic:</span>
+                            <span style="color: #1f2937; font-size: 15px;">${this.escapeHtml(teamData.topic)}</span>
+                        </div>
                         ` : ''}
                         ${teamData.guideName ? `
-                        <tr>
-                            <td style="padding: 8px; font-weight: bold;">Guide:</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${this.escapeHtml(teamData.guideName)}</td>
-                        </tr>
+                        <div style="display: flex; align-items: center; padding: 12px; background: #f8fafc; border-radius: 8px;">
+                            <span style="font-weight: 600; color: #6b7280; min-width: 140px; font-size: 14px;">Guide:</span>
+                            <span style="color: #1f2937; font-size: 15px;">${this.escapeHtml(teamData.guideName)}</span>
+                        </div>
                         ` : ''}
-                    </table>
+                    </div>
                 </div>
                 
                 <!-- Team Members -->
-                <div style="margin-bottom: 25px;">
-                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Team Members</h3>
-                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                <div style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
+                    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #4f46e5; border-left: 4px solid #4f46e5; padding-left: 12px;">Team Members</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
                         <thead>
-                            <tr style="background-color: #f0f0f0;">
-                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">Sl. No.</th>
-                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">Name</th>
-                                <th style="padding: 10px; border: 1px solid #000; text-align: left;">KTU ID</th>
+                            <tr>
+                                <th style="padding: 14px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: left; font-weight: 600; font-size: 14px; border-radius: 8px 0 0 0;">Sl. No.</th>
+                                <th style="padding: 14px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: left; font-weight: 600; font-size: 14px;">Name</th>
+                                <th style="padding: 14px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: left; font-weight: 600; font-size: 14px; border-radius: 0 8px 0 0;">KTU ID</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${members.map((member, index) => `
-                                <tr>
-                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${index + 1}</td>
-                                    <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(member.name || 'N/A')}</td>
-                                    <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                <tr style="${index % 2 === 0 ? 'background-color: #f8fafc;' : 'background-color: white;'}">
+                                    <td style="padding: 12px 16px; text-align: center; color: #6b7280; font-weight: 600; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+                                    <td style="padding: 12px 16px; color: #1f2937; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
+                                    <td style="padding: 12px 16px; color: #1f2937; font-size: 14px; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -5524,44 +5529,44 @@ const app = {
                 
                 <!-- Team Evaluation -->
                 ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
-                <div style="margin-bottom: 25px;">
-                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Team Evaluation</h3>
+                <div style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
+                    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #10b981; border-left: 4px solid #10b981; padding-left: 12px;">Team Evaluation</h3>
                     ${teamParams.length > 0 ? `
-                        <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 15px;">
+                        <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px;">
                             <thead>
-                                <tr style="background-color: #f0f0f0;">
-                                    <th style="padding: 10px; border: 1px solid #000; text-align: left;">Parameter</th>
-                                    <th style="padding: 10px; border: 1px solid #000; text-align: center;">Marks Obtained</th>
-                                    <th style="padding: 10px; border: 1px solid #000; text-align: center;">Maximum Marks</th>
+                                <tr>
+                                    <th style="padding: 14px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-align: left; font-weight: 600; font-size: 14px; border-radius: 8px 0 0 0;">Parameter</th>
+                                    <th style="padding: 14px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-align: center; font-weight: 600; font-size: 14px;">Marks Obtained</th>
+                                    <th style="padding: 14px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-align: center; font-weight: 600; font-size: 14px; border-radius: 0 8px 0 0;">Maximum Marks</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${teamParams.map(param => {
+                                ${teamParams.map((param, idx) => {
                                     const paramMarks = teamMarksData[param.name] || 0;
                                     return `
-                                        <tr>
-                                            <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(param.name)}</td>
-                                            <td style="padding: 8px; border: 1px solid #000; text-align: center;">${paramMarks}</td>
-                                            <td style="padding: 8px; border: 1px solid #000; text-align: center;">${param.maxMarks}</td>
+                                        <tr style="${idx % 2 === 0 ? 'background-color: #f8fafc;' : 'background-color: white;'}">
+                                            <td style="padding: 12px 16px; color: #1f2937; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
+                                            <td style="padding: 12px 16px; text-align: center; color: #1f2937; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                            <td style="padding: 12px 16px; text-align: center; color: #6b7280; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                         </tr>
                                     `;
                                 }).join('')}
-                                <tr style="font-weight: bold; background-color: #f9f9f9;">
-                                    <td style="padding: 8px; border: 1px solid #000;">Total</td>
-                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
-                                    <td style="padding: 8px; border: 1px solid #000; text-align: center;">${teamTotal}</td>
+                                <tr style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-top: 2px solid #10b981;">
+                                    <td style="padding: 14px 16px; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 0 8px;">Total</td>
+                                    <td style="padding: 14px 16px; text-align: center; font-weight: 700; color: #10b981; font-size: 16px;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
+                                    <td style="padding: 14px 16px; text-align: center; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 8px 0;">${teamTotal}</td>
                                 </tr>
                             </tbody>
                         </table>
                     ` : `
-                        <div style="margin-bottom: 15px;">
-                            <strong>Total Team Marks: ${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</strong>
+                        <div style="margin-bottom: 20px; padding: 16px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                            <strong style="font-size: 16px; color: #1f2937;">Total Team Marks: <span style="color: #10b981; font-size: 18px;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
                         </div>
                     `}
                     ${teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>' ? `
-                        <div style="margin-top: 15px;">
-                            <h4 style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">Team Comments:</h4>
-                            <div style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
+                        <div style="margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #4f46e5;">
+                            <h4 style="font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #4f46e5;">Team Comments</h4>
+                            <div style="padding: 12px; background: white; border-radius: 6px; color: #374151; font-size: 14px; line-height: 1.6;">
                                 ${teamComments}
                             </div>
                         </div>
@@ -5571,8 +5576,8 @@ const app = {
                 
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
-                <div style="margin-bottom: 25px;">
-                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">Individual Evaluations</h3>
+                <div style="margin-bottom: 30px;">
+                    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #8b5cf6; border-left: 4px solid #8b5cf6; padding-left: 12px;">Individual Evaluations</h3>
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
@@ -5581,48 +5586,49 @@ const app = {
                         const isAbsent = individualEval.isAbsent || false;
                         
                         return `
-                            <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
-                                <h4 style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">
-                                    ${index + 1}. ${this.escapeHtml(member.name || member.ktuid || 'N/A')}
-                                    ${member.ktuid ? ` (${this.escapeHtml(member.ktuid)})` : ''}
-                                    ${isAbsent ? ' <span style="color: #dc3545;">[Absent]</span>' : ''}
+                            <div style="margin-bottom: 20px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07); border-left: 4px solid ${isAbsent ? '#ef4444' : '#8b5cf6'};">
+                                <h4 style="font-size: 16px; font-weight: 700; margin-bottom: 15px; color: #1f2937; display: flex; align-items: center; gap: 8px;">
+                                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; border-radius: 6px; font-size: 13px; font-weight: 700;">${index + 1}</span>
+                                    ${this.escapeHtml(member.name || member.ktuid || 'N/A')}
+                                    ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 500; font-size: 14px;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                    ${isAbsent ? ' <span style="padding: 4px 10px; background: #fee2e2; color: #dc2626; border-radius: 6px; font-size: 12px; font-weight: 600;">Absent</span>' : ''}
                                 </h4>
                                 ${individualParams.length > 0 && !isAbsent ? `
-                                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 10px;">
+                                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 15px;">
                                         <thead>
-                                            <tr style="background-color: #f0f0f0;">
-                                                <th style="padding: 8px; border: 1px solid #000; text-align: left;">Parameter</th>
-                                                <th style="padding: 8px; border: 1px solid #000; text-align: center;">Marks Obtained</th>
-                                                <th style="padding: 8px; border: 1px solid #000; text-align: center;">Maximum Marks</th>
+                                            <tr>
+                                                <th style="padding: 12px 16px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; text-align: left; font-weight: 600; font-size: 13px; border-radius: 8px 0 0 0;">Parameter</th>
+                                                <th style="padding: 12px 16px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; text-align: center; font-weight: 600; font-size: 13px;">Marks Obtained</th>
+                                                <th style="padding: 12px 16px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; text-align: center; font-weight: 600; font-size: 13px; border-radius: 0 8px 0 0;">Maximum Marks</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            ${individualParams.map(param => {
+                                            ${individualParams.map((param, paramIdx) => {
                                                 const paramMarks = individualEval.marksData?.[param.name] || 0;
                                                 return `
-                                                    <tr>
-                                                        <td style="padding: 8px; border: 1px solid #000;">${this.escapeHtml(param.name)}</td>
-                                                        <td style="padding: 8px; border: 1px solid #000; text-align: center;">${paramMarks}</td>
-                                                        <td style="padding: 8px; border: 1px solid #000; text-align: center;">${param.maxMarks}</td>
+                                                    <tr style="${paramIdx % 2 === 0 ? 'background-color: #f8fafc;' : 'background-color: white;'}">
+                                                        <td style="padding: 10px 16px; color: #1f2937; font-size: 13px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
+                                                        <td style="padding: 10px 16px; text-align: center; color: #1f2937; font-size: 13px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                                        <td style="padding: 10px 16px; text-align: center; color: #6b7280; font-size: 13px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                                     </tr>
                                                 `;
                                             }).join('')}
-                                            <tr style="font-weight: bold; background-color: #f9f9f9;">
-                                                <td style="padding: 8px; border: 1px solid #000;">Total</td>
-                                                <td style="padding: 8px; border: 1px solid #000; text-align: center;">${studentMarks}</td>
-                                                <td style="padding: 8px; border: 1px solid #000; text-align: center;">${individualTotal}</td>
+                                            <tr style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-top: 2px solid #8b5cf6;">
+                                                <td style="padding: 12px 16px; font-weight: 700; color: #1f2937; font-size: 14px; border-radius: 0 0 0 8px;">Total</td>
+                                                <td style="padding: 12px 16px; text-align: center; font-weight: 700; color: #8b5cf6; font-size: 15px;">${studentMarks}</td>
+                                                <td style="padding: 12px 16px; text-align: center; font-weight: 700; color: #1f2937; font-size: 14px; border-radius: 0 0 8px 0;">${individualTotal}</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 ` : `
-                                    <div style="margin-bottom: 10px;">
-                                        <strong>Individual Marks: ${studentMarks} / ${individualTotal}</strong>
+                                    <div style="margin-bottom: 15px; padding: 12px; background: ${isAbsent ? '#fee2e2' : 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)'}; border-radius: 8px; border-left: 4px solid ${isAbsent ? '#ef4444' : '#8b5cf6'};">
+                                        <strong style="font-size: 15px; color: #1f2937;">Individual Marks: <span style="color: ${isAbsent ? '#dc2626' : '#8b5cf6'}; font-size: 17px;">${studentMarks}</span> / ${individualTotal}</strong>
                                     </div>
                                 `}
                                 ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
-                                    <div style="margin-top: 10px;">
-                                        <strong>Comments:</strong>
-                                        <div style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; margin-top: 5px;">
+                                    <div style="margin-top: 15px; padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #4f46e5;">
+                                        <strong style="font-size: 13px; font-weight: 700; color: #4f46e5; display: block; margin-bottom: 8px;">Comments</strong>
+                                        <div style="padding: 10px; background: white; border-radius: 6px; color: #374151; font-size: 13px; line-height: 1.6;">
                                             ${individualComments}
                                         </div>
                                     </div>
@@ -5634,8 +5640,8 @@ const app = {
                 ` : ''}
                 
                 <!-- Footer -->
-                <div style="margin-top: 40px; text-align: right; font-size: 12px; color: #666;">
-                    <div>Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                <div style="margin-top: 50px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07); text-align: right;">
+                    <div style="font-size: 13px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
             </div>
         `;
@@ -5650,7 +5656,9 @@ const app = {
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="UTF-8">
                 <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <style>
                     @media print {
                         @page {
@@ -5661,6 +5669,10 @@ const app = {
                     body {
                         margin: 0;
                         padding: 0;
+                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    }
+                    * {
+                        box-sizing: border-box;
                     }
                 </style>
             </head>
@@ -5687,11 +5699,15 @@ const app = {
             <head>
                 <meta charset="UTF-8">
                 <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <style>
                     body {
                         margin: 0;
                         padding: 20px;
-                        font-family: 'Times New Roman', serif;
+                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    }
+                    * {
+                        box-sizing: border-box;
                     }
                 </style>
             </head>
@@ -5721,6 +5737,7 @@ const app = {
             <head>
                 <meta charset='utf-8'>
                 <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <!--[if gte mso 9]>
                 <xml>
                     <w:WordDocument>
@@ -5734,6 +5751,12 @@ const app = {
                     @page {
                         size: 8.5in 11in;
                         margin: 1in;
+                    }
+                    body {
+                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    }
+                    * {
+                        box-sizing: border-box;
                     }
                 </style>
             </head>
@@ -6160,40 +6183,50 @@ const app = {
     
     generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
         let html = `
-            <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 30px; line-height: 1.6; color: #1f2937; background: linear-gradient(to bottom, #f8fafc, #ffffff);">
                 <!-- Header -->
-                <div style="text-align: center; margin-bottom: 30px;">
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
-                    <div style="font-size: 18px; font-weight: bold; margin-top: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; display: inline-block;">
+                <div style="text-align: center; margin-bottom: 40px; padding: 30px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); color: white;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: 1px; opacity: 0.95;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: 1px; opacity: 0.95;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 20px; letter-spacing: 1px; opacity: 0.95;">ITD 334 MINI PROJECT</div>
+                    <div style="font-size: 24px; font-weight: 700; margin-top: 20px; padding: 15px 30px; background: rgba(255,255,255,0.2); border-radius: 8px; display: inline-block; backdrop-filter: blur(10px); border: 2px solid rgba(255,255,255,0.3);">
                         ${this.escapeHtml(stage.name)} - CONSOLIDATED REPORT
                     </div>
                 </div>
                 
                 <!-- Summary -->
-                <div style="margin-bottom: 25px; padding: 15px; background: #f0f0f0; border-radius: 8px;">
-                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Summary</h3>
-                    <p><strong>Total Teams:</strong> ${teamsWithEvaluations.length}</p>
-                    <p><strong>Teams with Evaluations:</strong> ${teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length}</p>
+                <div style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07);">
+                    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #f59e0b; border-left: 4px solid #f59e0b; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div style="padding: 16px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="font-size: 13px; color: #92400e; font-weight: 600; margin-bottom: 5px;">Total Teams</div>
+                            <div style="font-size: 28px; font-weight: 700; color: #78350f;">${teamsWithEvaluations.length}</div>
+                        </div>
+                        <div style="padding: 16px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                            <div style="font-size: 13px; color: #1e40af; font-weight: 600; margin-bottom: 5px;">Teams with Evaluations</div>
+                            <div style="font-size: 28px; font-weight: 700; color: #1e3a8a;">${teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length}</div>
+                        </div>
+                    </div>
                 </div>
         `;
         
         // Generate report for each team
         teamsWithEvaluations.forEach((team, teamIndex) => {
             const evalData = team.evaluation || {};
+            html += `<div style="margin-bottom: 40px;">`;
             html += this.generateReportContent(team, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            html += `</div>`;
             
             // Add page break between teams (except last one)
             if (teamIndex < teamsWithEvaluations.length - 1) {
-                html += '<div style="page-break-after: always;"></div>';
+                html += '<div style="page-break-after: always; margin: 40px 0;"></div>';
             }
         });
         
         html += `
                 <!-- Footer -->
-                <div style="margin-top: 40px; text-align: right; font-size: 12px; color: #666;">
-                    <div>Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                <div style="margin-top: 50px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07); text-align: right;">
+                    <div style="font-size: 13px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
             </div>
         `;

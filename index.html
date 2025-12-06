@@ -1192,7 +1192,7 @@ Bob Johnson,GHI789</pre>
         </div>
     </div>
     
-    <!-- Report Generation Modal -->
+    <!-- Report Generation Modal (Single Team) -->
     <div id="report-generation-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeReportGenerationModal()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-header">
@@ -1203,13 +1203,6 @@ Bob Johnson,GHI789</pre>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="report-type">Report Type *</label>
-                    <select id="report-type" class="form-input" required onchange="app.updateReportType()">
-                        <option value="single">Single Team Report</option>
-                        <option value="consolidated">Consolidated Report (All Teams)</option>
-                    </select>
-                </div>
-                <div class="form-group" style="margin-top: 1rem;">
                     <label for="report-format">Select Report Format *</label>
                     <select id="report-format" class="form-input" required>
                         <option value="pdf">PDF</option>
@@ -1218,14 +1211,44 @@ Bob Johnson,GHI789</pre>
                         <option value="csv">CSV (Spreadsheet)</option>
                         <option value="json">JSON</option>
                     </select>
-                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
-                        <em>Note: CSV and JSON formats are recommended for consolidated reports.</em>
-                    </p>
                 </div>
                 <div class="modal-actions" style="margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" onclick="app.closeReportGenerationModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="app.generateEvaluationReport()">
                         <i class="fas fa-file-download"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Consolidated Report Generation Modal -->
+    <div id="consolidated-report-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeConsolidatedReportModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-file-alt"></i> Generate Consolidated Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeConsolidatedReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="consolidated-report-format">Select Report Format *</label>
+                    <select id="consolidated-report-format" class="form-input" required>
+                        <option value="csv">CSV (Spreadsheet) - Recommended</option>
+                        <option value="json">JSON</option>
+                        <option value="pdf">PDF</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                    </select>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                        <em>This will generate a report for all teams in the selected evaluation stage.</em>
+                    </p>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeConsolidatedReportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateConsolidatedReportFromModal()">
+                        <i class="fas fa-file-download"></i> Generate Consolidated Report
                     </button>
                 </div>
             </div>
