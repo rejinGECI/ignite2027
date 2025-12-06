@@ -7931,93 +7931,219 @@ const app = {
             <html>
             <head>
                 <title>Teams and Approved Topics Report</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
                 <style>
                     @media print {
                         @page {
-                            margin: 1cm;
+                            margin: 1.5cm;
                             size: A4 landscape;
                         }
                         body {
                             margin: 0;
                             padding: 0;
                         }
+                        .no-print {
+                            display: none;
+                        }
+                    }
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
                     }
                     body {
-                        font-family: Arial, sans-serif;
-                        margin: 20px;
-                        color: #333;
+                        font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        margin: 0;
+                        padding: 30px;
+                        color: #1e293b;
+                        background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
                     }
                     .header {
                         text-align: center;
-                        margin-bottom: 30px;
-                        border-bottom: 3px solid #667eea;
-                        padding-bottom: 15px;
+                        margin-bottom: 35px;
+                        padding: 25px;
+                        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                        border-radius: 12px;
+                        box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+                        color: white;
                     }
                     .header h1 {
-                        margin: 0 0 10px 0;
-                        color: #667eea;
-                        font-size: 24px;
+                        margin: 0 0 15px 0;
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 32px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 1.5px;
+                        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
                     }
-                    .header p {
-                        margin: 5px 0;
-                        color: #666;
-                        font-size: 14px;
+                    .header .subtitle {
+                        font-size: 16px;
+                        font-weight: 400;
+                        opacity: 0.95;
+                        margin: 8px 0;
+                    }
+                    .header .stats {
+                        display: flex;
+                        justify-content: center;
+                        gap: 30px;
+                        margin-top: 20px;
+                        flex-wrap: wrap;
+                    }
+                    .header .stat-item {
+                        background: rgba(255, 255, 255, 0.2);
+                        padding: 10px 20px;
+                        border-radius: 8px;
+                        backdrop-filter: blur(10px);
+                    }
+                    .header .stat-label {
+                        font-size: 12px;
+                        opacity: 0.9;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    .header .stat-value {
+                        font-size: 24px;
+                        font-weight: 700;
+                        margin-top: 5px;
                     }
                     table {
                         width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 20px;
-                        font-size: 12px;
+                        border-collapse: separate;
+                        border-spacing: 0;
+                        margin-top: 25px;
+                        font-size: 13px;
+                        background: white;
+                        border-radius: 10px;
+                        overflow: hidden;
+                        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
                     }
                     th {
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
                         color: white;
-                        padding: 12px 8px;
+                        padding: 16px 12px;
                         text-align: left;
-                        font-weight: 600;
-                        border: 1px solid #5a67d8;
+                        font-weight: 700;
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 13px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        border: none;
+                        position: relative;
+                    }
+                    th:not(:last-child)::after {
+                        content: '';
+                        position: absolute;
+                        right: 0;
+                        top: 20%;
+                        height: 60%;
+                        width: 1px;
+                        background: rgba(255, 255, 255, 0.3);
                     }
                     td {
-                        padding: 10px 8px;
-                        border: 1px solid #e2e8f0;
+                        padding: 14px 12px;
+                        border-bottom: 1px solid #e2e8f0;
                         vertical-align: top;
+                        font-family: 'Lato', sans-serif;
+                    }
+                    tr:last-child td {
+                        border-bottom: none;
                     }
                     tr:nth-child(even) {
                         background: #f8fafc;
                     }
                     tr.no-approval {
-                        background: #fef2f2;
+                        background: linear-gradient(90deg, #fef2f2 0%, #fee2e2 100%);
+                    }
+                    tr.no-approval:hover {
+                        background: linear-gradient(90deg, #fee2e2 0%, #fecaca 100%);
+                    }
+                    tr:hover:not(.no-approval) {
+                        background: #f1f5f9;
+                        transition: background 0.2s;
                     }
                     .badge {
                         display: inline-block;
-                        padding: 4px 10px;
-                        border-radius: 4px;
+                        padding: 6px 12px;
+                        border-radius: 6px;
                         font-size: 11px;
-                        font-weight: 500;
+                        font-weight: 600;
+                        font-family: 'Montserrat', sans-serif;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-bottom: 5px;
                     }
                     .badge-approved {
-                        background: #d1fae5;
-                        color: #065f46;
+                        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                        color: white;
+                        box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
                     }
                     .badge-area {
-                        background: #e0e7ff;
-                        color: #3730a3;
+                        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+                        color: white;
+                        box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+                    }
+                    .badge-not-approved {
+                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                        color: white;
+                        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+                    }
+                    .team-name {
+                        font-weight: 700;
+                        font-family: 'Montserrat', sans-serif;
+                        color: #6366f1;
+                        font-size: 14px;
+                    }
+                    .guide-name {
+                        color: #64748b;
+                        font-weight: 500;
+                    }
+                    .topic-text {
+                        font-weight: 600;
+                        color: #1e293b;
+                        line-height: 1.5;
+                    }
+                    .problem-statement-text {
+                        font-size: 12px;
+                        line-height: 1.6;
+                        color: #475569;
+                        white-space: pre-wrap;
                     }
                     .footer {
-                        margin-top: 30px;
+                        margin-top: 40px;
                         text-align: center;
-                        font-size: 11px;
-                        color: #666;
-                        border-top: 1px solid #e2e8f0;
-                        padding-top: 10px;
+                        font-size: 12px;
+                        color: #64748b;
+                        border-top: 2px solid #e2e8f0;
+                        padding-top: 20px;
+                        font-family: 'Lato', sans-serif;
+                    }
+                    .footer .logo-text {
+                        font-family: 'Montserrat', sans-serif;
+                        font-weight: 700;
+                        font-size: 16px;
+                        color: #6366f1;
+                        margin-bottom: 5px;
                     }
                 </style>
             </head>
             <body>
                 <div class="header">
                     <h1>Teams and Approved Topics Report</h1>
-                    <p>Generated on: ${currentDate}</p>
-                    <p>Total Teams: ${this.teamsApprovedTopicsData.length}</p>
+                    <p class="subtitle">IGNITE Mini Project Management System</p>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Generated On</div>
+                            <div class="stat-value" style="font-size: 14px; font-weight: 600;">${currentDate}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Total Teams</div>
+                            <div class="stat-value">${this.teamsApprovedTopicsData.length}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Approved Topics</div>
+                            <div class="stat-value">${this.teamsApprovedTopicsData.filter(t => t.hasApproved).length}</div>
+                        </div>
+                    </div>
                 </div>
                 <table>
                     <thead>
@@ -8035,11 +8161,28 @@ const app = {
         this.teamsApprovedTopicsData.forEach(team => {
             html += `
                 <tr class="${team.hasApproved ? '' : 'no-approval'}">
-                    <td style="font-weight: 600;">${this.escapeHtml(team.teamName)}</td>
-                    <td>${this.escapeHtml(team.guideName)}</td>
-                    <td>${team.hasApproved ? `<span class="badge badge-approved">✓ Approved</span><br>${this.escapeHtml(team.approvedTopic)}` : '<span style="color: #999; font-style: italic;">Not approved</span>'}</td>
-                    <td>${team.hasApproved ? `<span class="badge badge-area">${this.escapeHtml(team.approvedArea)}</span>` : '-'}</td>
-                    <td style="font-size: 11px; line-height: 1.4;">${team.hasApproved ? this.escapeHtml(team.approvedProblemStatement) : '-'}</td>
+                    <td>
+                        <div class="team-name">👥 ${this.escapeHtml(team.teamName)}</div>
+                    </td>
+                    <td>
+                        <div class="guide-name">👔 ${this.escapeHtml(team.guideName)}</div>
+                    </td>
+                    <td>
+                        ${team.hasApproved ? `
+                            <span class="badge badge-approved">✓ Approved</span>
+                            <div class="topic-text" style="margin-top: 8px;">${this.escapeHtml(team.approvedTopic)}</div>
+                        ` : `
+                            <span class="badge badge-not-approved">Not Approved</span>
+                        `}
+                    </td>
+                    <td>
+                        ${team.hasApproved ? `
+                            <span class="badge badge-area">${this.escapeHtml(team.approvedArea)}</span>
+                        ` : '<span style="color: #94a3b8;">-</span>'}
+                    </td>
+                    <td>
+                        <div class="problem-statement-text">${team.hasApproved ? this.escapeHtml(team.approvedProblemStatement) : '<span style="color: #94a3b8;">-</span>'}</div>
+                    </td>
                 </tr>
             `;
         });
@@ -8048,7 +8191,9 @@ const app = {
                     </tbody>
                 </table>
                 <div class="footer">
+                    <div class="logo-text">IGNITE</div>
                     <p>This report was generated from the IGNITE Mini Project Management System</p>
+                    <p style="margin-top: 5px; font-size: 11px;">© ${new Date().getFullYear()} IGNITE - Empowering Dreams, One Step at a Time</p>
                 </div>
             </body>
             </html>
