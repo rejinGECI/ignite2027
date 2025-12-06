@@ -1018,6 +1018,7 @@ const app = {
             // Load students list and setup CSV upload for admin dashboard
                     await this.loadStudentsList();
                     await this.loadAllStudentFeedback();
+                    await this.loadAllBookSuggestions();
             this.setupCSVUpload();
         } else if (pageId === 'admin-progress') {
             // Load detailed student progress
@@ -2054,6 +2055,11 @@ const app = {
         if (!suggestionsList) return;
         
         try {
+            // Get user's hidden books preference
+            const userDataDoc = await getDoc(doc(window.firebaseDb, 'userData', window.firebaseAuth.currentUser.uid));
+            const userData = userDataDoc.exists() ? userDataDoc.data() : {};
+            const hiddenBookIds = userData.hiddenBookIds || [];
+            
             // Get all book suggestions from Firestore
             const suggestionsRef = collection(window.firebaseDb, 'bookSuggestions');
             const q = query(suggestionsRef, orderBy('createdAt', 'desc'));
@@ -2065,12 +2071,30 @@ const app = {
             }
             
             let html = '';
+            let visibleCount = 0;
+            
             querySnapshot.forEach((doc) => {
                 const suggestion = doc.data();
+                const suggestionId = doc.id;
+                
+                // Skip if this book is hidden by the user
+                if (hiddenBookIds.includes(suggestionId)) {
+                    return;
+                }
+                
+                // Only show published suggestions
+                if (suggestion.published === false) {
+                    return;
+                }
+                
+                visibleCount++;
                 const date = new Date(suggestion.createdAt).toLocaleDateString();
                 
                 html += `
-                    <div class="book-suggestion-item" style="background: var(--card-bg); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: var(--shadow); border-left: 4px solid var(--primary-color);">
+                    <div class="book-suggestion-item" style="background: var(--card-bg); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: var(--shadow); border-left: 4px solid var(--primary-color); position: relative;">
+                        <button onclick="app.hideBookSuggestion('${suggestionId}')" style="position: absolute; top: 1rem; right: 1rem; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 0.5rem;" title="Hide this suggestion">
+                            <i class="fas fa-eye-slash"></i>
+                        </button>
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                             <h5 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
                                 <i class="fas fa-book" style="color: var(--primary-color); margin-right: 0.5rem;"></i>
@@ -2090,10 +2114,35 @@ const app = {
                 `;
             });
             
-            suggestionsList.innerHTML = html;
+            if (visibleCount === 0) {
+                suggestionsList.innerHTML = '<p class="empty-state">No book suggestions to display. You may have hidden all suggestions.</p>';
+            } else {
+                suggestionsList.innerHTML = html;
+            }
         } catch (error) {
             console.error('Error loading book suggestions:', error);
             suggestionsList.innerHTML = '<p class="empty-state">Error loading suggestions. Please try again.</p>';
+        }
+    },
+    
+    async hideBookSuggestion(bookId) {
+        try {
+            const userDataDoc = await getDoc(doc(window.firebaseDb, 'userData', window.firebaseAuth.currentUser.uid));
+            const userData = userDataDoc.exists() ? userDataDoc.data() : {};
+            const hiddenBookIds = userData.hiddenBookIds || [];
+            
+            if (!hiddenBookIds.includes(bookId)) {
+                hiddenBookIds.push(bookId);
+                await setDoc(doc(window.firebaseDb, 'userData', window.firebaseAuth.currentUser.uid), {
+                    hiddenBookIds: hiddenBookIds
+                }, { merge: true });
+            }
+            
+            // Reload suggestions to update the display
+            await this.loadBookSuggestions();
+        } catch (error) {
+            console.error('Error hiding book suggestion:', error);
+            alert('Error hiding book suggestion. Please try again.');
         }
     },
     
@@ -2763,6 +2812,76 @@ const app = {
         }
     },
     
+    async loadAllBookSuggestions() {
+        const container = document.getElementById('admin-book-suggestions-container');
+        if (!container) return;
+        
+        if (!this.isAdmin && this.userRole !== 'admin') {
+            container.innerHTML = '<div class="error-message">Access denied. Admin access required.</div>';
+            return;
+        }
+        
+        container.innerHTML = '<div class="loading-state">Loading book suggestions...</div>';
+        
+        try {
+            const suggestionsRef = collection(window.firebaseDb, 'bookSuggestions');
+            const q = query(suggestionsRef, orderBy('createdAt', 'desc'));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+                container.innerHTML = '<p class="empty-state">No book suggestions from students yet.</p>';
+                return;
+            }
+            
+            const suggestions = [];
+            querySnapshot.forEach((doc) => {
+                const suggestion = doc.data();
+                suggestions.push({
+                    id: doc.id,
+                    bookName: suggestion.bookName || 'Unknown Book',
+                    note: suggestion.note || '',
+                    studentName: suggestion.studentName || 'Unknown',
+                    ktuid: suggestion.ktuid || 'Unknown',
+                    createdAt: suggestion.createdAt || new Date().toISOString(),
+                    published: suggestion.published !== false // Default to true if not set
+                });
+            });
+            
+            container.innerHTML = suggestions.map(suggestion => {
+                const date = new Date(suggestion.createdAt);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                return `
+                    <div class="admin-feedback-item">
+                        <div class="admin-feedback-header">
+                            <div class="admin-feedback-student">
+                                <strong><i class="fas fa-book" style="color: var(--primary-color); margin-right: 0.5rem;"></i>${this.escapeHtml(suggestion.bookName)}</strong>
+                                <span class="admin-feedback-ktuid">Suggested by ${this.escapeHtml(suggestion.studentName)} (${this.escapeHtml(suggestion.ktuid)})</span>
+                            </div>
+                            <div class="admin-feedback-date">${formattedDate}</div>
+                        </div>
+                        <div class="admin-feedback-text">${this.escapeHtml(suggestion.note)}</div>
+                        <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+                            <span style="font-size: 0.85rem; color: ${suggestion.published ? 'var(--success-color)' : 'var(--text-secondary)'};">
+                                <i class="fas fa-${suggestion.published ? 'check-circle' : 'eye-slash'}"></i> 
+                                ${suggestion.published ? 'Published' : 'Hidden'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading book suggestions:', error);
+            container.innerHTML = `<div class="error-message">Error loading book suggestions: ${error.message}</div>`;
+        }
+    },
+    
     // Load Detailed Student Progress
     async loadStudentProgress() {
         // Reset filter when loading progress page
@@ -2839,7 +2958,7 @@ const app = {
                     name: userData.name || userData.username || 'Unknown',
                     username: userData.username || userData.name || 'Unknown',
                     email: userData.email || '',
-                    streak: streak.current,
+                    streak: streak.longest, // Use longest streak (total streak) instead of current
                     longestStreak: streak.longest,
                     totalMinutes: totalMinutes,
                     totalHours: totalHours,
@@ -2936,7 +3055,7 @@ const app = {
                             <p class="progress-student-ktuid">KTU ID: ${this.escapeHtml(student.username)}</p>
                         </div>
                         <div class="progress-badge ${student.streak > 0 ? 'active' : 'inactive'}">
-                            <i class="fas fa-fire"></i> ${student.streak} Day Streak
+                            <i class="fas fa-fire"></i> ${student.streak} Day Total Streak
                         </div>
                     </div>
                     
@@ -2945,8 +3064,8 @@ const app = {
                             <div class="progress-stat-icon"><i class="fas fa-fire"></i></div>
                             <div class="progress-stat-content">
                                 <div class="progress-stat-value">${student.streak}</div>
-                                <div class="progress-stat-label">Current Streak</div>
-                                <div class="progress-stat-sub">Longest: ${student.longestStreak} days</div>
+                                <div class="progress-stat-label">Total Streak</div>
+                                <div class="progress-stat-sub">Longest streak achieved</div>
                             </div>
                         </div>
                         
