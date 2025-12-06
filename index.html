@@ -871,9 +871,14 @@ Bob Johnson,GHI789</pre>
                             
                             <!-- Teams and Approved Topics Table -->
                             <div id="teams-approved-topics-table-container" style="margin-bottom: 2rem;">
-                                <h4 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">
-                                    <i class="fas fa-table"></i> Teams and Approved Topics
-                                </h4>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h4 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
+                                        <i class="fas fa-table"></i> Teams and Approved Topics
+                                    </h4>
+                                    <button type="button" class="btn btn-secondary" id="print-teams-topics-report-btn" onclick="app.printTeamsApprovedTopicsReport()" style="display: none;">
+                                        <i class="fas fa-print"></i> Print Report
+                                    </button>
+                                </div>
                                 <div id="teams-approved-topics-table" style="overflow-x: auto;">
                                     <p class="empty-state">Loading teams and approved topics...</p>
                                 </div>

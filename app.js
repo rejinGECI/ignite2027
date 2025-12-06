@@ -7897,10 +7897,170 @@ const app = {
                     </tbody>
                 </table>
             `;
+            
+            // Show print button after table is loaded
+            const printBtn = document.getElementById('print-teams-topics-report-btn');
+            if (printBtn) {
+                printBtn.style.display = 'inline-flex';
+            }
+            
+            // Store data for printing
+            this.teamsApprovedTopicsData = teamsWithApprovedTopics;
         } catch (error) {
             console.error('Error loading teams and approved topics table:', error);
             tableContainer.innerHTML = '<p class="error-message">Error loading teams and approved topics.</p>';
         }
+    },
+    
+    // Print teams and approved topics report
+    printTeamsApprovedTopicsReport() {
+        if (!this.teamsApprovedTopicsData || this.teamsApprovedTopicsData.length === 0) {
+            alert('No data available to print.');
+            return;
+        }
+        
+        const printWindow = window.open('', '_blank');
+        const currentDate = new Date().toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+        
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Teams and Approved Topics Report</title>
+                <style>
+                    @media print {
+                        @page {
+                            margin: 1cm;
+                            size: A4 landscape;
+                        }
+                        body {
+                            margin: 0;
+                            padding: 0;
+                        }
+                    }
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 20px;
+                        color: #333;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 3px solid #667eea;
+                        padding-bottom: 15px;
+                    }
+                    .header h1 {
+                        margin: 0 0 10px 0;
+                        color: #667eea;
+                        font-size: 24px;
+                    }
+                    .header p {
+                        margin: 5px 0;
+                        color: #666;
+                        font-size: 14px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        padding: 12px 8px;
+                        text-align: left;
+                        font-weight: 600;
+                        border: 1px solid #5a67d8;
+                    }
+                    td {
+                        padding: 10px 8px;
+                        border: 1px solid #e2e8f0;
+                        vertical-align: top;
+                    }
+                    tr:nth-child(even) {
+                        background: #f8fafc;
+                    }
+                    tr.no-approval {
+                        background: #fef2f2;
+                    }
+                    .badge {
+                        display: inline-block;
+                        padding: 4px 10px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 500;
+                    }
+                    .badge-approved {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .badge-area {
+                        background: #e0e7ff;
+                        color: #3730a3;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #666;
+                        border-top: 1px solid #e2e8f0;
+                        padding-top: 10px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>Teams and Approved Topics Report</h1>
+                    <p>Generated on: ${currentDate}</p>
+                    <p>Total Teams: ${this.teamsApprovedTopicsData.length}</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">Team Name</th>
+                            <th style="width: 18%;">Guide</th>
+                            <th style="width: 22%;">Approved Topic</th>
+                            <th style="width: 15%;">Area/Technology</th>
+                            <th style="width: 25%;">Problem Statement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        this.teamsApprovedTopicsData.forEach(team => {
+            html += `
+                <tr class="${team.hasApproved ? '' : 'no-approval'}">
+                    <td style="font-weight: 600;">${this.escapeHtml(team.teamName)}</td>
+                    <td>${this.escapeHtml(team.guideName)}</td>
+                    <td>${team.hasApproved ? `<span class="badge badge-approved">✓ Approved</span><br>${this.escapeHtml(team.approvedTopic)}` : '<span style="color: #999; font-style: italic;">Not approved</span>'}</td>
+                    <td>${team.hasApproved ? `<span class="badge badge-area">${this.escapeHtml(team.approvedArea)}</span>` : '-'}</td>
+                    <td style="font-size: 11px; line-height: 1.4;">${team.hasApproved ? this.escapeHtml(team.approvedProblemStatement) : '-'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+                <div class="footer">
+                    <p>This report was generated from the IGNITE Mini Project Management System</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        printWindow.document.write(html);
+        printWindow.document.close();
+        
+        // Wait for content to load, then print
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
     },
     
     async approveProblemStatement(problemStatementId, teamId) {
