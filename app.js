@@ -7748,14 +7748,14 @@ const app = {
                                         </button>
                                     ` : ''}
                                 </div>
-                                <div style="width: calc(100% + 7rem); margin-left: -3.5rem; margin-right: -3.5rem; ${ps.solution ? 'margin-bottom: 1.5rem;' : 'margin-bottom: -1.5rem;'} margin-top: 1rem; padding: 1.5rem 3.5rem; background: #f9fafb; border-radius: ${ps.solution ? '0' : '0 0 8px 8px'}; border-left: none; border-right: none; border-top: 1px solid #e5e7eb; ${ps.solution ? 'border-bottom: 1px solid #e5e7eb;' : 'border-bottom: none;'} box-sizing: border-box; display: block;">
+                                <div style="width: 100%; margin-bottom: 1.5rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; box-sizing: border-box;">
                                     <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; width: 100%;">
                                         <i class="fas fa-file-alt"></i> Problem Statement:
                                     </strong>
                                     <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; width: 100%; box-sizing: border-box; word-break: break-word; overflow-wrap: break-word; display: block;">${this.escapeHtml(ps.problemStatement)}</p>
                                 </div>
                                 ${ps.solution ? `
-                                    <div style="width: calc(100% + 7rem); margin-left: -3.5rem; margin-right: -3.5rem; margin-bottom: -1.5rem; margin-top: 0; padding: 1.5rem 3.5rem; background: #f0fdf4; border-radius: 0 0 8px 8px; border-left: none; border-right: none; border-top: 1px solid #bbf7d0; border-bottom: none; box-sizing: border-box; display: block;">
+                                    <div style="width: 100%; margin-bottom: 0; padding: 1.5rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; box-sizing: border-box;">
                                         <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; width: 100%;">
                                             <i class="fas fa-lightbulb"></i> Solution:
                                         </strong>
