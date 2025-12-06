@@ -7660,12 +7660,15 @@ const app = {
             );
             const snapshot = await getDocs(problemStatementsQuery);
             
-            // Get all teams
+            // Get all teams (excluding deleted ones)
             const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
             const teamsSnapshot = await getDocs(teamsQuery);
             const teamsMap = {};
             teamsSnapshot.forEach(doc => {
-                teamsMap[doc.id] = doc.data();
+                const data = doc.data();
+                if (!data.deleted) { // Filter out deleted teams
+                    teamsMap[doc.id] = data;
+                }
             });
             
             // Load teams and approved topics table
@@ -7686,9 +7689,12 @@ const app = {
                 return;
             }
             
-            // Group problem statements by team
+            // Group problem statements by team (excluding deleted teams)
             const groupedByTeam = {};
             problemStatements.forEach(ps => {
+                // Skip if team is deleted
+                if (ps.team && ps.team.deleted) return;
+                
                 const teamId = ps.teamId || 'unknown';
                 const teamName = ps.team ? (ps.team.groupName || 'Unknown Team') : 'Unknown Team';
                 
@@ -7855,10 +7861,13 @@ const app = {
                 }
             });
             
-            // Get all teams and their approved topics
+            // Get all teams and their approved topics (excluding deleted teams)
             const teamsWithApprovedTopics = [];
             Object.keys(teamsMap).forEach(teamId => {
                 const team = teamsMap[teamId];
+                // Skip deleted teams
+                if (team.deleted) return;
+                
                 const approvedPS = approvedProblemStatements.find(ps => ps.teamId === teamId);
                 const hasAnyProblemStatements = allProblemStatements.some(ps => ps.teamId === teamId);
                 
