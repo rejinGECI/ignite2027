@@ -729,6 +729,31 @@ Bob Johnson,GHI789</pre>
                             </div>
                         </div>
                     </div>
+                    
+                    <div class="admin-card">
+                        <h3><i class="fas fa-sort"></i> Team Display Order</h3>
+                        <p>Set the order in which teams are displayed in evaluations and reports</p>
+                        <div class="settings-item" style="margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label for="team-order-type" style="display: block; margin-bottom: 8px; font-weight: 600;">Order Type</label>
+                                <select id="team-order-type" class="form-input" onchange="app.onTeamOrderTypeChange()">
+                                    <option value="alphabetical">Alphabetical (A-Z)</option>
+                                    <option value="custom">Custom Order</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="team-order-custom-section" style="display: none;">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 600;">Drag teams to reorder</label>
+                                <div id="team-order-list" class="team-order-list" style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9; min-height: 200px; max-height: 400px; overflow-y: auto;">
+                                    <p class="empty-state" style="text-align: center; color: #666;">Loading teams...</p>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="app.saveTeamOrder()" style="width: 100%;">
+                                <i class="fas fa-save"></i> Save Team Order
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             

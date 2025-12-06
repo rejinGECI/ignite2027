@@ -3378,6 +3378,259 @@ const app = {
         
         // Load evaluation stages
         await this.loadEvaluationStages();
+        
+        // Load team order settings
+        await this.loadTeamOrderSettings();
+    },
+    
+    async loadTeamOrderSettings() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const teamOrderType = settingsDoc.exists() ? (settingsDoc.data().teamOrderType || 'alphabetical') : 'alphabetical';
+            const customTeamOrder = settingsDoc.exists() ? (settingsDoc.data().customTeamOrder || []) : [];
+            
+            const orderTypeSelect = document.getElementById('team-order-type');
+            const customSection = document.getElementById('team-order-custom-section');
+            
+            if (orderTypeSelect) {
+                orderTypeSelect.value = teamOrderType;
+            }
+            
+            if (customSection) {
+                customSection.style.display = teamOrderType === 'custom' ? 'block' : 'none';
+            }
+            
+            // Load teams for custom order if needed
+            if (teamOrderType === 'custom') {
+                await this.loadTeamsForCustomOrder(customTeamOrder);
+            }
+        } catch (error) {
+            console.error('Error loading team order settings:', error);
+        }
+    },
+    
+    async loadTeamsForCustomOrder(savedOrder = []) {
+        const teamOrderList = document.getElementById('team-order-list');
+        if (!teamOrderList) return;
+        
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) {
+                    teams.push({
+                        id: doc.id,
+                        groupName: data.groupName || 'Unnamed Team',
+                        ...data
+                    });
+                }
+            });
+            
+            // Sort teams based on saved order
+            const orderedTeams = [];
+            const teamMap = new Map(teams.map(t => [t.id, t]));
+            
+            // First add teams in saved order
+            savedOrder.forEach(teamId => {
+                if (teamMap.has(teamId)) {
+                    orderedTeams.push(teamMap.get(teamId));
+                    teamMap.delete(teamId);
+                }
+            });
+            
+            // Then add remaining teams alphabetically
+            const remainingTeams = Array.from(teamMap.values()).sort((a, b) => {
+                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            orderedTeams.push(...remainingTeams);
+            
+            // Render sortable list
+            teamOrderList.innerHTML = orderedTeams.map((team, index) => `
+                <div class="team-order-item" data-team-id="${team.id}" style="display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 8px; background: white; border: 1px solid #ddd; border-radius: 6px; cursor: move;">
+                    <i class="fas fa-grip-vertical" style="color: #999; cursor: grab;"></i>
+                    <span style="flex: 1; font-weight: 500;">${this.escapeHtml(team.groupName || 'Unnamed Team')}</span>
+                    <span style="color: #666; font-size: 0.9rem;">#${index + 1}</span>
+                </div>
+            `).join('');
+            
+            // Make list sortable using HTML5 drag and drop
+            this.makeTeamOrderListSortable(teamOrderList);
+            
+        } catch (error) {
+            console.error('Error loading teams for custom order:', error);
+            teamOrderList.innerHTML = '<p class="empty-state" style="text-align: center; color: #d32f2f;">Error loading teams. Please try again.</p>';
+        }
+    },
+    
+    makeTeamOrderListSortable(container) {
+        const items = container.querySelectorAll('.team-order-item');
+        let draggedElement = null;
+        let draggedIndex = null;
+        
+        items.forEach((item, index) => {
+            item.draggable = true;
+            item.dataset.index = index;
+            
+            item.addEventListener('dragstart', (e) => {
+                draggedElement = item;
+                draggedIndex = index;
+                item.classList.add('dragging');
+                item.style.opacity = '0.5';
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', item.innerHTML);
+            });
+            
+            item.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+                item.style.opacity = '1';
+                draggedElement = null;
+                draggedIndex = null;
+                this.updateTeamOrderNumbers(container);
+            });
+            
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                
+                if (!draggedElement || item === draggedElement) return;
+                
+                const rect = item.getBoundingClientRect();
+                const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+                
+                if (next && item.nextSibling) {
+                    container.insertBefore(draggedElement, item.nextSibling);
+                } else {
+                    container.insertBefore(draggedElement, item);
+                }
+            });
+            
+            item.addEventListener('drop', (e) => {
+                e.preventDefault();
+            });
+        });
+    },
+    
+    updateTeamOrderNumbers(container) {
+        const items = container.querySelectorAll('.team-order-item');
+        items.forEach((item, index) => {
+            const numberSpan = item.querySelector('span:last-child');
+            if (numberSpan) {
+                numberSpan.textContent = `#${index + 1}`;
+            }
+        });
+    },
+    
+    onTeamOrderTypeChange() {
+        const orderTypeSelect = document.getElementById('team-order-type');
+        const customSection = document.getElementById('team-order-custom-section');
+        
+        if (!orderTypeSelect || !customSection) return;
+        
+        if (orderTypeSelect.value === 'custom') {
+            customSection.style.display = 'block';
+            this.loadTeamsForCustomOrder();
+        } else {
+            customSection.style.display = 'none';
+            // Save alphabetical order immediately
+            this.saveTeamOrder();
+        }
+    },
+    
+    async saveTeamOrder() {
+        const orderTypeSelect = document.getElementById('team-order-type');
+        const teamOrderList = document.getElementById('team-order-list');
+        
+        if (!orderTypeSelect) return;
+        
+        const orderType = orderTypeSelect.value;
+        let customTeamOrder = [];
+        
+        if (orderType === 'custom' && teamOrderList) {
+            const items = teamOrderList.querySelectorAll('.team-order-item');
+            customTeamOrder = Array.from(items).map(item => item.getAttribute('data-team-id'));
+        }
+        
+        try {
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                teamOrderType: orderType,
+                customTeamOrder: customTeamOrder,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            alert('Team order saved successfully!');
+        } catch (error) {
+            console.error('Error saving team order:', error);
+            alert('Error saving team order. Please try again.');
+        }
+    },
+    
+    async getTeamOrderSettings() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            if (settingsDoc.exists()) {
+                return {
+                    orderType: settingsDoc.data().teamOrderType || 'alphabetical',
+                    customOrder: settingsDoc.data().customTeamOrder || []
+                };
+            }
+            return { orderType: 'alphabetical', customOrder: [] };
+        } catch (error) {
+            console.error('Error loading team order settings:', error);
+            return { orderType: 'alphabetical', customOrder: [] };
+        }
+    },
+    
+    async applyTeamOrder(teams) {
+        const orderSettings = await this.getTeamOrderSettings();
+        
+        if (orderSettings.orderType === 'alphabetical') {
+            // Sort alphabetically by group name
+            return teams.sort((a, b) => {
+                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+                if (nameA < nameB) return -1;
+                if (nameA > nameB) return 1;
+                return 0;
+            });
+        } else if (orderSettings.orderType === 'custom' && orderSettings.customOrder.length > 0) {
+            // Apply custom order
+            const orderedTeams = [];
+            const teamMap = new Map(teams.map(t => [t.id, t]));
+            const addedIds = new Set();
+            
+            // First add teams in saved custom order
+            orderSettings.customOrder.forEach(teamId => {
+                if (teamMap.has(teamId)) {
+                    orderedTeams.push(teamMap.get(teamId));
+                    addedIds.add(teamId);
+                }
+            });
+            
+            // Then add remaining teams alphabetically
+            const remainingTeams = teams
+                .filter(t => !addedIds.has(t.id))
+                .sort((a, b) => {
+                    const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+                    const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+            orderedTeams.push(...remainingTeams);
+            
+            return orderedTeams;
+        }
+        
+        // Default: alphabetical
+        return teams.sort((a, b) => {
+            const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+            const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
     },
     
     async loadEvaluationStages() {
@@ -4726,23 +4979,17 @@ const app = {
                 }
             });
             
-            // Sort teams alphabetically by name (case-insensitive)
-            teams.sort((a, b) => {
-                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
-                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
-                if (nameA < nameB) return -1;
-                if (nameA > nameB) return 1;
-                return 0;
-            });
+            // Apply team order settings
+            const sortedTeams = await this.applyTeamOrder(teams);
             
-            if (teams.length === 0) {
+            if (sortedTeams.length === 0) {
                 teamsList.innerHTML = '<p class="empty-state">No teams available.</p>';
                 teamsContainer.style.display = 'block';
                 return;
             }
             
             // Check evaluation status for each team
-            const teamsWithStatus = await Promise.all(teams.map(async (team) => {
+            const teamsWithStatus = await Promise.all(sortedTeams.map(async (team) => {
                 try {
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
                     const evalData = evalDoc.exists() ? evalDoc.data() : null;
@@ -5947,6 +6194,7 @@ const app = {
                 if (!data.deleted) {
                     teams.push({
                         id: doc.id,
+                        groupName: data.groupName || 'Unnamed Team',
                         ...data
                     });
                 }
@@ -5964,14 +6212,8 @@ const app = {
                 }
             }));
             
-            // Sort teams alphabetically
-            teamsWithEvaluations.sort((a, b) => {
-                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
-                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
-                if (nameA < nameB) return -1;
-                if (nameA > nameB) return 1;
-                return 0;
-            });
+            // Apply team order settings
+            const sortedTeamsWithEvaluations = await this.applyTeamOrder(teamsWithEvaluations);
             
             // Get mark parameters
             const teamParams = stage.teamMarkParams || [];
@@ -5981,12 +6223,12 @@ const app = {
             
             // Generate based on format
             if (format === 'csv') {
-                this.generateConsolidatedCSVReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+                this.generateConsolidatedCSVReport(sortedTeamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
             } else if (format === 'json') {
-                this.generateConsolidatedJSONReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+                this.generateConsolidatedJSONReport(sortedTeamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
             } else {
                 // For PDF/HTML/DOCX, generate a consolidated HTML report
-                const reportContent = this.generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+                const reportContent = this.generateConsolidatedReportContent(sortedTeamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
                 
                 if (format === 'pdf') {
                     await this.generatePDFReport(reportContent, { groupName: 'All Teams' }, stage);
