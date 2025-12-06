@@ -5470,57 +5470,57 @@ const app = {
         
         // Build report HTML content
         let html = `
-            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: linear-gradient(to bottom, #fefcfb, #fef9f4, #ffffff);">
+            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: #ffffff;">
                 <!-- Header -->
-                <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: linear-gradient(135deg, #d4c4fb 0%, #c7d2fe 50%, #bfdbfe 100%); border-radius: 20px; box-shadow: 0 8px 32px rgba(196, 181, 253, 0.3);">
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #5b21b6; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #5b21b6; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #5b21b6; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
-                    <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: rgba(255,255,255,0.85); border-radius: 15px; display: inline-block; color: #6b46c1; box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2); border: 2px solid rgba(255,255,255,0.6);">
+                <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
+                    <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: #f8fafc; border-radius: 12px; display: inline-block; color: #1f2937; border: 2px solid rgba(0, 0, 0, 0.08);">
                         ${this.escapeHtml(stage.name)}
                     </div>
                 </div>
                 
                 <!-- Team Information -->
-                <div style="margin-bottom: 35px; padding: 30px; background: linear-gradient(135deg, #fef3ff 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(236, 189, 255, 0.25); border: 1px solid rgba(236, 189, 255, 0.3);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #9333ea; border-left: 5px solid #d8b4fe; padding-left: 15px; letter-spacing: 0.5px;">Team Information</h3>
-                    <div style="display: grid; gap: 18px;">
-                        <div style="display: flex; align-items: center; padding: 16px 20px; background: rgba(255, 255, 255, 0.8); border-radius: 12px; box-shadow: 0 2px 8px rgba(236, 189, 255, 0.15);">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #7c3aed; min-width: 150px; font-size: 15px;">Team Name:</span>
-                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #2d3748; font-size: 16px;">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
+                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #9333ea; padding-left: 15px; letter-spacing: 0.5px;">Team Information</h3>
+                    <div style="display: grid; gap: 15px;">
+                        <div style="display: flex; align-items: center; padding: 16px 20px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 150px; font-size: 15px;">Team Name:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 16px;">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
                         </div>
                         ${teamData.topic ? `
-                        <div style="display: flex; align-items: center; padding: 16px 20px; background: rgba(255, 255, 255, 0.8); border-radius: 12px; box-shadow: 0 2px 8px rgba(236, 189, 255, 0.15);">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #7c3aed; min-width: 150px; font-size: 15px;">Topic:</span>
-                            <span style="font-family: 'Lato', sans-serif; color: #2d3748; font-size: 16px;">${this.escapeHtml(teamData.topic)}</span>
+                        <div style="display: flex; align-items: center; padding: 16px 20px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 150px; font-size: 15px;">Topic:</span>
+                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: 16px;">${this.escapeHtml(teamData.topic)}</span>
                         </div>
                         ` : ''}
                         ${teamData.guideName ? `
-                        <div style="display: flex; align-items: center; padding: 16px 20px; background: rgba(255, 255, 255, 0.8); border-radius: 12px; box-shadow: 0 2px 8px rgba(236, 189, 255, 0.15);">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #7c3aed; min-width: 150px; font-size: 15px;">Guide:</span>
-                            <span style="font-family: 'Lato', sans-serif; color: #2d3748; font-size: 16px;">${this.escapeHtml(teamData.guideName)}</span>
+                        <div style="display: flex; align-items: center; padding: 16px 20px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 150px; font-size: 15px;">Guide:</span>
+                            <span style="font-family: 'Lato', sans-serif; color: #1f2937; font-size: 16px;">${this.escapeHtml(teamData.guideName)}</span>
                         </div>
                         ` : ''}
                     </div>
                 </div>
                 
                 <!-- Team Members -->
-                <div style="margin-bottom: 35px; padding: 30px; background: linear-gradient(135deg, #e0f2fe 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(147, 197, 253, 0.25); border: 1px solid rgba(147, 197, 253, 0.3);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #0284c7; border-left: 5px solid #93c5fd; padding-left: 15px; letter-spacing: 0.5px;">Team Members</h3>
+                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 15px; letter-spacing: 0.5px;">Team Members</h3>
                     <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
                         <thead>
                             <tr>
-                                <th style="padding: 16px 18px; background: linear-gradient(135deg, #bfdbfe 0%, #a5b4fc 100%); color: #1e40af; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 12px 0 0 0; letter-spacing: 0.5px;">Sl. No.</th>
-                                <th style="padding: 16px 18px; background: linear-gradient(135deg, #bfdbfe 0%, #a5b4fc 100%); color: #1e40af; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px;">Name</th>
-                                <th style="padding: 16px 18px; background: linear-gradient(135deg, #bfdbfe 0%, #a5b4fc 100%); color: #1e40af; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 12px 0 0; letter-spacing: 0.5px;">KTU ID</th>
+                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Sl. No.</th>
+                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Name</th>
+                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${members.map((member, index) => `
-                                <tr style="${index % 2 === 0 ? 'background-color: rgba(255, 255, 255, 0.6);' : 'background-color: rgba(239, 246, 255, 0.5);'}">
-                                    <td style="padding: 14px 18px; text-align: center; color: #0284c7; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 15px; border-bottom: 1px solid rgba(147, 197, 253, 0.3);">${index + 1}</td>
-                                    <td style="padding: 14px 18px; color: #2d3748; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid rgba(147, 197, 253, 0.3);">${this.escapeHtml(member.name || 'N/A')}</td>
-                                    <td style="padding: 14px 18px; color: #2d3748; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 500; border-bottom: 1px solid rgba(147, 197, 253, 0.3);">${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                <tr style="${index % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
+                                    <td style="padding: 14px 18px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+                                    <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
+                                    <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -5529,44 +5529,44 @@ const app = {
                 
                 <!-- Team Evaluation -->
                 ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
-                <div style="margin-bottom: 35px; padding: 30px; background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(167, 243, 208, 0.25); border: 1px solid rgba(167, 243, 208, 0.3);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #059669; border-left: 5px solid #86efac; padding-left: 15px; letter-spacing: 0.5px;">Team Evaluation</h3>
+                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #059669; padding-left: 15px; letter-spacing: 0.5px;">Team Evaluation</h3>
                     ${teamParams.length > 0 ? `
                         <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px;">
                             <thead>
                                 <tr>
-                                    <th style="padding: 16px 18px; background: linear-gradient(135deg, #a7f3d0 0%, #86efac 100%); color: #065f46; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 12px 0 0 0; letter-spacing: 0.5px;">Parameter</th>
-                                    <th style="padding: 16px 18px; background: linear-gradient(135deg, #a7f3d0 0%, #86efac 100%); color: #065f46; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px;">Marks Obtained</th>
-                                    <th style="padding: 16px 18px; background: linear-gradient(135deg, #a7f3d0 0%, #86efac 100%); color: #065f46; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 12px 0 0; letter-spacing: 0.5px;">Maximum Marks</th>
+                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Parameter</th>
+                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Marks Obtained</th>
+                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Maximum Marks</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${teamParams.map((param, idx) => {
                                     const paramMarks = teamMarksData[param.name] || 0;
                                     return `
-                                        <tr style="${idx % 2 === 0 ? 'background-color: rgba(255, 255, 255, 0.6);' : 'background-color: rgba(236, 253, 245, 0.5);'}">
-                                            <td style="padding: 14px 18px; color: #2d3748; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid rgba(167, 243, 208, 0.3);">${this.escapeHtml(param.name)}</td>
-                                            <td style="padding: 14px 18px; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 600; border-bottom: 1px solid rgba(167, 243, 208, 0.3);">${paramMarks}</td>
-                                            <td style="padding: 14px 18px; text-align: center; color: #6b7280; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid rgba(167, 243, 208, 0.3);">${param.maxMarks}</td>
+                                        <tr style="${idx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
+                                            <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
+                                            <td style="padding: 14px 18px; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                            <td style="padding: 14px 18px; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                         </tr>
                                     `;
                                 }).join('')}
-                                <tr style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-top: 3px solid #10b981;">
-                                    <td style="padding: 16px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #065f46; font-size: 16px; border-radius: 0 0 0 12px;">Total</td>
+                                <tr style="background: #f0fdf4; border-top: 2px solid #059669;">
+                                    <td style="padding: 16px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 16px; border-radius: 0 0 0 8px;">Total</td>
                                     <td style="padding: 16px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: 18px;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
-                                    <td style="padding: 16px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #065f46; font-size: 16px; border-radius: 0 0 12px 0;">${teamTotal}</td>
+                                    <td style="padding: 16px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 16px; border-radius: 0 0 8px 0;">${teamTotal}</td>
                                 </tr>
                             </tbody>
                         </table>
                     ` : `
-                        <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 12px; border-left: 5px solid #10b981; box-shadow: 0 4px 12px rgba(167, 243, 208, 0.2);">
-                            <strong style="font-family: 'Lato', sans-serif; font-size: 17px; color: #065f46;">Total Team Marks: <span style="color: #059669; font-size: 20px; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
+                        <div style="margin-bottom: 25px; padding: 20px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #059669;">
+                            <strong style="font-family: 'Lato', sans-serif; font-size: 17px; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: 20px; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
                         </div>
                     `}
                     ${teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>' ? `
-                        <div style="margin-top: 25px; padding: 20px; background: rgba(255, 255, 255, 0.8); border-radius: 12px; border-left: 5px solid #d8b4fe; box-shadow: 0 4px 12px rgba(216, 180, 254, 0.15);">
-                            <h4 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #9333ea;">Team Comments</h4>
-                            <div style="padding: 14px; background: rgba(250, 250, 250, 0.8); border-radius: 8px; color: #374151; font-family: 'Lato', sans-serif; font-size: 15px; line-height: 1.7;">
+                        <div style="margin-top: 25px; padding: 20px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
+                            <h4 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #1f2937;">Team Comments</h4>
+                            <div style="padding: 14px; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: 15px; line-height: 1.7;">
                                 ${teamComments}
                             </div>
                         </div>
@@ -5577,7 +5577,7 @@ const app = {
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
                 <div style="margin-bottom: 35px;">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #7e22ce; border-left: 5px solid #d8b4fe; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
@@ -5586,49 +5586,49 @@ const app = {
                         const isAbsent = individualEval.isAbsent || false;
                         
                         return `
-                            <div style="margin-bottom: 25px; padding: 25px; background: linear-gradient(135deg, ${isAbsent ? '#fef2f2' : '#faf5ff'} 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(${isAbsent ? '254, 226, 226' : '216, 180, 254'}, 0.25); border-left: 5px solid ${isAbsent ? '#fca5a5' : '#d8b4fe'};">
-                                <h4 style="font-family: 'Lato', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 18px; color: #2d3748; display: flex; align-items: center; gap: 12px;">
-                                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: linear-gradient(135deg, ${isAbsent ? '#fca5a5' : '#e9d5ff'} 0%, ${isAbsent ? '#f87171' : '#d8b4fe'} 100%); color: ${isAbsent ? '#991b1b' : '#7e22ce'}; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; box-shadow: 0 2px 8px rgba(${isAbsent ? '248, 113, 113' : '216, 180, 254'}, 0.3);">${index + 1}</span>
+                            <div style="margin-bottom: 25px; padding: 25px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); border-left: 4px solid ${isAbsent ? '#ef4444' : '#7e22ce'};">
+                                <h4 style="font-family: 'Lato', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 18px; color: #1f2937; display: flex; align-items: center; gap: 12px;">
+                                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: ${isAbsent ? '#fee2e2' : '#f3e8ff'}; color: ${isAbsent ? '#991b1b' : '#7e22ce'}; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; border: 2px solid ${isAbsent ? '#fca5a5' : '#d8b4fe'};">${index + 1}</span>
                                     ${this.escapeHtml(member.name || member.ktuid || 'N/A')}
                                     ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 500; font-size: 15px;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
-                                    ${isAbsent ? ' <span style="padding: 6px 12px; background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%); color: #991b1b; border-radius: 8px; font-size: 12px; font-weight: 600; font-family: \'Montserrat\', sans-serif;">Absent</span>' : ''}
+                                    ${isAbsent ? ' <span style="padding: 6px 12px; background: #fee2e2; color: #991b1b; border-radius: 8px; font-size: 12px; font-weight: 600; font-family: \'Montserrat\', sans-serif; border: 1px solid #fca5a5;">Absent</span>' : ''}
                                 </h4>
                                 ${individualParams.length > 0 && !isAbsent ? `
                                     <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px;">
                                         <thead>
                                             <tr>
-                                                <th style="padding: 14px 18px; background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%); color: #6b21a8; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 12px 0 0 0; letter-spacing: 0.5px;">Parameter</th>
-                                                <th style="padding: 14px 18px; background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%); color: #6b21a8; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.5px;">Marks Obtained</th>
-                                                <th style="padding: 14px 18px; background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%); color: #6b21a8; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 0 12px 0 0; letter-spacing: 0.5px;">Maximum Marks</th>
+                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Parameter</th>
+                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Marks Obtained</th>
+                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Maximum Marks</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             ${individualParams.map((param, paramIdx) => {
                                                 const paramMarks = individualEval.marksData?.[param.name] || 0;
                                                 return `
-                                                    <tr style="${paramIdx % 2 === 0 ? 'background-color: rgba(255, 255, 255, 0.6);' : 'background-color: rgba(250, 245, 255, 0.5);'}">
-                                                        <td style="padding: 12px 18px; color: #2d3748; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid rgba(216, 180, 254, 0.3);">${this.escapeHtml(param.name)}</td>
-                                                        <td style="padding: 12px 18px; text-align: center; color: #7e22ce; font-family: 'Lato', sans-serif; font-size: 14px; font-weight: 600; border-bottom: 1px solid rgba(216, 180, 254, 0.3);">${paramMarks}</td>
-                                                        <td style="padding: 12px 18px; text-align: center; color: #6b7280; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid rgba(216, 180, 254, 0.3);">${param.maxMarks}</td>
+                                                    <tr style="${paramIdx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
+                                                        <td style="padding: 12px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
+                                                        <td style="padding: 12px 18px; text-align: center; color: #7e22ce; font-family: 'Lato', sans-serif; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                                        <td style="padding: 12px 18px; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                                     </tr>
                                                 `;
                                             }).join('')}
-                                            <tr style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border-top: 3px solid #d8b4fe;">
-                                                <td style="padding: 14px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #6b21a8; font-size: 15px; border-radius: 0 0 0 12px;">Total</td>
+                                            <tr style="background: #f3e8ff; border-top: 2px solid #7e22ce;">
+                                                <td style="padding: 14px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 0 8px;">Total</td>
                                                 <td style="padding: 14px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #7e22ce; font-size: 17px;">${studentMarks}</td>
-                                                <td style="padding: 14px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #6b21a8; font-size: 15px; border-radius: 0 0 12px 0;">${individualTotal}</td>
+                                                <td style="padding: 14px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 8px 0;">${individualTotal}</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 ` : `
-                                    <div style="margin-bottom: 18px; padding: 16px; background: ${isAbsent ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' : 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)'}; border-radius: 12px; border-left: 5px solid ${isAbsent ? '#fca5a5' : '#d8b4fe'}; box-shadow: 0 4px 12px rgba(${isAbsent ? '252, 165, 165' : '216, 180, 254'}, 0.2);">
-                                        <strong style="font-family: 'Lato', sans-serif; font-size: 16px; color: ${isAbsent ? '#991b1b' : '#6b21a8'};">Individual Marks: <span style="color: ${isAbsent ? '#dc2626' : '#7e22ce'}; font-size: 19px; font-weight: 700;">${studentMarks}</span> / ${individualTotal}</strong>
+                                    <div style="margin-bottom: 18px; padding: 16px; background: ${isAbsent ? '#fee2e2' : '#f3e8ff'}; border-radius: 8px; border-left: 4px solid ${isAbsent ? '#ef4444' : '#7e22ce'};">
+                                        <strong style="font-family: 'Lato', sans-serif; font-size: 16px; color: #1f2937;">Individual Marks: <span style="color: ${isAbsent ? '#dc2626' : '#7e22ce'}; font-size: 19px; font-weight: 700;">${studentMarks}</span> / ${individualTotal}</strong>
                                     </div>
                                 `}
                                 ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
-                                    <div style="margin-top: 18px; padding: 16px; background: rgba(255, 255, 255, 0.8); border-radius: 12px; border-left: 5px solid #c7d2fe; box-shadow: 0 4px 12px rgba(199, 210, 254, 0.15);">
-                                        <strong style="font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 10px;">Comments</strong>
-                                        <div style="padding: 12px; background: rgba(250, 250, 250, 0.8); border-radius: 8px; color: #374151; font-family: 'Lato', sans-serif; font-size: 14px; line-height: 1.7;">
+                                    <div style="margin-top: 18px; padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
+                                        <strong style="font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; color: #1f2937; display: block; margin-bottom: 10px;">Comments</strong>
+                                        <div style="padding: 12px; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: 14px; line-height: 1.7;">
                                             ${individualComments}
                                         </div>
                                     </div>
@@ -5640,8 +5640,8 @@ const app = {
                 ` : ''}
                 
                 <!-- Footer -->
-                <div style="margin-top: 50px; padding: 24px; background: linear-gradient(135deg, #faf5ff 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(216, 180, 254, 0.2); text-align: right; border: 1px solid rgba(216, 180, 254, 0.3);">
-                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #7c3aed; font-weight: 500;">Generated on: <span style="color: #6b21a8; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
+                <div style="margin-top: 50px; padding: 24px; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
             </div>
         `;
@@ -6183,26 +6183,26 @@ const app = {
     
     generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
         let html = `
-            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: linear-gradient(to bottom, #fefcfb, #fef9f4, #ffffff);">
+            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: #ffffff;">
                 <!-- Header -->
-                <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: linear-gradient(135deg, #fcd9a8 0%, #fcd34d 50%, #fde68a 100%); border-radius: 20px; box-shadow: 0 8px 32px rgba(251, 211, 141, 0.3);">
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #92400e; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #92400e; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
-                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #92400e; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
-                    <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: rgba(255,255,255,0.85); border-radius: 15px; display: inline-block; color: #b45309; box-shadow: 0 4px 16px rgba(251, 191, 36, 0.2); border: 2px solid rgba(255,255,255,0.6);">
+                <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 25px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">ITD 334 MINI PROJECT</div>
+                    <div style="font-family: 'Lato', sans-serif; font-size: 26px; font-weight: 700; margin-top: 25px; padding: 18px 40px; background: #f8fafc; border-radius: 12px; display: inline-block; color: #1f2937; border: 2px solid rgba(0, 0, 0, 0.08);">
                         ${this.escapeHtml(stage.name)} - CONSOLIDATED REPORT
                     </div>
                 </div>
                 
                 <!-- Summary -->
-                <div style="margin-bottom: 35px; padding: 30px; background: linear-gradient(135deg, #fef3c7 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.3);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #b45309; border-left: 5px solid #fcd34d; padding-left: 15px; letter-spacing: 0.5px;">Summary</h3>
+                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #f59e0b; padding-left: 15px; letter-spacing: 0.5px;">Summary</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <div style="padding: 20px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 5px solid #fbbf24; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);">
+                        <div style="padding: 20px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
                             <div style="font-family: 'Montserrat', sans-serif; font-size: 14px; color: #92400e; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px;">Total Teams</div>
                             <div style="font-family: 'Lato', sans-serif; font-size: 32px; font-weight: 700; color: #78350f;">${teamsWithEvaluations.length}</div>
                         </div>
-                        <div style="padding: 20px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 12px; border-left: 5px solid #60a5fa; box-shadow: 0 4px 12px rgba(96, 165, 250, 0.2);">
+                        <div style="padding: 20px; background: #dbeafe; border-radius: 8px; border-left: 4px solid #3b82f6;">
                             <div style="font-family: 'Montserrat', sans-serif; font-size: 14px; color: #1e40af; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px;">Teams with Evaluations</div>
                             <div style="font-family: 'Lato', sans-serif; font-size: 32px; font-weight: 700; color: #1e3a8a;">${teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length}</div>
                         </div>
@@ -6225,8 +6225,8 @@ const app = {
         
         html += `
                 <!-- Footer -->
-                <div style="margin-top: 50px; padding: 24px; background: linear-gradient(135deg, #fef3c7 0%, #ffffff 100%); border-radius: 18px; box-shadow: 0 6px 20px rgba(251, 191, 36, 0.2); text-align: right; border: 1px solid rgba(251, 191, 36, 0.3);">
-                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #b45309; font-weight: 500;">Generated on: <span style="color: #92400e; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
+                <div style="margin-top: 50px; padding: 24px; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
             </div>
         `;
