@@ -790,6 +790,32 @@ body.mobile-menu-open {
     display: block !important;
 }
 
+/* Collapsible team headers */
+.team-header-collapsible {
+    transition: background 0.2s, transform 0.2s;
+}
+
+.team-header-collapsible:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.team-problem-statements-content {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Ensure ALL parent containers are full width */
 #all-problem-statements-list {
     width: 100% !important;
