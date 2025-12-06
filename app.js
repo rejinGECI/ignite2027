@@ -7717,62 +7717,62 @@ const app = {
                 return a.teamName.localeCompare(b.teamName);
             });
             
-            // Render grouped by teams
-            container.innerHTML = sortedTeams.map(teamGroup => `
-                <div class="team-problem-statements-group" style="margin-bottom: 2.5rem;">
-                    <div class="team-header" style="padding: 1rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-bottom: 1.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                        <h3 style="margin: 0; color: white; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem;">
-                            <i class="fas fa-users"></i> ${this.escapeHtml(teamGroup.teamName)}
-                        </h3>
-                        ${teamGroup.teamData && teamGroup.teamData.guideName ? `
-                            <p style="margin: 0.5rem 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem;">
-                                <i class="fas fa-user-tie"></i> Guide: ${this.escapeHtml(teamGroup.teamData.guideName)}
-                            </p>
-                        ` : ''}
-                    </div>
-                    <div class="team-problem-statements-list">
-                        ${teamGroup.problemStatements.map(ps => `
-                            <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden; width: 100% !important; max-width: 100% !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important;">
-                                <div style="padding: 1.5rem; width: 100%; box-sizing: border-box;">
-                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; width: 100%;">
-                                        <div style="flex: 1;">
-                                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.15rem;">
-                                                ${this.escapeHtml(ps.title)}
-                                                ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
-                                                ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
-                                            </h4>
-                                            <div style="margin-bottom: 0.5rem;">
+            // Render grouped by teams - SIMPLE CLEAN STRUCTURE
+            container.innerHTML = sortedTeams.map(teamGroup => {
+                return `
+                    <div style="margin-bottom: 3rem; width: 100%;">
+                        <div style="padding: 1rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-bottom: 1.5rem;">
+                            <h3 style="margin: 0; color: white; font-size: 1.25rem; font-weight: 600;">
+                                <i class="fas fa-users"></i> ${this.escapeHtml(teamGroup.teamName)}
+                            </h3>
+                            ${teamGroup.teamData && teamGroup.teamData.guideName ? `
+                                <p style="margin: 0.5rem 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem;">
+                                    <i class="fas fa-user-tie"></i> Guide: ${this.escapeHtml(teamGroup.teamData.guideName)}
+                                </p>
+                            ` : ''}
+                        </div>
+                        ${teamGroup.problemStatements.map(ps => {
+                            return `
+                                <div style="margin-bottom: 2rem; background: white; border-radius: 8px; border: 1px solid #e2e8f0; ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden;">
+                                    <div style="padding: 1.5rem; border-bottom: 1px solid #e2e8f0;">
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                            <div style="flex: 1;">
+                                                <h4 style="margin: 0 0 0.5rem 0; color: #1e293b; font-size: 1.15rem;">
+                                                    ${this.escapeHtml(ps.title)}
+                                                    ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
+                                                    ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
+                                                </h4>
                                                 <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
                                                     <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
                                                 </span>
                                             </div>
+                                            ${!ps.approved ? `
+                                                <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')" style="margin-left: 1rem;">
+                                                    <i class="fas fa-check"></i> Approve
+                                                </button>
+                                            ` : ''}
                                         </div>
-                                        ${!ps.approved ? `
-                                            <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')">
-                                                <i class="fas fa-check"></i> Approve
-                                            </button>
-                                        ` : ''}
                                     </div>
-                                </div>
-                                <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; padding: 1.5rem; width: 100% !important; max-width: 100% !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important;">
-                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
-                                        <i class="fas fa-file-alt"></i> Problem Statement:
-                                    </strong>
-                                    <p style="margin: 0 !important; padding: 0 !important; color: var(--text-primary) !important; white-space: pre-wrap !important; line-height: 1.6 !important; font-size: 0.95rem !important; word-break: break-word !important; overflow-wrap: break-word !important; width: 100% !important; max-width: none !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important; float: none !important; clear: both !important;">${this.escapeHtml(ps.problemStatement)}</p>
-                                </div>
-                                ${ps.solution ? `
-                                    <div style="background: #f0fdf4; border-top: 1px solid #bbf7d0; padding: 1.5rem; width: 100% !important; max-width: 100% !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important;">
-                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
-                                            <i class="fas fa-lightbulb"></i> Solution:
-                                        </strong>
-                                        <p style="margin: 0 !important; padding: 0 !important; color: var(--text-primary) !important; white-space: pre-wrap !important; line-height: 1.6 !important; font-size: 0.95rem !important; word-break: break-word !important; overflow-wrap: break-word !important; width: 100% !important; max-width: none !important; min-width: 100% !important; box-sizing: border-box !important; display: block !important; float: none !important; clear: both !important;">${this.escapeHtml(ps.solution)}</p>
+                                    <div style="background: #f9fafb; padding: 1.5rem; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'};">
+                                        <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
+                                            <i class="fas fa-file-alt"></i> Problem Statement:
+                                        </div>
+                                        <div style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word;">${this.escapeHtml(ps.problemStatement)}</div>
                                     </div>
-                                ` : ''}
-                            </div>
-                        `).join('')}
+                                    ${ps.solution ? `
+                                        <div style="background: #f0fdf4; padding: 1.5rem;">
+                                            <div style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.75rem; font-weight: 600;">
+                                                <i class="fas fa-lightbulb"></i> Solution:
+                                            </div>
+                                            <div style="color: #1e293b; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word;">${this.escapeHtml(ps.solution)}</div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         } catch (error) {
             console.error('Error loading all problem statements:', error);
             container.innerHTML = '<p class="error-message">Error loading problem statements.</p>';
