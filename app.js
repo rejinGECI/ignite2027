@@ -7732,38 +7732,44 @@ const app = {
                     </div>
                     <div class="team-problem-statements-list">
                         ${teamGroup.problemStatements.map(ps => `
-                            <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                                    <div style="flex: 1;">
-                                        <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.15rem;">
-                                            ${this.escapeHtml(ps.title)}
-                                            ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
-                                            ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
-                                        </h4>
-                                        <div style="margin-bottom: 0.5rem;">
-                                            <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
-                                                <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
-                                            </span>
+                            <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}; overflow: hidden;">
+                                <div style="padding: 1.5rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                        <div style="flex: 1;">
+                                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.15rem;">
+                                                ${this.escapeHtml(ps.title)}
+                                                ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
+                                                ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
+                                            </h4>
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                                    <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
+                                                </span>
+                                            </div>
                                         </div>
+                                        ${!ps.approved ? `
+                                            <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        ` : ''}
                                     </div>
-                                    ${!ps.approved ? `
-                                        <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')">
-                                            <i class="fas fa-check"></i> Approve
-                                        </button>
-                                    ` : ''}
                                 </div>
-                                <div style="width: 100%; margin-bottom: 1.5rem; padding: 0; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; box-sizing: border-box; overflow: hidden;">
-                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; padding: 1.5rem 1.5rem 0.75rem 1.5rem;">
+                                <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; border-bottom: ${ps.solution ? '1px solid #e5e7eb' : 'none'}; padding: 1.5rem;">
+                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
                                         <i class="fas fa-file-alt"></i> Problem Statement:
                                     </strong>
-                                    <p style="margin: 0; padding: 0 0 1.5rem 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.problemStatement)}</p>
+                                    <div style="width: 100%;">
+                                        <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%;">${this.escapeHtml(ps.problemStatement)}</p>
+                                    </div>
                                 </div>
                                 ${ps.solution ? `
-                                    <div style="width: 100%; margin-bottom: 0; padding: 0; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; box-sizing: border-box; overflow: hidden;">
-                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; padding: 1.5rem 1.5rem 0.75rem 1.5rem;">
+                                    <div style="background: #f0fdf4; border-top: 1px solid #bbf7d0; padding: 1.5rem;">
+                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
                                             <i class="fas fa-lightbulb"></i> Solution:
                                         </strong>
-                                        <p style="margin: 0; padding: 0 0 1.5rem 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.solution)}</p>
+                                        <div style="width: 100%;">
+                                            <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; width: 100%;">${this.escapeHtml(ps.solution)}</p>
+                                        </div>
                                     </div>
                                 ` : ''}
                             </div>
