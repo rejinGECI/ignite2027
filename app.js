@@ -7834,16 +7834,24 @@ const app = {
         if (!tableContainer) return;
         
         try {
-            // Get all approved problem statements
+            // Get all problem statements (both approved and pending)
+            const allProblemStatements = [];
             const approvedProblemStatements = [];
             problemStatementsSnapshot.forEach(doc => {
                 const ps = doc.data();
-                if (ps.approved && ps.teamId) {
-                    approvedProblemStatements.push({
+                if (ps.teamId) {
+                    allProblemStatements.push({
                         id: doc.id,
                         ...ps,
                         team: teamsMap[ps.teamId] || null
                     });
+                    if (ps.approved) {
+                        approvedProblemStatements.push({
+                            id: doc.id,
+                            ...ps,
+                            team: teamsMap[ps.teamId] || null
+                        });
+                    }
                 }
             });
             
@@ -7852,15 +7860,17 @@ const app = {
             Object.keys(teamsMap).forEach(teamId => {
                 const team = teamsMap[teamId];
                 const approvedPS = approvedProblemStatements.find(ps => ps.teamId === teamId);
+                const hasAnyProblemStatements = allProblemStatements.some(ps => ps.teamId === teamId);
                 
                 teamsWithApprovedTopics.push({
                     teamId: teamId,
                     teamName: team.groupName || 'Unknown Team',
                     guideName: team.guideName || 'Not assigned',
-                    approvedTopic: approvedPS ? approvedPS.title : 'Not approved',
+                    approvedTopic: approvedPS ? approvedPS.title : (hasAnyProblemStatements ? 'Approval Pending' : 'No Problem Statements Uploaded'),
                     approvedArea: approvedPS ? approvedPS.area : '-',
                     approvedProblemStatement: approvedPS ? approvedPS.problemStatement : '-',
                     hasApproved: !!approvedPS,
+                    hasAnyProblemStatements: hasAnyProblemStatements,
                     team: team // Keep team object for ordering
                 });
             });
@@ -7903,8 +7913,10 @@ const app = {
                         </tr>
                     </thead>
                     <tbody>
-                        ${teamsWithApprovedTopics.map(team => `
-                            <tr style="border-bottom: 1px solid var(--border-color); ${team.hasApproved ? '' : 'background: #fef2f2;'}">
+                        ${teamsWithApprovedTopics.map(team => {
+                            const rowBgColor = team.hasApproved ? '' : (team.hasAnyProblemStatements ? 'background: #fffbeb;' : 'background: #fef2f2;');
+                            return `
+                            <tr style="border-bottom: 1px solid var(--border-color); ${rowBgColor}">
                                 <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 30%; min-width: 250px; white-space: nowrap;">
                                     <i class="fas fa-users" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
                                     ${this.escapeHtml(team.teamName)}
@@ -7914,9 +7926,26 @@ const app = {
                                     ${this.escapeHtml(team.guideName)}
                                 </td>
                                 <td style="padding: 1rem; color: var(--text-primary); ${team.hasApproved ? 'font-weight: 500;' : 'color: var(--text-secondary); font-style: italic;'}">
-                                    ${team.hasApproved ? `<span style="color: #10b981;"><i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i></span>` : ''}
+                                    ${team.hasApproved ? `<span style="color: #10b981;"><i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i></span>` : (team.hasAnyProblemStatements ? `<span style="color: #f59e0b;"><i class="fas fa-clock" style="margin-right: 0.5rem;"></i></span>` : `<span style="color: #ef4444;"><i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i></span>`)}
                                     ${this.escapeHtml(team.approvedTopic)}
                                 </td>
+                                <td style="padding: 1rem; color: var(--text-primary);">
+                                    ${team.hasApproved ? `
+                                        <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                            <i class="fas fa-tag"></i> ${this.escapeHtml(team.approvedArea)}
+                                        </span>
+                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
+                                </td>
+                                <td style="padding: 1rem; color: var(--text-primary); max-width: 400px;">
+                                    ${team.hasApproved ? `
+                                        <div style="max-height: 100px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; font-size: 0.9rem; color: var(--text-secondary);">
+                                            ${this.escapeHtml(team.approvedProblemStatement.length > 150 ? team.approvedProblemStatement.substring(0, 150) + '...' : team.approvedProblemStatement)}
+                                        </div>
+                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
+                                </td>
+                            </tr>
+                        `;
+                        }).join('')}
                                 <td style="padding: 1rem; color: var(--text-primary);">
                                     ${team.hasApproved ? `
                                         <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
@@ -8110,13 +8139,23 @@ const app = {
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
-                    tr.no-approval {
+                    tr.pending-approval {
+                        background: linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);
+                        background-color: #fffbeb;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    tr.pending-approval:hover {
+                        background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+                        background-color: #fef3c7;
+                    }
+                    tr.no-upload {
                         background: linear-gradient(90deg, #fef2f2 0%, #fee2e2 100%);
                         background-color: #fef2f2;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
-                    tr.no-approval:hover {
+                    tr.no-upload:hover {
                         background: linear-gradient(90deg, #fee2e2 0%, #fecaca 100%);
                         background-color: #fee2e2;
                     }
@@ -8151,7 +8190,15 @@ const app = {
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
-                    .badge-not-approved {
+                    .badge-pending {
+                        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                        background-color: #f59e0b;
+                        color: white !important;
+                        box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    .badge-no-upload {
                         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
                         background-color: #ef4444;
                         color: white !important;
@@ -8231,8 +8278,9 @@ const app = {
         `;
         
         this.teamsApprovedTopicsData.forEach(team => {
+            const statusClass = team.hasApproved ? '' : (team.hasAnyProblemStatements ? 'pending-approval' : 'no-upload');
             html += `
-                <tr class="${team.hasApproved ? '' : 'no-approval'}">
+                <tr class="${statusClass}">
                     <td>
                         <div class="team-name">👥 ${this.escapeHtml(team.teamName)}</div>
                     </td>
@@ -8243,9 +8291,11 @@ const app = {
                         ${team.hasApproved ? `
                             <span class="badge badge-approved">✓ Approved</span>
                             <div class="topic-text" style="margin-top: 8px;">${this.escapeHtml(team.approvedTopic)}</div>
+                        ` : (team.hasAnyProblemStatements ? `
+                            <span class="badge badge-pending">⏳ Approval Pending</span>
                         ` : `
-                            <span class="badge badge-not-approved">Not Approved</span>
-                        `}
+                            <span class="badge badge-no-upload">⚠ No Problem Statements Uploaded</span>
+                        `)}
                     </td>
                     <td>
                         ${team.hasApproved ? `
