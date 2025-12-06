@@ -3777,6 +3777,7 @@ const app = {
                 const individualParams = stage.individualMarkParams || [];
                 const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                 const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                const pptRequired = stage.pptRequired || false;
                 
                 return `
                 <div class="evaluation-stage-item">
@@ -3785,7 +3786,11 @@ const app = {
                     <span class="stage-marks" style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 1rem;">
                         Team: ${teamTotal} | Individual: ${individualTotal}
                     </span>
-                    <div style="display: flex; gap: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem; cursor: pointer;">
+                        <input type="checkbox" id="ppt-required-${index}" ${pptRequired ? 'checked' : ''} onchange="app.togglePPTRequired(${index})" style="cursor: pointer;">
+                        <span style="font-size: 0.9rem; color: var(--text-secondary);">PPT Required</span>
+                    </label>
+                    <div style="display: flex; gap: 0.5rem; margin-left: auto;">
                         <button class="btn btn-primary btn-sm" onclick="app.editStageMarkParameters(${index})" title="Configure marks">
                             <i class="fas fa-cog"></i> Configure
                         </button>
@@ -3923,7 +3928,8 @@ const app = {
             currentStages.push({ 
                 name: stageName,
                 teamMarkParams: [],
-                individualMarkParams: []
+                individualMarkParams: [],
+                pptRequired: false
             });
             
             await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
@@ -4153,6 +4159,25 @@ const app = {
         } catch (error) {
             console.error('Error deleting evaluation stage:', error);
             alert('Error deleting stage. Please try again.');
+        }
+    },
+    
+    async togglePPTRequired(stageIndex) {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (stageIndex >= 0 && stageIndex < stages.length) {
+                const checkbox = document.getElementById(`ppt-required-${stageIndex}`);
+                stages[stageIndex].pptRequired = checkbox ? checkbox.checked : false;
+                
+                await updateDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                    evaluationStages: stages
+                });
+            }
+        } catch (error) {
+            console.error('Error toggling PPT requirement:', error);
+            alert('Error updating PPT requirement. Please try again.');
         }
     },
     
@@ -7000,45 +7025,6 @@ const app = {
                         </div>
                     </div>
                     
-                    <!-- PPT Link Section -->
-                    <div class="ppt-link-section" style="margin-top: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-                        <h3 class="section-title" style="margin-bottom: 1rem;"><i class="fas fa-file-powerpoint"></i> Project Presentation (PPT)</h3>
-                        <div id="ppt-link-container">
-                            <div id="ppt-current-link" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong style="color: var(--text-primary);"><i class="fas fa-file-powerpoint"></i> Current PPT Link:</strong>
-                                        <a id="ppt-link-url" href="#" target="_blank" style="margin-left: 0.5rem; color: var(--primary-color); text-decoration: none; word-break: break-all;">
-                                            <span id="ppt-link-text"></span>
-                                        </a>
-                                    </div>
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.removeTeamPPT()">
-                                        <i class="fas fa-trash"></i> Remove
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="ppt-link-form">
-                                <div class="form-group">
-                                    <label for="team-ppt-link">PPT Link/URL *</label>
-                                    <input type="url" id="team-ppt-link" class="form-input" placeholder="https://drive.google.com/file/d/... or https://onedrive.live.com/...">
-                                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
-                                        <em>Upload your PPT to Google Drive, OneDrive, Dropbox, or any file hosting service and paste the shareable link here.</em>
-                                    </p>
-                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b;">
-                                        <strong style="color: #92400e; font-size: 0.85rem;">How to get a shareable link:</strong>
-                                        <ul style="margin: 0.5rem 0 0 1.25rem; color: #78350f; font-size: 0.85rem; line-height: 1.6;">
-                                            <li><strong>Google Drive:</strong> Right-click file → Share → Get link → Copy link</li>
-                                            <li><strong>OneDrive:</strong> Right-click file → Share → Copy link</li>
-                                            <li><strong>Dropbox:</strong> Right-click file → Share → Copy link</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                                <button type="button" class="btn btn-primary" onclick="app.saveTeamPPT()">
-                                    <i class="fas fa-save"></i> Save PPT Link
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                     
                     <!-- Problem Statement Section -->
                     <div class="problem-statements-section" style="margin-top: 2rem;">
@@ -7059,6 +7045,7 @@ const app = {
                                 <div class="evaluations-grid">
                                     ${stages.map((stage, index) => {
                                         const evalData = evaluations[index];
+                                        const pptRequired = stage.pptRequired || false;
                                     // Get mark parameters (even for pending evaluations)
                                     const teamParams = stage.teamMarkParams || [];
                                     const individualParams = stage.individualMarkParams || [];
@@ -7183,6 +7170,41 @@ const app = {
                                                         <p class="evaluation-status-text"><i class="fas fa-hourglass-half"></i> Your individual evaluation is not yet available.</p>
                                                     </div>
                                                 `}
+                                                
+                                                ${pptRequired ? `
+                                                    <!-- PPT Upload Section for this Stage -->
+                                                    <div class="stage-ppt-section" style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color);">
+                                                        <h4 style="margin-bottom: 0.75rem; font-size: 0.95rem; color: var(--text-primary);">
+                                                            <i class="fas fa-file-powerpoint"></i> PPT for ${this.escapeHtml(stage.name)}
+                                                        </h4>
+                                                        <div id="ppt-container-stage-${index}">
+                                                            <div id="ppt-current-link-stage-${index}" style="display: none; margin-bottom: 0.75rem; padding: 0.75rem; background: #f0f9ff; border-radius: 6px; border: 1px solid #bae6fd;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                                    <div style="flex: 1;">
+                                                                        <strong style="color: var(--text-primary); font-size: 0.9rem;"><i class="fas fa-file-powerpoint"></i> PPT Link:</strong>
+                                                                        <a id="ppt-link-url-stage-${index}" href="#" target="_blank" style="margin-left: 0.5rem; color: var(--primary-color); text-decoration: none; font-size: 0.85rem; word-break: break-all;">
+                                                                            <span id="ppt-link-text-stage-${index}"></span>
+                                                                        </a>
+                                                                    </div>
+                                                                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.removeStagePPT(${index})" style="margin-left: 0.5rem;">
+                                                                        <i class="fas fa-trash"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div id="ppt-link-form-stage-${index}">
+                                                                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                                                    <input type="url" id="team-ppt-link-stage-${index}" class="form-input" placeholder="https://drive.google.com/file/d/..." style="flex: 1; font-size: 0.9rem;">
+                                                                    <button type="button" class="btn btn-primary btn-sm" onclick="app.saveStagePPT(${index})">
+                                                                        <i class="fas fa-save"></i> Save
+                                                                    </button>
+                                                                </div>
+                                                                <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                                                    <em>Upload PPT to Google Drive/OneDrive/Dropbox and paste shareable link</em>
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
                                             </div>
                                         `;
                                     }).join('')}
@@ -7193,8 +7215,15 @@ const app = {
                 </div>
             `;
             
-            // Load problem statements after rendering
-            setTimeout(() => this.loadProblemStatements(), 100);
+            // Load problem statements and stage PPTs after rendering
+            setTimeout(() => {
+                this.loadProblemStatements();
+                stages.forEach((stage, index) => {
+                    if (stage.pptRequired) {
+                        this.loadStagePPT(index);
+                    }
+                });
+            }, 100);
         } catch (error) {
             // Handle permission errors gracefully
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
@@ -7396,29 +7425,29 @@ const app = {
         }
     },
     
-    // Team PPT Link Functions
-    async loadTeamPPT() {
+    // Stage PPT Link Functions
+    async loadStagePPT(stageIndex) {
         if (!this.currentStudentTeamId) return;
         
         try {
-            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
-            if (!teamDoc.exists()) return;
+            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${this.currentStudentTeamId}_${stageIndex}`));
+            const evalData = evalDoc.exists() ? evalDoc.data() : {};
+            const pptUrl = evalData.pptUrl || '';
+            const pptFileName = evalData.pptFileName || '';
             
-            const teamData = teamDoc.data();
-            const pptUrl = teamData.pptUrl || '';
-            const pptFileName = teamData.pptFileName || '';
+            const currentLinkDiv = document.getElementById(`ppt-current-link-stage-${stageIndex}`);
+            const linkForm = document.getElementById(`ppt-link-form-stage-${stageIndex}`);
+            const linkUrl = document.getElementById(`ppt-link-url-stage-${stageIndex}`);
+            const linkText = document.getElementById(`ppt-link-text-stage-${stageIndex}`);
+            const linkInput = document.getElementById(`team-ppt-link-stage-${stageIndex}`);
             
-            const currentLinkDiv = document.getElementById('ppt-current-link');
-            const linkForm = document.getElementById('ppt-link-form');
-            const linkUrl = document.getElementById('ppt-link-url');
-            const linkText = document.getElementById('ppt-link-text');
-            const linkInput = document.getElementById('team-ppt-link');
+            if (!currentLinkDiv || !linkForm) return;
             
             if (pptUrl) {
                 currentLinkDiv.style.display = 'block';
                 linkForm.style.display = 'none';
-                linkUrl.href = pptUrl;
-                linkText.textContent = pptFileName || pptUrl.substring(0, 60) + (pptUrl.length > 60 ? '...' : '');
+                if (linkUrl) linkUrl.href = pptUrl;
+                if (linkText) linkText.textContent = pptFileName || pptUrl.substring(0, 50) + (pptUrl.length > 50 ? '...' : '');
                 if (linkInput) linkInput.value = pptUrl;
             } else {
                 currentLinkDiv.style.display = 'none';
@@ -7426,17 +7455,20 @@ const app = {
                 if (linkInput) linkInput.value = '';
             }
         } catch (error) {
-            console.error('Error loading team PPT:', error);
+            console.error(`Error loading stage ${stageIndex} PPT:`, error);
         }
     },
     
-    async saveTeamPPT() {
+    async saveStagePPT(stageIndex) {
         if (!this.currentStudentTeamId) {
             alert('Error: Team ID not found. Please refresh the page.');
             return;
         }
         
-        const pptLink = document.getElementById('team-ppt-link').value.trim();
+        const linkInput = document.getElementById(`team-ppt-link-stage-${stageIndex}`);
+        if (!linkInput) return;
+        
+        const pptLink = linkInput.value.trim();
         if (!pptLink) {
             alert('Please enter a PPT link/URL.');
             return;
@@ -7451,33 +7483,48 @@ const app = {
         }
         
         try {
-            // Extract filename from URL if possible, otherwise use a default name
+            // Extract filename from URL if possible
             let fileName = 'Project PPT';
             try {
                 const urlParts = pptLink.split('/');
                 const lastPart = urlParts[urlParts.length - 1];
                 if (lastPart && lastPart.includes('.')) {
-                    fileName = lastPart.split('?')[0]; // Remove query parameters
+                    fileName = lastPart.split('?')[0];
                 }
             } catch (e) {
                 // Use default name if extraction fails
             }
             
-            // Update team document
-            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
-                pptUrl: pptLink,
-                pptFileName: fileName
-            });
+            const evalDocId = `${this.currentStudentTeamId}_${stageIndex}`;
+            const evalDocRef = doc(window.firebaseDb, 'evaluations', evalDocId);
+            const evalDoc = await getDoc(evalDocRef);
+            
+            if (evalDoc.exists()) {
+                // Update existing evaluation document
+                await updateDoc(evalDocRef, {
+                    pptUrl: pptLink,
+                    pptFileName: fileName
+                });
+            } else {
+                // Create new evaluation document with PPT info
+                await setDoc(evalDocRef, {
+                    teamId: this.currentStudentTeamId,
+                    stageIndex: stageIndex,
+                    pptUrl: pptLink,
+                    pptFileName: fileName,
+                    createdAt: new Date().toISOString()
+                });
+            }
             
             alert('PPT link saved successfully!');
-            await this.loadTeamPPT();
+            await this.loadStagePPT(stageIndex);
         } catch (error) {
-            console.error('Error saving team PPT link:', error);
+            console.error(`Error saving stage ${stageIndex} PPT link:`, error);
             alert('Error saving PPT link. Please try again.');
         }
     },
     
-    async removeTeamPPT() {
+    async removeStagePPT(stageIndex) {
         if (!confirm('Are you sure you want to remove the PPT link?')) {
             return;
         }
@@ -7485,15 +7532,22 @@ const app = {
         if (!this.currentStudentTeamId) return;
         
         try {
-            // Remove PPT from team document
-            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
-                pptUrl: '',
-                pptFileName: ''
-            });
+            const evalDocId = `${this.currentStudentTeamId}_${stageIndex}`;
+            const evalDocRef = doc(window.firebaseDb, 'evaluations', evalDocId);
+            const evalDoc = await getDoc(evalDocRef);
             
-            await this.loadTeamPPT();
+            if (evalDoc.exists()) {
+                const evalData = evalDoc.data();
+                // Remove PPT fields but keep other evaluation data
+                await updateDoc(evalDocRef, {
+                    pptUrl: '',
+                    pptFileName: ''
+                });
+            }
+            
+            await this.loadStagePPT(stageIndex);
         } catch (error) {
-            console.error('Error removing team PPT link:', error);
+            console.error(`Error removing stage ${stageIndex} PPT link:`, error);
             alert('Error removing PPT link. Please try again.');
         }
     },
