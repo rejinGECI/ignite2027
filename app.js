@@ -7651,7 +7651,8 @@ const app = {
         if (!this.isAdmin) return;
         
         const container = document.getElementById('all-problem-statements-list');
-        if (!container) return;
+        const tableContainer = document.getElementById('teams-approved-topics-table');
+        if (!container || !tableContainer) return;
         
         try {
             const problemStatementsQuery = query(
@@ -7666,6 +7667,9 @@ const app = {
             teamsSnapshot.forEach(doc => {
                 teamsMap[doc.id] = doc.data();
             });
+            
+            // Load teams and approved topics table
+            await this.loadTeamsApprovedTopicsTable(teamsMap, snapshot);
             
             const problemStatements = [];
             snapshot.forEach(doc => {
@@ -7778,6 +7782,106 @@ const app = {
         } catch (error) {
             console.error('Error loading all problem statements:', error);
             container.innerHTML = '<p class="error-message">Error loading problem statements.</p>';
+            const tableContainer = document.getElementById('teams-approved-topics-table');
+            if (tableContainer) {
+                tableContainer.innerHTML = '<p class="error-message">Error loading teams and approved topics.</p>';
+            }
+        }
+    },
+    
+    // Load teams and approved topics table
+    async loadTeamsApprovedTopicsTable(teamsMap, problemStatementsSnapshot) {
+        const tableContainer = document.getElementById('teams-approved-topics-table');
+        if (!tableContainer) return;
+        
+        try {
+            // Get all approved problem statements
+            const approvedProblemStatements = [];
+            problemStatementsSnapshot.forEach(doc => {
+                const ps = doc.data();
+                if (ps.approved && ps.teamId) {
+                    approvedProblemStatements.push({
+                        id: doc.id,
+                        ...ps,
+                        team: teamsMap[ps.teamId] || null
+                    });
+                }
+            });
+            
+            // Get all teams and their approved topics
+            const teamsWithApprovedTopics = [];
+            Object.keys(teamsMap).forEach(teamId => {
+                const team = teamsMap[teamId];
+                const approvedPS = approvedProblemStatements.find(ps => ps.teamId === teamId);
+                
+                teamsWithApprovedTopics.push({
+                    teamId: teamId,
+                    teamName: team.groupName || 'Unknown Team',
+                    guideName: team.guideName || 'Not assigned',
+                    approvedTopic: approvedPS ? approvedPS.title : 'Not approved',
+                    approvedArea: approvedPS ? approvedPS.area : '-',
+                    approvedProblemStatement: approvedPS ? approvedPS.problemStatement : '-',
+                    hasApproved: !!approvedPS
+                });
+            });
+            
+            // Sort teams alphabetically
+            teamsWithApprovedTopics.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            
+            if (teamsWithApprovedTopics.length === 0) {
+                tableContainer.innerHTML = '<p class="empty-state">No teams found.</p>';
+                return;
+            }
+            
+            // Create table
+            tableContainer.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);">
+                    <thead>
+                        <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Team Name</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Guide</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Approved Topic</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Area/Technology</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Problem Statement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${teamsWithApprovedTopics.map(team => `
+                            <tr style="border-bottom: 1px solid var(--border-color); ${team.hasApproved ? '' : 'background: #fef2f2;'}">
+                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary);">
+                                    <i class="fas fa-users" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
+                                    ${this.escapeHtml(team.teamName)}
+                                </td>
+                                <td style="padding: 1rem; color: var(--text-secondary);">
+                                    <i class="fas fa-user-tie" style="margin-right: 0.5rem;"></i>
+                                    ${this.escapeHtml(team.guideName)}
+                                </td>
+                                <td style="padding: 1rem; color: var(--text-primary); ${team.hasApproved ? 'font-weight: 500;' : 'color: var(--text-secondary); font-style: italic;'}">
+                                    ${team.hasApproved ? `<span style="color: #10b981;"><i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i></span>` : ''}
+                                    ${this.escapeHtml(team.approvedTopic)}
+                                </td>
+                                <td style="padding: 1rem; color: var(--text-primary);">
+                                    ${team.hasApproved ? `
+                                        <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                            <i class="fas fa-tag"></i> ${this.escapeHtml(team.approvedArea)}
+                                        </span>
+                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
+                                </td>
+                                <td style="padding: 1rem; color: var(--text-primary); max-width: 400px;">
+                                    ${team.hasApproved ? `
+                                        <div style="max-height: 100px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; font-size: 0.9rem; color: var(--text-secondary);">
+                                            ${this.escapeHtml(team.approvedProblemStatement.length > 150 ? team.approvedProblemStatement.substring(0, 150) + '...' : team.approvedProblemStatement)}
+                                        </div>
+                                    ` : '<span style="color: var(--text-secondary);">-</span>'}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } catch (error) {
+            console.error('Error loading teams and approved topics table:', error);
+            tableContainer.innerHTML = '<p class="error-message">Error loading teams and approved topics.</p>';
         }
     },
     
