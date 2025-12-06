@@ -5835,8 +5835,10 @@ const app = {
         const individualEvaluations = evalData.individualEvaluations || {};
         
         // Build report HTML content
+        const containerPadding = skipHeader ? '20px' : '40px';
+        const containerMargin = skipHeader ? '0' : '0 auto';
         let html = `
-            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 40px; line-height: 1.8; color: #2d3748; background: #ffffff;">
+            <div style="font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: ${containerMargin}; padding: ${containerPadding}; line-height: ${skipHeader ? '1.6' : '1.8'}; color: #2d3748; background: #ffffff;">
                 ${!skipHeader ? `
                 <!-- Header -->
                 <div style="text-align: center; margin-bottom: 45px; padding: 40px 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
@@ -5850,10 +5852,10 @@ const app = {
                 ` : ''}
                 
                 <!-- Team Information -->
-                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #9333ea; padding-left: 15px; letter-spacing: 0.5px;">Team Information</h3>
-                    <div style="display: grid; gap: 15px;">
-                        <div style="display: flex; align-items: center; padding: 16px 20px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
+                <div style="margin-bottom: ${skipHeader ? '20px' : '35px'}; padding: ${skipHeader ? '20px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '15px' : '25px'}; color: #1f2937; border-left: 4px solid #9333ea; padding-left: 15px; letter-spacing: 0.5px;">Team Information</h3>
+                    <div style="display: grid; gap: ${skipHeader ? '10px' : '15px'};">
+                        <div style="display: flex; align-items: center; padding: ${skipHeader ? '12px 16px' : '16px 20px'}; background: #f8fafc; border-radius: 8px; border-left: 3px solid #9333ea;">
                             <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 150px; font-size: 15px;">Team Name:</span>
                             <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 16px;">${this.escapeHtml(teamData.groupName || 'N/A')}</span>
                         </div>
@@ -5873,22 +5875,22 @@ const app = {
                 </div>
                 
                 <!-- Team Members -->
-                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 15px; letter-spacing: 0.5px;">Team Members</h3>
+                <div style="margin-bottom: ${skipHeader ? '20px' : '35px'}; padding: ${skipHeader ? '20px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '15px' : '25px'}; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 15px; letter-spacing: 0.5px;">Team Members</h3>
                     <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
                         <thead>
                             <tr>
-                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Sl. No.</th>
-                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Name</th>
-                                <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Sl. No.</th>
+                                <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Name</th>
+                                <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${members.map((member, index) => `
                                 <tr style="${index % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
-                                    <td style="padding: 14px 18px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
-                                    <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
-                                    <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                    <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+                                    <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.name || 'N/A')}</td>
+                                    <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; font-weight: 500; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(member.ktuid || 'N/A')}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -5897,15 +5899,15 @@ const app = {
                 
                 <!-- Team Evaluation -->
                 ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
-                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #059669; padding-left: 15px; letter-spacing: 0.5px;">Team Evaluation</h3>
+                <div style="margin-bottom: ${skipHeader ? '20px' : '35px'}; padding: ${skipHeader ? '20px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '15px' : '25px'}; color: #1f2937; border-left: 4px solid #059669; padding-left: 15px; letter-spacing: 0.5px;">Team Evaluation</h3>
                     ${teamParams.length > 0 ? `
-                        <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px;">
+                        <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: ${skipHeader ? '15px' : '25px'};">
                             <thead>
                                 <tr>
-                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Parameter</th>
-                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Marks Obtained</th>
-                                    <th style="padding: 16px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Maximum Marks</th>
+                                    <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Parameter</th>
+                                    <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Marks Obtained</th>
+                                    <th style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: ${skipHeader ? '14px' : '15px'}; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Maximum Marks</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -5913,28 +5915,28 @@ const app = {
                                     const paramMarks = teamMarksData[param.name] || 0;
                                     return `
                                         <tr style="${idx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
-                                            <td style="padding: 14px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
-                                            <td style="padding: 14px 18px; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
-                                            <td style="padding: 14px 18px; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: 15px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
+                                            <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
+                                            <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                            <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                         </tr>
                                     `;
                                 }).join('')}
                                 <tr style="background: #f0fdf4; border-top: 2px solid #059669;">
-                                    <td style="padding: 16px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 16px; border-radius: 0 0 0 8px;">Total</td>
-                                    <td style="padding: 16px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: 18px;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
-                                    <td style="padding: 16px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 16px; border-radius: 0 0 8px 0;">${teamTotal}</td>
+                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 0 8px;">Total</td>
+                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: ${skipHeader ? '16px' : '18px'};">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
+                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 8px 0;">${teamTotal}</td>
                                 </tr>
                             </tbody>
                         </table>
                     ` : `
-                        <div style="margin-bottom: 25px; padding: 20px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #059669;">
-                            <strong style="font-family: 'Lato', sans-serif; font-size: 17px; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: 20px; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
+                        <div style="margin-bottom: ${skipHeader ? '15px' : '25px'}; padding: ${skipHeader ? '15px' : '20px'}; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #059669;">
+                            <strong style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '15px' : '17px'}; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
                         </div>
                     `}
                     ${teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>' ? `
-                        <div style="margin-top: 25px; padding: 20px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
-                            <h4 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #1f2937;">Team Comments</h4>
-                            <div style="padding: 14px; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: 15px; line-height: 1.7;">
+                        <div style="margin-top: ${skipHeader ? '15px' : '25px'}; padding: ${skipHeader ? '15px' : '20px'}; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
+                            <h4 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '16px'}; font-weight: 700; margin-bottom: ${skipHeader ? '10px' : '12px'}; color: #1f2937;">Team Comments</h4>
+                            <div style="padding: ${skipHeader ? '12px' : '14px'}; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; line-height: 1.7;">
                                 ${teamComments}
                             </div>
                         </div>
@@ -5944,8 +5946,8 @@ const app = {
                 
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
-                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 20px; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
+                <div style="margin-bottom: ${skipHeader ? '20px' : '35px'}; padding: ${skipHeader ? '20px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '15px' : '20px'}; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
@@ -5990,10 +5992,12 @@ const app = {
                 </div>
                 ` : ''}
                 
+                ${!skipHeader ? `
                 <!-- Footer -->
-                <div style="margin-top: 50px; padding: 24px; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
+                <div style="margin-top: ${skipHeader ? '20px' : '50px'}; padding: ${skipHeader ? '16px' : '24px'}; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
+                ` : ''}
             </div>
         `;
         
@@ -6550,20 +6554,20 @@ const app = {
         // Generate report for each team (without header)
         teamsWithEvaluations.forEach((team, teamIndex) => {
             const evalData = team.evaluation || {};
-            html += `<div style="margin-bottom: 40px;">`;
+            html += `<div style="margin-bottom: ${teamIndex < teamsWithEvaluations.length - 1 ? '0' : '20px'};">`;
             html += this.generateReportContent(team, stage, evalData, teamParams, individualParams, teamTotal, individualTotal, true);
             html += `</div>`;
             
-            // Add page break between teams (except last one)
+            // Add page break between teams (except last one) with minimal margin
             if (teamIndex < teamsWithEvaluations.length - 1) {
-                html += '<div style="page-break-after: always; margin: 40px 0;"></div>';
+                html += '<div style="page-break-after: always;"></div>';
             }
         });
         
-        html += `
+                html += `
                 <!-- Footer -->
-                <div style="margin-top: 50px; padding: 24px; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
-                    <div style="font-family: 'Lato', sans-serif; font-size: 14px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
+                <div style="margin-top: 30px; padding: 20px; background: #f8fafc; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); text-align: right; border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <div style="font-family: 'Lato', sans-serif; font-size: 13px; color: #6b7280; font-weight: 500;">Generated on: <span style="color: #1f2937; font-weight: 600;">${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                 </div>
             </div>
         `;
