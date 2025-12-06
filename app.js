@@ -7247,9 +7247,20 @@ const app = {
         if (!modal) return;
         
         // Reset form
-        document.getElementById('problem-statement-form').reset();
+        const form = document.getElementById('problem-statement-form');
+        if (form) {
+            form.reset();
+        }
         
         modal.style.display = 'flex';
+        
+        // Focus on title field after a short delay to ensure modal is visible
+        setTimeout(() => {
+            const titleInput = document.getElementById('problem-title');
+            if (titleInput) {
+                titleInput.focus();
+            }
+        }, 100);
     },
     
     closeProblemStatementModal() {
@@ -7266,13 +7277,46 @@ const app = {
             return;
         }
         
-        const title = document.getElementById('problem-title').value.trim();
-        const problemStatement = document.getElementById('problem-statement').value.trim();
-        const area = document.getElementById('problem-area').value.trim();
-        const solution = document.getElementById('problem-solution').value.trim();
+        const titleInput = document.getElementById('problem-title');
+        const problemStatementInput = document.getElementById('problem-statement') || document.getElementById('problem-statement-text');
+        const areaInput = document.getElementById('problem-area');
+        const solutionInput = document.getElementById('problem-solution');
         
-        if (!title || !problemStatement || !area || !solution) {
-            alert('Please fill in all required fields (Title, Problem Statement, Area/Technology, Solution).');
+        if (!titleInput || !problemStatementInput || !areaInput || !solutionInput) {
+            alert('Error: Form fields not found. Please refresh the page.');
+            console.error('Missing form fields:', {
+                titleInput: !!titleInput,
+                problemStatementInput: !!problemStatementInput,
+                areaInput: !!areaInput,
+                solutionInput: !!solutionInput
+            });
+            return;
+        }
+        
+        const title = titleInput.value.trim();
+        const problemStatement = problemStatementInput.value.trim();
+        const area = areaInput.value.trim();
+        const solution = solutionInput.value.trim();
+        
+        // Check which fields are missing and show specific error
+        const missingFields = [];
+        if (!title) missingFields.push('Title');
+        if (!problemStatement) missingFields.push('Problem Statement');
+        if (!area) missingFields.push('Area/Technology');
+        if (!solution) missingFields.push('Solution');
+        
+        if (missingFields.length > 0) {
+            alert(`Please fill in the following required fields: ${missingFields.join(', ')}`);
+            // Focus on the first missing field
+            if (!title && titleInput) {
+                titleInput.focus();
+            } else if (!problemStatement && problemStatementInput) {
+                problemStatementInput.focus();
+            } else if (!area && areaInput) {
+                areaInput.focus();
+            } else if (!solution && solutionInput) {
+                solutionInput.focus();
+            }
             return;
         }
         
@@ -7355,7 +7399,7 @@ const app = {
                                     <i class="fas fa-star"></i>
                                 </button>
                             ` : ''}
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteProblemStatement('${ps.id}')" title="Delete">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteProblemStatement('${ps.id}')" title="${ps.approved ? 'Delete (Approved - This will also remove from team project details)' : 'Delete'}">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -7410,14 +7454,64 @@ const app = {
     },
     
     async deleteProblemStatement(problemStatementId) {
-        if (!confirm('Are you sure you want to delete this problem statement?')) {
-            return;
+        // Check if the problem statement is approved
+        let isApproved = false;
+        let teamId = null;
+        
+        try {
+            const psDoc = await getDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
+            if (psDoc.exists()) {
+                const psData = psDoc.data();
+                isApproved = psData.approved || false;
+                teamId = psData.teamId || null;
+                
+                if (isApproved) {
+                    if (!confirm('This problem statement has been approved by the admin. Deleting it will also remove it from your team\'s project details. Are you sure you want to delete it?')) {
+                        return;
+                    }
+                } else {
+                    if (!confirm('Are you sure you want to delete this problem statement?')) {
+                        return;
+                    }
+                }
+            } else {
+                if (!confirm('Are you sure you want to delete this problem statement?')) {
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('Error checking problem statement:', error);
+            if (!confirm('Are you sure you want to delete this problem statement?')) {
+                return;
+            }
         }
         
         try {
             // Delete from Firestore
             await deleteDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
             
+            // If it was approved, also remove it from team details
+            if (isApproved && teamId) {
+                try {
+                    const teamRef = doc(window.firebaseDb, 'projectGroups', teamId);
+                    const teamDoc = await getDoc(teamRef);
+                    
+                    if (teamDoc.exists()) {
+                        const teamData = teamDoc.data();
+                        // Clear team details if they match the deleted problem statement
+                        await updateDoc(teamRef, {
+                            topic: '',
+                            problemStatement: '',
+                            area: ''
+                        });
+                    }
+                } catch (error) {
+                    console.warn('Error updating team details after deletion:', error);
+                    // Continue even if team update fails
+                }
+            }
+            
+            alert('Problem statement deleted successfully!');
             await this.loadProblemStatements();
         } catch (error) {
             console.error('Error deleting problem statement:', error);
