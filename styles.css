@@ -752,7 +752,35 @@ body.mobile-menu-open {
 
 /* Force full width for problem statement and solution text */
 .problem-container, .solution-container {
-    width: 100%;
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box;
+}
+
+/* Ensure parent containers don't constrain width */
+#all-problem-statements-list {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+#all-problem-statements-list > div {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+/* Fix any flex containers that might restrict width */
+#all-problem-statements-list > div > div {
+    width: 100% !important;
+    max-width: none !important;
+    flex: 1 1 100% !important;
+}
+
+/* Ensure text content inside containers takes full width */
+.problem-container > div:last-child,
+.solution-container > div:last-child {
+    width: 100% !important;
+    max-width: none !important;
+    display: block !important;
 }
 
 .csv-upload-area {
