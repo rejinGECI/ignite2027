@@ -7217,8 +7217,8 @@ const app = {
         const solution = document.getElementById('problem-solution').value.trim();
         const pptFile = document.getElementById('problem-ppt').files[0];
         
-        if (!title || !problemStatement || !area) {
-            alert('Please fill in all required fields (Title, Problem Statement, Area/Technology).');
+        if (!title || !problemStatement || !area || !solution) {
+            alert('Please fill in all required fields (Title, Problem Statement, Area/Technology, Solution).');
             return;
         }
         
