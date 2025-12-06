@@ -7752,18 +7752,18 @@ const app = {
                                         </button>
                                     ` : ''}
                                 </div>
-                                <div style="width: 100%; margin-bottom: 1.5rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; box-sizing: border-box;">
-                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
+                                <div style="width: 100%; margin-bottom: 1.5rem; padding: 0; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; box-sizing: border-box; overflow: hidden;">
+                                    <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; padding: 1.5rem 1.5rem 0.75rem 1.5rem;">
                                         <i class="fas fa-file-alt"></i> Problem Statement:
                                     </strong>
-                                    <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.problemStatement)}</p>
+                                    <p style="margin: 0; padding: 0 0 1.5rem 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.problemStatement)}</p>
                                 </div>
                                 ${ps.solution ? `
-                                    <div style="width: 100%; margin-bottom: 0; padding: 1.5rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; box-sizing: border-box;">
-                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
+                                    <div style="width: 100%; margin-bottom: 0; padding: 0; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; box-sizing: border-box; overflow: hidden;">
+                                        <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem; padding: 1.5rem 1.5rem 0.75rem 1.5rem;">
                                             <i class="fas fa-lightbulb"></i> Solution:
                                         </strong>
-                                        <p style="margin: 0; padding: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.solution)}</p>
+                                        <p style="margin: 0; padding: 0 0 1.5rem 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; word-break: break-word; overflow-wrap: break-word; display: block; width: 100%; box-sizing: border-box;">${this.escapeHtml(ps.solution)}</p>
                                     </div>
                                 ` : ''}
                             </div>
