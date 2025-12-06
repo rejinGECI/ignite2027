@@ -4686,6 +4686,7 @@ const app = {
         const teamsContainer = document.getElementById('teams-list-container');
         const teamsList = document.getElementById('eval-teams-list');
         const formContainer = document.getElementById('evaluation-form-container');
+        const consolidatedReportBtn = document.getElementById('generate-consolidated-report-btn');
         
         if (!stageSelect || !teamsContainer || !teamsList) return;
         
@@ -4694,6 +4695,15 @@ const app = {
         // Hide form and teams list when stage changes
         formContainer.style.display = 'none';
         teamsContainer.style.display = 'none';
+        
+        // Enable/disable consolidated report button
+        if (consolidatedReportBtn) {
+            if (stageIndex === '') {
+                consolidatedReportBtn.disabled = true;
+            } else {
+                consolidatedReportBtn.disabled = false;
+            }
+        }
         
         if (stageIndex === '') {
             return;
@@ -4802,6 +4812,8 @@ const app = {
     
     async loadEvaluationStagesDropdown() {
         const select = document.getElementById('eval-stage-select');
+        const consolidatedReportBtn = document.getElementById('generate-consolidated-report-btn');
+        
         if (!select) return;
         
         try {
@@ -4813,9 +4825,17 @@ const app = {
             stages.forEach((stage, index) => {
                 select.innerHTML += `<option value="${index}">${this.escapeHtml(stage.name)}</option>`;
             });
+            
+            // Ensure consolidated report button is disabled when no stage is selected
+            if (consolidatedReportBtn) {
+                consolidatedReportBtn.disabled = true;
+            }
         } catch (error) {
             console.error('Error loading evaluation stages:', error);
             select.innerHTML = '<option value="">Error loading stages</option>';
+            if (consolidatedReportBtn) {
+                consolidatedReportBtn.disabled = true;
+            }
         }
     },
     
@@ -5291,6 +5311,7 @@ const app = {
         // Store the current team and stage for report generation
         this.currentReportTeamId = teamId;
         this.currentReportStageIndex = stageIndex;
+        this.currentReportType = 'single';
         
         // Show the modal
         const modal = document.getElementById('report-generation-modal');
@@ -5298,7 +5319,51 @@ const app = {
             modal.style.display = 'flex';
             // Reset format selection to PDF
             const formatSelect = document.getElementById('report-format');
+            const reportTypeSelect = document.getElementById('report-type');
             if (formatSelect) formatSelect.value = 'pdf';
+            if (reportTypeSelect) reportTypeSelect.value = 'single';
+            this.updateReportType();
+        }
+    },
+    
+    showConsolidatedReportOptions() {
+        const stageSelect = document.getElementById('eval-stage-select');
+        if (!stageSelect || !stageSelect.value) {
+            alert('Please select an evaluation stage first.');
+            return;
+        }
+        
+        // Store the stage for consolidated report generation
+        this.currentReportTeamId = null;
+        this.currentReportStageIndex = stageSelect.value;
+        this.currentReportType = 'consolidated';
+        
+        // Show the modal
+        const modal = document.getElementById('report-generation-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Set to consolidated and CSV as default
+            const formatSelect = document.getElementById('report-format');
+            const reportTypeSelect = document.getElementById('report-type');
+            if (formatSelect) formatSelect.value = 'csv';
+            if (reportTypeSelect) reportTypeSelect.value = 'consolidated';
+            this.updateReportType();
+        }
+    },
+    
+    updateReportType() {
+        const reportTypeSelect = document.getElementById('report-type');
+        const formatSelect = document.getElementById('report-format');
+        
+        if (!reportTypeSelect || !formatSelect) return;
+        
+        const reportType = reportTypeSelect.value;
+        
+        // For consolidated reports, suggest CSV or JSON
+        if (reportType === 'consolidated') {
+            if (formatSelect.value === 'pdf' || formatSelect.value === 'html' || formatSelect.value === 'docx') {
+                formatSelect.value = 'csv';
+            }
         }
     },
     
@@ -5309,14 +5374,21 @@ const app = {
         }
         this.currentReportTeamId = null;
         this.currentReportStageIndex = null;
+        this.currentReportType = null;
     },
     
     async generateEvaluationReport() {
+        const reportType = this.currentReportType || 'single';
         const teamId = this.currentReportTeamId;
         const stageIndex = this.currentReportStageIndex;
         const formatSelect = document.getElementById('report-format');
         
-        if (!teamId || stageIndex === undefined || !formatSelect) {
+        if (stageIndex === undefined || stageIndex === null || !formatSelect) {
+            alert('Invalid report parameters.');
+            return;
+        }
+        
+        if (reportType === 'single' && !teamId) {
             alert('Invalid report parameters.');
             return;
         }
@@ -5324,15 +5396,6 @@ const app = {
         const format = formatSelect.value;
         
         try {
-            // Load team data
-            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
-            if (!teamDoc.exists()) {
-                alert('Team not found!');
-                return;
-            }
-            
-            const teamData = teamDoc.data();
-            
             // Load evaluation stages
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
@@ -5343,26 +5406,44 @@ const app = {
                 return;
             }
             
-            // Load evaluation data
-            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
-            const evalData = evalDoc.exists() ? evalDoc.data() : {};
-            
-            // Get mark parameters
-            const teamParams = stage.teamMarkParams || [];
-            const individualParams = stage.individualMarkParams || [];
-            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-            
-            // Generate report content
-            const reportContent = this.generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
-            
-            // Generate and download based on format
-            if (format === 'pdf') {
-                await this.generatePDFReport(reportContent, teamData, stage);
-            } else if (format === 'html') {
-                this.generateHTMLReport(reportContent, teamData, stage);
-            } else if (format === 'docx') {
-                await this.generateDOCXReport(reportContent, teamData, stage);
+            if (reportType === 'consolidated') {
+                // Generate consolidated report for all teams
+                await this.generateConsolidatedReport(stage, stageIndex, format);
+            } else {
+                // Generate single team report
+                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+                if (!teamDoc.exists()) {
+                    alert('Team not found!');
+                    return;
+                }
+                
+                const teamData = teamDoc.data();
+                
+                // Load evaluation data
+                const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+                const evalData = evalDoc.exists() ? evalDoc.data() : {};
+                
+                // Get mark parameters
+                const teamParams = stage.teamMarkParams || [];
+                const individualParams = stage.individualMarkParams || [];
+                const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                
+                // Generate report content
+                const reportContent = this.generateReportContent(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+                
+                // Generate and download based on format
+                if (format === 'pdf') {
+                    await this.generatePDFReport(reportContent, teamData, stage);
+                } else if (format === 'html') {
+                    this.generateHTMLReport(reportContent, teamData, stage);
+                } else if (format === 'docx') {
+                    await this.generateDOCXReport(reportContent, teamData, stage);
+                } else if (format === 'csv') {
+                    this.generateCSVReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+                } else if (format === 'json') {
+                    this.generateJSONReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+                }
             }
             
             // Close modal after generation
@@ -5671,6 +5752,459 @@ const app = {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+    },
+    
+    generateCSVReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal) {
+        const csvRows = [];
+        
+        // Header information
+        csvRows.push('DEPARTMENT OF INFORMATION TECHNOLOGY');
+        csvRows.push('GOVERNMENT ENGINEERING COLLEGE IDUKKI');
+        csvRows.push('ITD 334 MINI PROJECT');
+        csvRows.push('');
+        csvRows.push(`Evaluation: ${stage.name}`);
+        csvRows.push('');
+        
+        // Team Information
+        csvRows.push('Team Information');
+        csvRows.push(`Team Name,${teamData.groupName || 'N/A'}`);
+        if (teamData.topic) csvRows.push(`Topic,${teamData.topic}`);
+        if (teamData.guideName) csvRows.push(`Guide,${teamData.guideName}`);
+        csvRows.push('');
+        
+        // Team Members
+        csvRows.push('Team Members');
+        csvRows.push('Sl. No.,Name,KTU ID');
+        (teamData.members || []).forEach((member, index) => {
+            csvRows.push(`${index + 1},${member.name || 'N/A'},${member.ktuid || 'N/A'}`);
+        });
+        csvRows.push('');
+        
+        // Team Evaluation
+        if (teamTotal > 0) {
+            csvRows.push('Team Evaluation');
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            
+            if (teamParams.length > 0) {
+                csvRows.push('Parameter,Marks Obtained,Maximum Marks');
+                teamParams.forEach(param => {
+                    const paramMarks = teamMarksData[param.name] || 0;
+                    csvRows.push(`${param.name},${paramMarks},${param.maxMarks}`);
+                });
+                csvRows.push(`Total,${teamMarks},${teamTotal}`);
+            } else {
+                csvRows.push(`Total Team Marks,${teamMarks},${teamTotal}`);
+            }
+            
+            if (evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>') {
+                csvRows.push('');
+                csvRows.push('Team Comments');
+                csvRows.push(this.stripHtml(evalData.teamComments).replace(/\n/g, ' '));
+            }
+            csvRows.push('');
+        }
+        
+        // Individual Evaluations
+        if (individualTotal > 0 || Object.keys(evalData.individualEvaluations || {}).length > 0) {
+            csvRows.push('Individual Evaluations');
+            const members = teamData.members || [];
+            const individualEvaluations = evalData.individualEvaluations || {};
+            
+            members.forEach((member, index) => {
+                const userId = member.userId || member.ktuid;
+                const individualEval = individualEvaluations[userId] || {};
+                const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                const isAbsent = individualEval.isAbsent || false;
+                
+                csvRows.push('');
+                csvRows.push(`Student ${index + 1}: ${member.name || member.ktuid || 'N/A'}${member.ktuid ? ` (${member.ktuid})` : ''}${isAbsent ? ' [Absent]' : ''}`);
+                
+                if (individualParams.length > 0 && !isAbsent) {
+                    csvRows.push('Parameter,Marks Obtained,Maximum Marks');
+                    individualParams.forEach(param => {
+                        const paramMarks = individualEval.marksData?.[param.name] || 0;
+                        csvRows.push(`${param.name},${paramMarks},${param.maxMarks}`);
+                    });
+                    csvRows.push(`Total,${studentMarks},${individualTotal}`);
+                } else {
+                    csvRows.push(`Individual Marks,${studentMarks},${individualTotal}`);
+                }
+                
+                if (individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>') {
+                    csvRows.push('Comments');
+                    csvRows.push(this.stripHtml(individualEval.comments).replace(/\n/g, ' '));
+                }
+            });
+        }
+        
+        csvRows.push('');
+        csvRows.push(`Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`);
+        
+        // Create CSV content
+        const csvContent = csvRows.join('\n');
+        
+        // Create download link
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team').replace(/[^a-z0-9]/gi, '_')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    generateJSONReport(teamData, stage, evalData, teamParams, individualParams, teamTotal, individualTotal) {
+        const teamMarksData = evalData.teamMarksData || {};
+        const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+        const members = teamData.members || [];
+        const individualEvaluations = evalData.individualEvaluations || {};
+        
+        const reportData = {
+            header: {
+                department: 'DEPARTMENT OF INFORMATION TECHNOLOGY',
+                college: 'GOVERNMENT ENGINEERING COLLEGE IDUKKI',
+                course: 'ITD 334 MINI PROJECT',
+                evaluation: stage.name,
+                generatedOn: new Date().toISOString()
+            },
+            team: {
+                name: teamData.groupName || 'N/A',
+                topic: teamData.topic || null,
+                guide: teamData.guideName || null,
+                members: (teamData.members || []).map((member, index) => ({
+                    serialNumber: index + 1,
+                    name: member.name || 'N/A',
+                    ktuid: member.ktuid || 'N/A'
+                }))
+            },
+            teamEvaluation: {
+                totalMarks: teamTotal,
+                marksObtained: teamMarks !== null && teamMarks !== undefined ? teamMarks : 0,
+                parameters: teamParams.map(param => ({
+                    name: param.name,
+                    marksObtained: teamMarksData[param.name] || 0,
+                    maximumMarks: param.maxMarks
+                })),
+                comments: evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>' ? this.stripHtml(evalData.teamComments) : null
+            },
+            individualEvaluations: members.map((member, index) => {
+                const userId = member.userId || member.ktuid;
+                const individualEval = individualEvaluations[userId] || {};
+                const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                
+                return {
+                    serialNumber: index + 1,
+                    name: member.name || 'N/A',
+                    ktuid: member.ktuid || 'N/A',
+                    isAbsent: individualEval.isAbsent || false,
+                    totalMarks: individualTotal,
+                    marksObtained: studentMarks,
+                    parameters: individualParams.map(param => ({
+                        name: param.name,
+                        marksObtained: individualEval.marksData?.[param.name] || 0,
+                        maximumMarks: param.maxMarks
+                    })),
+                    comments: individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>' ? this.stripHtml(individualEval.comments) : null
+                };
+            })
+        };
+        
+        // Create JSON content
+        const jsonContent = JSON.stringify(reportData, null, 2);
+        
+        // Create download link
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team').replace(/[^a-z0-9]/gi, '_')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    async generateConsolidatedReport(stage, stageIndex, format) {
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) {
+                    teams.push({
+                        id: doc.id,
+                        ...data
+                    });
+                }
+            });
+            
+            // Load evaluation data for all teams
+            const teamsWithEvaluations = await Promise.all(teams.map(async (team) => {
+                try {
+                    const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
+                    const evalData = evalDoc.exists() ? evalDoc.data() : {};
+                    return { ...team, evaluation: evalData };
+                } catch (error) {
+                    console.error(`Error loading evaluation for team ${team.id}:`, error);
+                    return { ...team, evaluation: {} };
+                }
+            }));
+            
+            // Sort teams alphabetically
+            teamsWithEvaluations.sort((a, b) => {
+                const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
+                const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+                if (nameA < nameB) return -1;
+                if (nameA > nameB) return 1;
+                return 0;
+            });
+            
+            // Get mark parameters
+            const teamParams = stage.teamMarkParams || [];
+            const individualParams = stage.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Generate based on format
+            if (format === 'csv') {
+                this.generateConsolidatedCSVReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+            } else if (format === 'json') {
+                this.generateConsolidatedJSONReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+            } else {
+                // For PDF/HTML/DOCX, generate a consolidated HTML report
+                const reportContent = this.generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal);
+                
+                if (format === 'pdf') {
+                    await this.generatePDFReport(reportContent, { groupName: 'All Teams' }, stage);
+                } else if (format === 'html') {
+                    this.generateHTMLReport(reportContent, { groupName: 'All Teams' }, stage);
+                } else if (format === 'docx') {
+                    await this.generateDOCXReport(reportContent, { groupName: 'All Teams' }, stage);
+                }
+            }
+        } catch (error) {
+            console.error('Error generating consolidated report:', error);
+            throw error;
+        }
+    },
+    
+    generateConsolidatedCSVReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
+        const csvRows = [];
+        
+        // Header information
+        csvRows.push('DEPARTMENT OF INFORMATION TECHNOLOGY');
+        csvRows.push('GOVERNMENT ENGINEERING COLLEGE IDUKKI');
+        csvRows.push('ITD 334 MINI PROJECT');
+        csvRows.push('');
+        csvRows.push(`Evaluation: ${stage.name} - CONSOLIDATED REPORT`);
+        csvRows.push('');
+        
+        // Summary row
+        csvRows.push('Summary');
+        csvRows.push(`Total Teams,${teamsWithEvaluations.length}`);
+        csvRows.push(`Teams with Evaluations,${teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length}`);
+        csvRows.push('');
+        
+        // Team data
+        teamsWithEvaluations.forEach((team, teamIndex) => {
+            csvRows.push(`Team ${teamIndex + 1}: ${team.groupName || 'Unnamed Team'}`);
+            csvRows.push('Field,Value');
+            csvRows.push(`Topic,${team.topic || 'N/A'}`);
+            csvRows.push(`Guide,${team.guideName || 'N/A'}`);
+            csvRows.push('');
+            csvRows.push('Team Members');
+            csvRows.push('Sl. No.,Name,KTU ID');
+            (team.members || []).forEach((member, index) => {
+                csvRows.push(`${index + 1},${member.name || 'N/A'},${member.ktuid || 'N/A'}`);
+            });
+            csvRows.push('');
+            
+            const evalData = team.evaluation || {};
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            
+            // Team Evaluation
+            if (teamTotal > 0) {
+                csvRows.push('Team Evaluation');
+                if (teamParams.length > 0) {
+                    csvRows.push('Parameter,Marks Obtained,Maximum Marks');
+                    teamParams.forEach(param => {
+                        const paramMarks = teamMarksData[param.name] || 0;
+                        csvRows.push(`${param.name},${paramMarks},${param.maxMarks}`);
+                    });
+                    csvRows.push(`Total,${teamMarks},${teamTotal}`);
+                } else {
+                    csvRows.push(`Total Team Marks,${teamMarks},${teamTotal}`);
+                }
+                csvRows.push('');
+            }
+            
+            // Individual Evaluations
+            const individualEvaluations = evalData.individualEvaluations || {};
+            (team.members || []).forEach((member, index) => {
+                const userId = member.userId || member.ktuid;
+                const individualEval = individualEvaluations[userId] || {};
+                const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                const isAbsent = individualEval.isAbsent || false;
+                
+                csvRows.push(`Student ${index + 1}: ${member.name || 'N/A'}${isAbsent ? ' [Absent]' : ''}`);
+                csvRows.push(`Marks,${studentMarks},${individualTotal}`);
+                csvRows.push('');
+            });
+            
+            csvRows.push('---');
+            csvRows.push('');
+        });
+        
+        csvRows.push(`Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`);
+        
+        // Create CSV content
+        const csvContent = csvRows.join('\n');
+        
+        // Create download link
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Consolidated_Evaluation_Report_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    generateConsolidatedJSONReport(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
+        const reportData = {
+            header: {
+                department: 'DEPARTMENT OF INFORMATION TECHNOLOGY',
+                college: 'GOVERNMENT ENGINEERING COLLEGE IDUKKI',
+                course: 'ITD 334 MINI PROJECT',
+                evaluation: stage.name,
+                reportType: 'CONSOLIDATED REPORT',
+                generatedOn: new Date().toISOString(),
+                summary: {
+                    totalTeams: teamsWithEvaluations.length,
+                    teamsWithEvaluations: teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length
+                }
+            },
+            teams: teamsWithEvaluations.map((team, teamIndex) => {
+                const evalData = team.evaluation || {};
+                const teamMarksData = evalData.teamMarksData || {};
+                const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                const individualEvaluations = evalData.individualEvaluations || {};
+                
+                return {
+                    teamNumber: teamIndex + 1,
+                    teamName: team.groupName || 'Unnamed Team',
+                    topic: team.topic || null,
+                    guide: team.guideName || null,
+                    members: (team.members || []).map((member, index) => ({
+                        serialNumber: index + 1,
+                        name: member.name || 'N/A',
+                        ktuid: member.ktuid || 'N/A'
+                    })),
+                    teamEvaluation: {
+                        totalMarks: teamTotal,
+                        marksObtained: teamMarks !== null && teamMarks !== undefined ? teamMarks : 0,
+                        parameters: teamParams.map(param => ({
+                            name: param.name,
+                            marksObtained: teamMarksData[param.name] || 0,
+                            maximumMarks: param.maxMarks
+                        })),
+                        comments: evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>' ? this.stripHtml(evalData.teamComments) : null
+                    },
+                    individualEvaluations: (team.members || []).map((member, index) => {
+                        const userId = member.userId || member.ktuid;
+                        const individualEval = individualEvaluations[userId] || {};
+                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                        
+                        return {
+                            serialNumber: index + 1,
+                            name: member.name || 'N/A',
+                            ktuid: member.ktuid || 'N/A',
+                            isAbsent: individualEval.isAbsent || false,
+                            totalMarks: individualTotal,
+                            marksObtained: studentMarks,
+                            parameters: individualParams.map(param => ({
+                                name: param.name,
+                                marksObtained: individualEval.marksData?.[param.name] || 0,
+                                maximumMarks: param.maxMarks
+                            })),
+                            comments: individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>' ? this.stripHtml(individualEval.comments) : null
+                        };
+                    })
+                };
+            })
+        };
+        
+        // Create JSON content
+        const jsonContent = JSON.stringify(reportData, null, 2);
+        
+        // Create download link
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Consolidated_Evaluation_Report_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    generateConsolidatedReportContent(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
+        let html = `
+            <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+                <!-- Header -->
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-top: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; display: inline-block;">
+                        ${this.escapeHtml(stage.name)} - CONSOLIDATED REPORT
+                    </div>
+                </div>
+                
+                <!-- Summary -->
+                <div style="margin-bottom: 25px; padding: 15px; background: #f0f0f0; border-radius: 8px;">
+                    <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Summary</h3>
+                    <p><strong>Total Teams:</strong> ${teamsWithEvaluations.length}</p>
+                    <p><strong>Teams with Evaluations:</strong> ${teamsWithEvaluations.filter(t => t.evaluation && Object.keys(t.evaluation).length > 0).length}</p>
+                </div>
+        `;
+        
+        // Generate report for each team
+        teamsWithEvaluations.forEach((team, teamIndex) => {
+            const evalData = team.evaluation || {};
+            html += this.generateReportContent(team, stage, evalData, teamParams, individualParams, teamTotal, individualTotal);
+            
+            // Add page break between teams (except last one)
+            if (teamIndex < teamsWithEvaluations.length - 1) {
+                html += '<div style="page-break-after: always;"></div>';
+            }
+        });
+        
+        html += `
+                <!-- Footer -->
+                <div style="margin-top: 40px; text-align: right; font-size: 12px; color: #666;">
+                    <div>Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    },
+    
+    stripHtml(html) {
+        const tmp = document.createElement('DIV');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
     },
     
     // Student Mini Project View
