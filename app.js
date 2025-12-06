@@ -4249,7 +4249,8 @@ const app = {
                     id: doc.id,
                     name: data.name || 'Unknown',
                     email: data.email || '',
-                    username: data.username || ''
+                    username: data.username || '',
+                    password: data.password || '' // Include password for report generation
                 });
             });
             
@@ -5723,6 +5724,301 @@ const app = {
             modal.style.display = 'none';
         }
         this.currentConsolidatedStageIndex = null;
+    },
+    
+    showGuideCredentialsReportOptions() {
+        const modal = document.getElementById('guide-credentials-report-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Set default format to PDF
+            const formatSelect = document.getElementById('guide-credentials-report-format');
+            if (formatSelect) {
+                formatSelect.value = 'pdf';
+            }
+        }
+    },
+    
+    closeGuideCredentialsReportModal() {
+        const modal = document.getElementById('guide-credentials-report-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    },
+    
+    async generateGuideCredentialsReportFromModal() {
+        const formatSelect = document.getElementById('guide-credentials-report-format');
+        if (!formatSelect) return;
+        
+        const format = formatSelect.value;
+        this.closeGuideCredentialsReportModal();
+        
+        try {
+            await this.generateGuideCredentialsReport(format);
+        } catch (error) {
+            console.error('Error generating guide credentials report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
+    async generateGuideCredentialsReport(format) {
+        try {
+            // Load all guides
+            const guidesQuery = query(
+                collection(window.firebaseDb, 'users'),
+                where('role', '==', 'guide')
+            );
+            const guidesSnapshot = await getDocs(guidesQuery);
+            
+            const guides = [];
+            guidesSnapshot.forEach(doc => {
+                const data = doc.data();
+                guides.push({
+                    id: doc.id,
+                    name: data.name || 'Unknown',
+                    email: data.email || '',
+                    username: data.username || data.email?.split('@')[0] || '',
+                    password: data.password || 'N/A'
+                });
+            });
+            
+            // Sort guides alphabetically by name
+            guides.sort((a, b) => {
+                const nameA = (a.name || '').trim().toLowerCase();
+                const nameB = (b.name || '').trim().toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            // Generate based on format
+            if (format === 'csv') {
+                this.generateGuideCredentialsCSVReport(guides);
+            } else if (format === 'json') {
+                this.generateGuideCredentialsJSONReport(guides);
+            } else {
+                // For PDF/HTML/DOCX, generate HTML report
+                const reportContent = this.generateGuideCredentialsReportContent(guides);
+                
+                if (format === 'pdf') {
+                    await this.generatePDFReport(reportContent, { groupName: 'Guide Credentials' }, { name: 'Guide Credentials Report' });
+                } else if (format === 'html') {
+                    this.generateHTMLReport(reportContent, { groupName: 'Guide Credentials' }, { name: 'Guide Credentials Report' });
+                } else if (format === 'docx') {
+                    await this.generateDOCXReport(reportContent, { groupName: 'Guide Credentials' }, { name: 'Guide Credentials Report' });
+                }
+            }
+        } catch (error) {
+            console.error('Error generating guide credentials report:', error);
+            throw error;
+        }
+    },
+    
+    generateGuideCredentialsReportContent(guides) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Guide Credentials Report</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.5;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #ffffff;
+                    }
+                    .report-container {
+                        max-width: 900px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        background: #ffffff;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding: 30px;
+                        background: #ffffff;
+                        border-radius: 12px;
+                        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .header-text {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 15px;
+                        font-weight: 600;
+                        margin-bottom: 10px;
+                        letter-spacing: 1.5px;
+                        color: #1f2937;
+                        text-transform: uppercase;
+                    }
+                    .report-title {
+                        font-family: 'Lato', sans-serif;
+                        font-size: 24px;
+                        font-weight: 700;
+                        margin-top: 20px;
+                        padding: 15px 35px;
+                        background: #f8fafc;
+                        border-radius: 12px;
+                        display: inline-block;
+                        color: #1f2937;
+                        border: 2px solid rgba(0, 0, 0, 0.08);
+                    }
+                    .guides-table {
+                        width: 100%;
+                        border-collapse: separate;
+                        border-spacing: 0;
+                        margin-bottom: 20px;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .guides-table th {
+                        background-color: #f8fafc;
+                        color: #1f2937;
+                        font-weight: 700;
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 12px;
+                        padding: 8px 10px;
+                        text-align: left;
+                        border-bottom: 2px solid #e5e7eb;
+                        letter-spacing: 0.5px;
+                    }
+                    .guides-table td {
+                        padding: 6px 10px;
+                        border-bottom: 1px solid #e5e7eb;
+                        font-size: 12px;
+                        font-family: 'Lato', sans-serif;
+                    }
+                    .guides-table tr:nth-child(even) {
+                        background-color: #f8fafc;
+                    }
+                    .guides-table tr:nth-child(odd) {
+                        background-color: #ffffff;
+                    }
+                    .password-cell {
+                        font-family: 'Courier New', monospace;
+                        font-weight: 600;
+                        color: #7e22ce;
+                        font-size: 11px;
+                    }
+                    .footer {
+                        margin-top: 20px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #6b7280;
+                        padding-top: 12px;
+                        border-top: 1px solid #e5e7eb;
+                        font-family: 'Lato', sans-serif;
+                        font-weight: 500;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-container">
+                    <div class="header">
+                        <div class="header-text">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                        <div class="header-text">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                        <div class="header-text" style="margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
+                        <div class="report-title">
+                            Guide Credentials Report
+                        </div>
+                    </div>
+                    
+                    <table class="guides-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">Sl. No.</th>
+                                <th style="width: 25%;">Guide Name</th>
+                                <th style="width: 30%;">Email / Username</th>
+                                <th style="width: 40%;">Password</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${guides.map((guide, index) => `
+                                <tr>
+                                    <td style="text-align: center; color: #4b5563; font-weight: 600;">${index + 1}</td>
+                                    <td style="color: #1f2937; font-weight: 500;">${this.escapeHtml(guide.name)}</td>
+                                    <td style="color: #1f2937;">${this.escapeHtml(guide.email || guide.username)}</td>
+                                    <td class="password-cell">${this.escapeHtml(guide.password)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    
+                    <div class="footer">
+                        Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateGuideCredentialsCSVReport(guides) {
+        const csvRows = [];
+        
+        // Header information
+        csvRows.push('DEPARTMENT OF INFORMATION TECHNOLOGY');
+        csvRows.push('GOVERNMENT ENGINEERING COLLEGE IDUKKI');
+        csvRows.push('ITD 334 MINI PROJECT');
+        csvRows.push('');
+        csvRows.push('Guide Credentials Report');
+        csvRows.push('');
+        csvRows.push('Sl. No.,Guide Name,Email/Username,Password');
+        
+        // Guide data
+        guides.forEach((guide, index) => {
+            csvRows.push(`${index + 1},"${guide.name}","${guide.email || guide.username}","${guide.password}"`);
+        });
+        
+        csvRows.push('');
+        csvRows.push(`Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`);
+        
+        // Create CSV content
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Guide_Credentials_Report_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+    
+    generateGuideCredentialsJSONReport(guides) {
+        const reportData = {
+            header: {
+                department: 'DEPARTMENT OF INFORMATION TECHNOLOGY',
+                college: 'GOVERNMENT ENGINEERING COLLEGE IDUKKI',
+                course: 'ITD 334 MINI PROJECT',
+                reportTitle: 'Guide Credentials Report',
+                generatedOn: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+            },
+            guides: guides.map((guide, index) => ({
+                serialNumber: index + 1,
+                name: guide.name,
+                email: guide.email || guide.username,
+                username: guide.username || guide.email?.split('@')[0] || '',
+                password: guide.password
+            }))
+        };
+        
+        const jsonContent = JSON.stringify(reportData, null, 2);
+        const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Guide_Credentials_Report_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     },
     
     async generateEvaluationReport() {

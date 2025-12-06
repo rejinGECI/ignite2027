@@ -788,7 +788,12 @@ Bob Johnson,GHI789</pre>
                     <div id="admin-miniproject-teams-tab" class="admin-tab-content active">
                         <!-- Guides Management -->
                         <div class="admin-card">
-                            <h3><i class="fas fa-user-tie"></i> Manage Guides</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <h3 style="margin: 0;"><i class="fas fa-user-tie"></i> Manage Guides</h3>
+                                <button type="button" class="btn btn-secondary" onclick="app.showGuideCredentialsReportOptions()">
+                                    <i class="fas fa-file-alt"></i> Generate Credentials Report
+                                </button>
+                            </div>
                             <div class="add-guide-section">
                                 <div class="form-row">
                                     <input type="text" id="guide-name" placeholder="Guide Name" class="form-input">
@@ -1283,6 +1288,39 @@ Bob Johnson,GHI789</pre>
                     <button type="button" class="btn btn-secondary" onclick="app.closeConsolidatedReportModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="app.generateConsolidatedReportFromModal()">
                         <i class="fas fa-file-download"></i> Generate Consolidated Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Guide Credentials Report Modal -->
+    <div id="guide-credentials-report-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeGuideCredentialsReportModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-key"></i> Generate Guide Credentials Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeGuideCredentialsReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="guide-credentials-report-format">Select Report Format *</label>
+                    <select id="guide-credentials-report-format" class="form-input" required>
+                        <option value="pdf">PDF - Recommended</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                        <option value="csv">CSV (Spreadsheet)</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                        <em>This report contains sensitive credentials. Keep it secure.</em>
+                    </p>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeGuideCredentialsReportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateGuideCredentialsReportFromModal()">
+                        <i class="fas fa-file-download"></i> Generate Report
                     </button>
                 </div>
             </div>
