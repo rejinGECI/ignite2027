@@ -16,6 +16,7 @@ import {
     updateDoc,
     collection,
     addDoc,
+    deleteDoc,
     query,
     where,
     getDocs,
@@ -23,6 +24,12 @@ import {
     limit,
     serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import {
+    ref,
+    uploadBytes,
+    getDownloadURL,
+    deleteObject
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 // Sound utility functions
 const SoundManager = {
@@ -5029,6 +5036,10 @@ const app = {
     
     // Admin Mini Project Tab Switching
     switchAdminMiniProjectTab(tabName) {
+        // Load problem statements when tab is switched
+        if (tabName === 'problem-statements') {
+            setTimeout(() => this.loadAllProblemStatements(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -6945,6 +6956,9 @@ const app = {
             // studentKtuid already declared above
             const studentUserId = this.currentUser.uid;
             
+            // Store team ID for problem statements
+            this.currentStudentTeamId = studentTeam.id;
+            
             container.innerHTML = `
                 <div class="miniproject-card">
                     <div class="project-header">
@@ -6985,9 +6999,22 @@ const app = {
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Problem Statement Section -->
+                    <div class="problem-statements-section" style="margin-top: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 class="section-title"><i class="fas fa-file-alt"></i> Problem Statements</h3>
+                            <button type="button" class="btn btn-primary" onclick="app.showProblemStatementModal()">
+                                <i class="fas fa-plus"></i> Add Problem Statement
+                            </button>
+                        </div>
+                        <div id="problem-statements-list" class="problem-statements-list">
+                            <p class="empty-state">Loading problem statements...</p>
+                        </div>
+                    </div>
                         
                         ${stages.length > 0 ? `
-                            <div class="evaluations-section">
+                            <div class="evaluations-section" style="margin-top: 2rem;">
                                 <h3 class="section-title"><i class="fas fa-clipboard-check"></i> Evaluations</h3>
                                 <div class="evaluations-grid">
                                     ${stages.map((stage, index) => {
@@ -7125,6 +7152,9 @@ const app = {
                     </div>
                 </div>
             `;
+            
+            // Load problem statements after rendering
+            setTimeout(() => this.loadProblemStatements(), 100);
         } catch (error) {
             // Handle permission errors gracefully
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
@@ -7139,6 +7169,372 @@ const app = {
                 console.error('Error loading student mini project:', error);
                 container.innerHTML = '<p class="error-message">Error loading project details.</p>';
             }
+        }
+    },
+    
+    // Problem Statement Functions
+    showProblemStatementModal() {
+        const modal = document.getElementById('problem-statement-modal');
+        if (!modal) return;
+        
+        // Reset form
+        document.getElementById('problem-statement-form').reset();
+        document.getElementById('problem-ppt-preview').style.display = 'none';
+        
+        // Show file preview when file is selected
+        const fileInput = document.getElementById('problem-ppt');
+        fileInput.onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const preview = document.getElementById('problem-ppt-preview');
+                const nameSpan = document.getElementById('problem-ppt-name');
+                nameSpan.textContent = file.name;
+                preview.style.display = 'block';
+            }
+        };
+        
+        modal.style.display = 'flex';
+    },
+    
+    closeProblemStatementModal() {
+        const modal = document.getElementById('problem-statement-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            document.getElementById('problem-statement-form').reset();
+            document.getElementById('problem-ppt-preview').style.display = 'none';
+        }
+    },
+    
+    async saveProblemStatement() {
+        if (!this.currentStudentTeamId) {
+            alert('Error: Team ID not found. Please refresh the page.');
+            return;
+        }
+        
+        const title = document.getElementById('problem-title').value.trim();
+        const problemStatement = document.getElementById('problem-statement').value.trim();
+        const area = document.getElementById('problem-area').value.trim();
+        const solution = document.getElementById('problem-solution').value.trim();
+        const pptFile = document.getElementById('problem-ppt').files[0];
+        
+        if (!title || !problemStatement || !area) {
+            alert('Please fill in all required fields (Title, Problem Statement, Area/Technology).');
+            return;
+        }
+        
+        try {
+            let pptUrl = '';
+            
+            // Upload PPT if provided
+            if (pptFile) {
+                if (pptFile.size > 10 * 1024 * 1024) { // 10MB limit
+                    alert('PPT file size must be less than 10MB.');
+                    return;
+                }
+                
+                const fileName = `problem_statements/${this.currentStudentTeamId}/${Date.now()}_${pptFile.name}`;
+                const storageRef = ref(window.firebaseStorage, fileName);
+                
+                await uploadBytes(storageRef, pptFile);
+                pptUrl = await getDownloadURL(storageRef);
+            }
+            
+            // Save problem statement to Firestore
+            const problemStatementData = {
+                teamId: this.currentStudentTeamId,
+                title: title,
+                problemStatement: problemStatement,
+                area: area,
+                solution: solution,
+                pptUrl: pptUrl,
+                pptFileName: pptFile ? pptFile.name : '',
+                preferred: false,
+                approved: false,
+                createdAt: new Date().toISOString(),
+                createdBy: this.currentUser.uid
+            };
+            
+            await addDoc(collection(window.firebaseDb, 'problemStatements'), problemStatementData);
+            
+            alert('Problem statement added successfully!');
+            this.closeProblemStatementModal();
+            await this.loadProblemStatements();
+        } catch (error) {
+            console.error('Error saving problem statement:', error);
+            alert('Error saving problem statement. Please try again.');
+        }
+    },
+    
+    async loadProblemStatements() {
+        if (!this.currentStudentTeamId) return;
+        
+        const container = document.getElementById('problem-statements-list');
+        if (!container) return;
+        
+        try {
+            const problemStatementsQuery = query(
+                collection(window.firebaseDb, 'problemStatements'),
+                where('teamId', '==', this.currentStudentTeamId),
+                orderBy('createdAt', 'desc')
+            );
+            const snapshot = await getDocs(problemStatementsQuery);
+            
+            const problemStatements = [];
+            snapshot.forEach(doc => {
+                problemStatements.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            
+            if (problemStatements.length === 0) {
+                container.innerHTML = '<p class="empty-state">No problem statements added yet. Click "Add Problem Statement" to get started.</p>';
+                return;
+            }
+            
+            container.innerHTML = problemStatements.map((ps, index) => `
+                <div class="problem-statement-item" style="margin-bottom: 1rem; padding: 1.25rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.1rem;">
+                                ${this.escapeHtml(ps.title)}
+                                ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 2px 8px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
+                                ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 2px 8px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
+                            </h4>
+                            <div style="margin-bottom: 0.5rem;">
+                                <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                    <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            ${!ps.preferred ? `
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.markPreferredProblemStatement('${ps.id}')" title="Mark as Preferred">
+                                    <i class="fas fa-star"></i>
+                                </button>
+                            ` : ''}
+                            ${ps.pptUrl ? `
+                                <a href="${ps.pptUrl}" target="_blank" class="btn btn-secondary btn-sm" title="View PPT">
+                                    <i class="fas fa-file-powerpoint"></i>
+                                </a>
+                            ` : ''}
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteProblemStatement('${ps.id}', '${ps.pptUrl || ''}')" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong style="font-size: 0.9rem; color: var(--text-secondary);">Problem Statement:</strong>
+                        <p style="margin: 0.25rem 0 0 0; color: var(--text-primary); white-space: pre-wrap;">${this.escapeHtml(ps.problemStatement)}</p>
+                    </div>
+                    ${ps.solution ? `
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong style="font-size: 0.9rem; color: var(--text-secondary);">Solution:</strong>
+                            <p style="margin: 0.25rem 0 0 0; color: var(--text-primary); white-space: pre-wrap;">${this.escapeHtml(ps.solution)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading problem statements:', error);
+            container.innerHTML = '<p class="error-message">Error loading problem statements.</p>';
+        }
+    },
+    
+    async markPreferredProblemStatement(problemStatementId) {
+        if (!this.currentStudentTeamId) return;
+        
+        try {
+            // First, unmark all other preferred problem statements for this team
+            const problemStatementsQuery = query(
+                collection(window.firebaseDb, 'problemStatements'),
+                where('teamId', '==', this.currentStudentTeamId)
+            );
+            const snapshot = await getDocs(problemStatementsQuery);
+            
+            const updatePromises = [];
+            snapshot.forEach(doc => {
+                if (doc.data().preferred) {
+                    updatePromises.push(updateDoc(doc.ref, { preferred: false }));
+                }
+            });
+            await Promise.all(updatePromises);
+            
+            // Mark the selected one as preferred
+            await updateDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId), {
+                preferred: true
+            });
+            
+            await this.loadProblemStatements();
+        } catch (error) {
+            console.error('Error marking preferred problem statement:', error);
+            alert('Error updating preferred problem statement. Please try again.');
+        }
+    },
+    
+    async deleteProblemStatement(problemStatementId, pptUrl) {
+        if (!confirm('Are you sure you want to delete this problem statement?')) {
+            return;
+        }
+        
+        try {
+            // Delete PPT from storage if exists
+            if (pptUrl) {
+                try {
+                    const storageRef = ref(window.firebaseStorage, pptUrl);
+                    await deleteObject(storageRef);
+                } catch (error) {
+                    console.warn('Error deleting PPT file:', error);
+                    // Continue even if file deletion fails
+                }
+            }
+            
+            // Delete from Firestore
+            await deleteDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
+            
+            await this.loadProblemStatements();
+        } catch (error) {
+            console.error('Error deleting problem statement:', error);
+            alert('Error deleting problem statement. Please try again.');
+        }
+    },
+    
+    // Admin: Load all problem statements
+    async loadAllProblemStatements() {
+        if (!this.isAdmin) return;
+        
+        const container = document.getElementById('all-problem-statements-list');
+        if (!container) return;
+        
+        try {
+            const problemStatementsQuery = query(
+                collection(window.firebaseDb, 'problemStatements'),
+                orderBy('createdAt', 'desc')
+            );
+            const snapshot = await getDocs(problemStatementsQuery);
+            
+            // Get all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            const teamsMap = {};
+            teamsSnapshot.forEach(doc => {
+                teamsMap[doc.id] = doc.data();
+            });
+            
+            const problemStatements = [];
+            snapshot.forEach(doc => {
+                const ps = doc.data();
+                problemStatements.push({
+                    id: doc.id,
+                    ...ps,
+                    team: teamsMap[ps.teamId] || null
+                });
+            });
+            
+            if (problemStatements.length === 0) {
+                container.innerHTML = '<p class="empty-state">No problem statements submitted yet.</p>';
+                return;
+            }
+            
+            container.innerHTML = problemStatements.map(ps => `
+                <div class="admin-problem-statement-item" style="margin-bottom: 1.5rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); ${ps.approved ? 'border-left: 4px solid #10b981;' : ''}">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.15rem;">
+                                ${this.escapeHtml(ps.title)}
+                                ${ps.preferred ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-star"></i> Preferred</span>' : ''}
+                                ${ps.approved ? '<span style="margin-left: 0.5rem; padding: 3px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.8rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>' : ''}
+                            </h4>
+                            <div style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                                <strong>Team:</strong> ${ps.team ? this.escapeHtml(ps.team.groupName || 'Unknown') : 'Unknown Team'}
+                            </div>
+                            <div style="margin-bottom: 0.5rem;">
+                                <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                    <i class="fas fa-tag"></i> ${this.escapeHtml(ps.area)}
+                                </span>
+                            </div>
+                        </div>
+                        ${!ps.approved ? `
+                            <button type="button" class="btn btn-primary" onclick="app.approveProblemStatement('${ps.id}', '${ps.teamId}')">
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong style="font-size: 0.9rem; color: var(--text-secondary);">Problem Statement:</strong>
+                        <p style="margin: 0.25rem 0 0 0; color: var(--text-primary); white-space: pre-wrap;">${this.escapeHtml(ps.problemStatement)}</p>
+                    </div>
+                    ${ps.solution ? `
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong style="font-size: 0.9rem; color: var(--text-secondary);">Solution:</strong>
+                            <p style="margin: 0.25rem 0 0 0; color: var(--text-primary); white-space: pre-wrap;">${this.escapeHtml(ps.solution)}</p>
+                        </div>
+                    ` : ''}
+                    ${ps.pptUrl ? `
+                        <div style="margin-top: 0.75rem;">
+                            <a href="${ps.pptUrl}" target="_blank" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-file-powerpoint"></i> View PPT
+                            </a>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading all problem statements:', error);
+            container.innerHTML = '<p class="error-message">Error loading problem statements.</p>';
+        }
+    },
+    
+    async approveProblemStatement(problemStatementId, teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to approve this problem statement? This will update the team\'s mini project details.')) {
+            return;
+        }
+        
+        try {
+            // Get the problem statement
+            const psDoc = await getDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
+            if (!psDoc.exists()) {
+                alert('Problem statement not found.');
+                return;
+            }
+            
+            const psData = psDoc.data();
+            
+            // Update all problem statements for this team - unapprove others
+            const problemStatementsQuery = query(
+                collection(window.firebaseDb, 'problemStatements'),
+                where('teamId', '==', teamId)
+            );
+            const snapshot = await getDocs(problemStatementsQuery);
+            
+            const updatePromises = [];
+            snapshot.forEach(doc => {
+                if (doc.data().approved) {
+                    updatePromises.push(updateDoc(doc.ref, { approved: false }));
+                }
+            });
+            await Promise.all(updatePromises);
+            
+            // Approve the selected problem statement
+            await updateDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId), {
+                approved: true
+            });
+            
+            // Update team's mini project details
+            const teamRef = doc(window.firebaseDb, 'projectGroups', teamId);
+            await updateDoc(teamRef, {
+                topic: psData.title,
+                problemStatement: psData.problemStatement,
+                area: psData.area
+            });
+            
+            alert('Problem statement approved and team details updated successfully!');
+            await this.loadAllProblemStatements();
+        } catch (error) {
+            console.error('Error approving problem statement:', error);
+            alert('Error approving problem statement. Please try again.');
         }
     }
 };
