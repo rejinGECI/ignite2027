@@ -5576,8 +5576,8 @@ const app = {
                 
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
-                <div style="margin-bottom: 35px;">
-                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 25px; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
+                <div style="margin-bottom: 35px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 20px; color: #1f2937; border-left: 4px solid #7e22ce; padding-left: 15px; letter-spacing: 0.5px;">Individual Evaluations</h3>
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
@@ -5586,49 +5586,32 @@ const app = {
                         const isAbsent = individualEval.isAbsent || false;
                         
                         return `
-                            <div style="margin-bottom: 25px; padding: 25px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); border-left: 4px solid ${isAbsent ? '#ef4444' : '#7e22ce'};">
-                                <h4 style="font-family: 'Lato', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 18px; color: #1f2937; display: flex; align-items: center; gap: 12px;">
-                                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: ${isAbsent ? '#fee2e2' : '#f3e8ff'}; color: ${isAbsent ? '#991b1b' : '#7e22ce'}; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; border: 2px solid ${isAbsent ? '#fca5a5' : '#d8b4fe'};">${index + 1}</span>
-                                    ${this.escapeHtml(member.name || member.ktuid || 'N/A')}
-                                    ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 500; font-size: 15px;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
-                                    ${isAbsent ? ' <span style="padding: 6px 12px; background: #fee2e2; color: #991b1b; border-radius: 8px; font-size: 12px; font-weight: 600; font-family: \'Montserrat\', sans-serif; border: 1px solid #fca5a5;">Absent</span>' : ''}
-                                </h4>
+                            <div style="margin-bottom: ${index < members.length - 1 ? '20px' : '0'}; padding-bottom: ${index < members.length - 1 ? '20px' : '0'}; ${index < members.length - 1 ? 'border-bottom: 1px solid #e5e7eb;' : ''}">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                    <span style="font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 600; color: #6b7280; min-width: 24px;">${index + 1}.</span>
+                                    <span style="font-family: 'Lato', sans-serif; font-size: 16px; font-weight: 600; color: #1f2937;">${this.escapeHtml(member.name || member.ktuid || 'N/A')}</span>
+                                    ${member.ktuid ? ` <span style="color: #6b7280; font-weight: 400; font-size: 14px;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                    ${isAbsent ? ' <span style="padding: 4px 8px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: \'Montserrat\', sans-serif;">Absent</span>' : ''}
+                                    <span style="margin-left: auto; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 600; color: #7e22ce;">${studentMarks} / ${individualTotal}</span>
+                                </div>
                                 ${individualParams.length > 0 && !isAbsent ? `
-                                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 18px;">
-                                        <thead>
-                                            <tr>
-                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: left; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 8px 0 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Parameter</th>
-                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Marks Obtained</th>
-                                                <th style="padding: 14px 18px; background: #f8fafc; color: #1f2937; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; border-radius: 0 8px 0 0; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb;">Maximum Marks</th>
-                                            </tr>
-                                        </thead>
+                                    <table style="width: 100%; border-collapse: collapse; margin: 10px 0 12px 36px; font-size: 13px;">
                                         <tbody>
-                                            ${individualParams.map((param, paramIdx) => {
+                                            ${individualParams.map((param) => {
                                                 const paramMarks = individualEval.marksData?.[param.name] || 0;
                                                 return `
-                                                    <tr style="${paramIdx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
-                                                        <td style="padding: 12px 18px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
-                                                        <td style="padding: 12px 18px; text-align: center; color: #7e22ce; font-family: 'Lato', sans-serif; font-size: 14px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
-                                                        <td style="padding: 12px 18px; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: 14px; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
+                                                    <tr>
+                                                        <td style="padding: 4px 12px 4px 0; color: #4b5563; font-family: 'Lato', sans-serif; width: 60%;">${this.escapeHtml(param.name)}</td>
+                                                        <td style="padding: 4px 0; text-align: right; color: #1f2937; font-family: 'Lato', sans-serif; font-weight: 500;">${paramMarks} / ${param.maxMarks}</td>
                                                     </tr>
                                                 `;
                                             }).join('')}
-                                            <tr style="background: #f3e8ff; border-top: 2px solid #7e22ce;">
-                                                <td style="padding: 14px 18px; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 0 8px;">Total</td>
-                                                <td style="padding: 14px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #7e22ce; font-size: 17px;">${studentMarks}</td>
-                                                <td style="padding: 14px 18px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: 15px; border-radius: 0 0 8px 0;">${individualTotal}</td>
-                                            </tr>
                                         </tbody>
                                     </table>
-                                ` : `
-                                    <div style="margin-bottom: 18px; padding: 16px; background: ${isAbsent ? '#fee2e2' : '#f3e8ff'}; border-radius: 8px; border-left: 4px solid ${isAbsent ? '#ef4444' : '#7e22ce'};">
-                                        <strong style="font-family: 'Lato', sans-serif; font-size: 16px; color: #1f2937;">Individual Marks: <span style="color: ${isAbsent ? '#dc2626' : '#7e22ce'}; font-size: 19px; font-weight: 700;">${studentMarks}</span> / ${individualTotal}</strong>
-                                    </div>
-                                `}
+                                ` : ''}
                                 ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
-                                    <div style="margin-top: 18px; padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
-                                        <strong style="font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700; color: #1f2937; display: block; margin-bottom: 10px;">Comments</strong>
-                                        <div style="padding: 12px; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: 14px; line-height: 1.7;">
+                                    <div style="margin-top: 8px; margin-left: 36px; padding: 10px 12px; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
+                                        <div style="color: #374151; font-family: 'Lato', sans-serif; font-size: 13px; line-height: 1.6;">
                                             ${individualComments}
                                         </div>
                                     </div>
