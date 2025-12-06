@@ -7748,14 +7748,14 @@ const app = {
                                         </button>
                                     ` : ''}
                                 </div>
-                                <div style="width: 100%; margin-bottom: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                <div style="width: calc(100% + 3rem); margin-left: -1.5rem; margin-right: -1.5rem; ${ps.solution ? 'margin-bottom: 1.5rem;' : 'margin-bottom: -1.5rem;'} padding: 1.5rem; background: #f9fafb; border-radius: ${ps.solution ? '0' : '0 0 8px 8px'}; border-left: none; border-right: none; border-top: 1px solid #e5e7eb; ${ps.solution ? 'border-bottom: 1px solid #e5e7eb;' : 'border-bottom: none;'}">
                                     <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
                                         <i class="fas fa-file-alt"></i> Problem Statement:
                                     </strong>
                                     <p style="margin: 0; color: var(--text-primary); white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem;">${this.escapeHtml(ps.problemStatement)}</p>
                                 </div>
                                 ${ps.solution ? `
-                                    <div style="width: 100%; margin-bottom: 0.75rem; padding: 1rem; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
+                                    <div style="width: calc(100% + 3rem); margin-left: -1.5rem; margin-right: -1.5rem; margin-bottom: -1.5rem; padding: 1.5rem; background: #f0fdf4; border-radius: 0 0 8px 8px; border-left: none; border-right: none; border-top: 1px solid #bbf7d0; border-bottom: none;">
                                         <strong style="font-size: 0.95rem; color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">
                                             <i class="fas fa-lightbulb"></i> Solution:
                                         </strong>
