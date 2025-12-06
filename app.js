@@ -8003,7 +8003,7 @@ const app = {
                         margin: 0;
                         padding: 30px;
                         color: #1e293b;
-                        background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+                        background: #ffffff;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
@@ -8098,7 +8098,7 @@ const app = {
                     }
                     td {
                         padding: 14px 12px;
-                        border-bottom: 1px solid #e2e8f0;
+                        border-bottom: 1px solid #cbd5e1;
                         vertical-align: top;
                         font-family: 'Lato', sans-serif;
                     }
@@ -8106,7 +8106,7 @@ const app = {
                         border-bottom: none;
                     }
                     tr:nth-child(even) {
-                        background: #f8fafc;
+                        background: #eff6ff;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
@@ -8121,7 +8121,7 @@ const app = {
                         background-color: #fee2e2;
                     }
                     tr:hover:not(.no-approval) {
-                        background: #f1f5f9;
+                        background: #dbeafe;
                         transition: background 0.2s;
                     }
                     .badge {
@@ -8166,7 +8166,7 @@ const app = {
                         font-size: 14px;
                     }
                     .guide-name {
-                        color: #64748b;
+                        color: #1e40af;
                         font-weight: 500;
                     }
                     .topic-text {
@@ -8177,15 +8177,15 @@ const app = {
                     .problem-statement-text {
                         font-size: 12px;
                         line-height: 1.6;
-                        color: #475569;
+                        color: #1e293b;
                         white-space: pre-wrap;
                     }
                     .footer {
                         margin-top: 40px;
                         text-align: center;
                         font-size: 12px;
-                        color: #64748b;
-                        border-top: 2px solid #e2e8f0;
+                        color: #1e40af;
+                        border-top: 2px solid #cbd5e1;
                         padding-top: 20px;
                         font-family: 'Lato', sans-serif;
                     }
@@ -8250,10 +8250,10 @@ const app = {
                     <td>
                         ${team.hasApproved ? `
                             <span class="badge badge-area">${this.escapeHtml(team.approvedArea)}</span>
-                        ` : '<span style="color: #94a3b8;">-</span>'}
+                        ` : '<span style="color: #1e40af; font-weight: 500;">-</span>'}
                     </td>
                     <td>
-                        <div class="problem-statement-text">${team.hasApproved ? this.escapeHtml(team.approvedProblemStatement) : '<span style="color: #94a3b8;">-</span>'}</div>
+                        <div class="problem-statement-text">${team.hasApproved ? this.escapeHtml(team.approvedProblemStatement) : '<span style="color: #1e40af; font-weight: 500;">-</span>'}</div>
                     </td>
                 </tr>
             `;
