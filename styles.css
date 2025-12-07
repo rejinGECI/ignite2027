@@ -3670,6 +3670,49 @@ body.mobile-menu-open {
     line-height: 1.6;
 }
 
+/* Priority Select Styling */
+#user-story-priority,
+#edit-user-story-priority {
+    position: relative;
+}
+
+#user-story-priority option[value="low"],
+#edit-user-story-priority option[value="low"] {
+    color: #6b7280;
+}
+
+#user-story-priority option[value="medium"],
+#edit-user-story-priority option[value="medium"] {
+    color: #3b82f6;
+}
+
+#user-story-priority option[value="high"],
+#edit-user-story-priority option[value="high"] {
+    color: #f59e0b;
+}
+
+#user-story-priority option[value="critical"],
+#edit-user-story-priority option[value="critical"] {
+    color: #ef4444;
+}
+
+/* Priority Indicator Badge */
+#priority-indicator,
+#edit-priority-indicator {
+    animation: fadeIn 0.3s ease-in;
+}
+
+#priority-badge,
+#edit-priority-badge {
+    transition: all 0.3s ease;
+}
+
+#priority-dot,
+#edit-priority-dot {
+    box-shadow: 0 0 0 2px currentColor;
+    opacity: 0.8;
+}
+
 .members-section {
     border: 2px solid var(--border-color);
     border-radius: 8px;

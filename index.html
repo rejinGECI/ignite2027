@@ -1224,13 +1224,20 @@ Bob Johnson,GHI789</pre>
                             <textarea id="user-story-benefit" placeholder="Enter the benefit or value this provides..." rows="3" required></textarea>
                         </div>
                         <div class="form-group">
-                            <label for="user-story-priority">Priority (optional):</label>
-                            <select id="user-story-priority">
-                                <option value="low">Low</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="high">High</option>
-                                <option value="critical">Critical</option>
+                            <label for="user-story-priority">Priority: <span style="color: #ef4444;">*</span></label>
+                            <select id="user-story-priority" required>
+                                <option value="">Select priority...</option>
+                                <option value="low" data-color="#6b7280">Low</option>
+                                <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                <option value="high" data-color="#f59e0b">High</option>
+                                <option value="critical" data-color="#ef4444">Critical</option>
                             </select>
+                            <div id="priority-indicator" style="margin-top: 0.5rem; display: none;">
+                                <span id="priority-badge" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="priority-dot" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="priority-text"></span>
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1266,13 +1273,20 @@ Bob Johnson,GHI789</pre>
                             <textarea id="edit-user-story-benefit" placeholder="Enter the benefit or value this provides..." rows="3" required></textarea>
                         </div>
                         <div class="form-group">
-                            <label for="edit-user-story-priority">Priority (optional):</label>
-                            <select id="edit-user-story-priority">
-                                <option value="low">Low</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="high">High</option>
-                                <option value="critical">Critical</option>
+                            <label for="edit-user-story-priority">Priority: <span style="color: #ef4444;">*</span></label>
+                            <select id="edit-user-story-priority" required>
+                                <option value="">Select priority...</option>
+                                <option value="low" data-color="#6b7280">Low</option>
+                                <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                <option value="high" data-color="#f59e0b">High</option>
+                                <option value="critical" data-color="#ef4444">Critical</option>
                             </select>
+                            <div id="edit-priority-indicator" style="margin-top: 0.5rem; display: none;">
+                                <span id="edit-priority-badge" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="edit-priority-dot" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="edit-priority-text"></span>
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

@@ -8943,7 +8943,19 @@ const app = {
             // Reset form
             document.getElementById('user-story-feature').value = '';
             document.getElementById('user-story-benefit').value = '';
-            document.getElementById('user-story-priority').value = 'medium';
+            document.getElementById('user-story-priority').value = '';
+            
+            // Hide priority indicator initially
+            const indicator = document.getElementById('priority-indicator');
+            if (indicator) indicator.style.display = 'none';
+            
+            // Add event listener for priority change
+            const prioritySelect = document.getElementById('user-story-priority');
+            if (prioritySelect) {
+                prioritySelect.addEventListener('change', () => {
+                    this.updatePriorityIndicator('user-story-priority', 'priority-indicator', 'priority-badge', 'priority-dot', 'priority-text');
+                });
+            }
             
             modal.style.display = 'flex';
         } catch (error) {
@@ -8957,6 +8969,52 @@ const app = {
         document.getElementById('add-user-story-modal').style.display = 'none';
     },
     
+    // Update priority indicator with color
+    updatePriorityIndicator(selectId, indicatorId, badgeId, dotId, textId) {
+        const select = document.getElementById(selectId);
+        const indicator = document.getElementById(indicatorId);
+        const badge = document.getElementById(badgeId);
+        const dot = document.getElementById(dotId);
+        const text = document.getElementById(textId);
+        
+        if (!select || !indicator || !badge || !dot || !text) return;
+        
+        const selectedOption = select.options[select.selectedIndex];
+        const priority = select.value;
+        
+        if (!priority || !selectedOption) {
+            indicator.style.display = 'none';
+            return;
+        }
+        
+        const color = selectedOption.getAttribute('data-color') || '#3b82f6';
+        const priorityText = selectedOption.textContent;
+        
+        // Priority color mapping
+        const priorityColors = {
+            low: { color: '#6b7280', bg: '#f3f4f6', text: 'Low' },
+            medium: { color: '#3b82f6', bg: '#dbeafe', text: 'Medium' },
+            high: { color: '#f59e0b', bg: '#fef3c7', text: 'High' },
+            critical: { color: '#ef4444', bg: '#fee2e2', text: 'Critical' }
+        };
+        
+        const priorityInfo = priorityColors[priority] || priorityColors.medium;
+        
+        // Update badge styling
+        badge.style.backgroundColor = priorityInfo.bg;
+        badge.style.color = priorityInfo.color;
+        badge.style.border = `2px solid ${priorityInfo.color}40`;
+        
+        // Update dot color
+        dot.style.backgroundColor = priorityInfo.color;
+        
+        // Update text
+        text.textContent = priorityInfo.text;
+        
+        // Show indicator
+        indicator.style.display = 'block';
+    },
+    
     // Add user story
     async addUserStory() {
         const userId = document.getElementById('user-story-user').value;
@@ -8964,8 +9022,8 @@ const app = {
         const benefit = document.getElementById('user-story-benefit').value.trim();
         const priority = document.getElementById('user-story-priority').value;
         
-        if (!userId || !feature || !benefit) {
-            alert('Please fill in all fields.');
+        if (!userId || !feature || !benefit || !priority) {
+            alert('Please fill in all required fields, including priority.');
             return;
         }
         
@@ -9028,7 +9086,21 @@ const app = {
             document.getElementById('edit-user-story-id').value = storyId;
             document.getElementById('edit-user-story-feature').value = story.feature || '';
             document.getElementById('edit-user-story-benefit').value = story.benefit || '';
-            document.getElementById('edit-user-story-priority').value = story.priority || 'medium';
+            const priorityValue = story.priority || 'medium';
+            document.getElementById('edit-user-story-priority').value = priorityValue;
+            
+            // Add event listener for priority change
+            const prioritySelect = document.getElementById('edit-user-story-priority');
+            if (prioritySelect) {
+                prioritySelect.addEventListener('change', () => {
+                    this.updatePriorityIndicator('edit-user-story-priority', 'edit-priority-indicator', 'edit-priority-badge', 'edit-priority-dot', 'edit-priority-text');
+                });
+                
+                // Update priority indicator after a short delay to ensure DOM is ready
+                setTimeout(() => {
+                    this.updatePriorityIndicator('edit-user-story-priority', 'edit-priority-indicator', 'edit-priority-badge', 'edit-priority-dot', 'edit-priority-text');
+                }, 100);
+            }
             
             document.getElementById('edit-user-story-modal').style.display = 'flex';
         } catch (error) {
@@ -9050,8 +9122,8 @@ const app = {
         const benefit = document.getElementById('edit-user-story-benefit').value.trim();
         const priority = document.getElementById('edit-user-story-priority').value;
         
-        if (!userId || !feature || !benefit) {
-            alert('Please fill in all fields.');
+        if (!userId || !feature || !benefit || !priority) {
+            alert('Please fill in all required fields, including priority.');
             return;
         }
         
@@ -9060,7 +9132,7 @@ const app = {
                 userId: userId,
                 feature: feature,
                 benefit: benefit,
-                priority: priority || 'medium',
+                priority: priority,
                 updatedAt: serverTimestamp()
             });
             
