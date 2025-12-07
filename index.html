@@ -137,9 +137,12 @@
                 <li id="admin-dash-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-dashboard"><i class="fas fa-users"></i> Students</a></li>
                 <li id="admin-miniproject-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject"><i class="fas fa-project-diagram"></i> Mini Projects</a></li>
                 <li id="admin-miniproject-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject-settings"><i class="fas fa-cog"></i> Mini Project Settings</a></li>
+                <li id="admin-project-planning-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-project-planning"><i class="fas fa-tasks"></i> Project Planning</a></li>
                 <li id="admin-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
                 <li id="guide-dashboard-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-dashboard"><i class="fas fa-user-tie"></i> Guide Dashboard</a></li>
+                <li id="guide-project-planning-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-project-planning"><i class="fas fa-tasks"></i> Project Planning</a></li>
                 <li id="nav-miniproject" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="miniproject"><i class="fas fa-project-diagram"></i> Mini Project</a></li>
+                <li id="nav-project-planning" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="project-planning"><i class="fas fa-tasks"></i> Project Planning</a></li>
                 <li id="nav-dreams" class="student-nav"><a href="#" class="nav-link" data-page="dreams"><i class="fas fa-star"></i> My Dream Life</a></li>
                 <li id="nav-progress" class="student-nav"><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
                 <li id="nav-stats" class="student-nav"><a href="#" class="nav-link" data-page="stats"><i class="fas fa-chart-bar"></i> Statistics</a></li>
@@ -991,7 +994,236 @@ Bob Johnson,GHI789</pre>
                 </div>
             </div>
             
+            <!-- Project Planning Page (Student) -->
+            <div id="project-planning" class="page">
+                <div class="page-header">
+                    <h1>Project Planning</h1>
+                    <p class="subtitle">Plan your project with user stories, backlog, design, and schedule</p>
+                </div>
+                
+                <div class="project-planning-container">
+                    <!-- Tabs -->
+                    <div class="admin-tabs">
+                        <button class="tab-btn active" data-tab="user-stories" onclick="app.switchProjectPlanningTab('user-stories')">
+                            <i class="fas fa-list-ul"></i> User Stories
+                        </button>
+                        <button class="tab-btn" data-tab="product-backlog" onclick="app.switchProjectPlanningTab('product-backlog')">
+                            <i class="fas fa-clipboard-list"></i> Product Backlog
+                        </button>
+                        <button class="tab-btn" data-tab="design" onclick="app.switchProjectPlanningTab('design')">
+                            <i class="fas fa-palette"></i> Design
+                        </button>
+                        <button class="tab-btn" data-tab="schedule" onclick="app.switchProjectPlanningTab('schedule')">
+                            <i class="fas fa-calendar-alt"></i> Schedule
+                        </button>
+                    </div>
+                    
+                    <!-- User Stories Tab -->
+                    <div id="user-stories-tab" class="admin-tab-content active">
+                        <div class="project-planning-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <h3><i class="fas fa-users"></i> Users</h3>
+                                <button type="button" class="btn btn-primary" onclick="app.showAddUserModal()">
+                                    <i class="fas fa-plus"></i> Add User
+                                </button>
+                            </div>
+                            
+                            <div id="users-list" class="users-list">
+                                <p class="empty-state">No users added yet. Add users corresponding to your approved problem statement.</p>
+                            </div>
+                            
+                            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                    <h3><i class="fas fa-list-ul"></i> User Stories</h3>
+                                    <button type="button" class="btn btn-primary" onclick="app.showAddUserStoryModal()">
+                                        <i class="fas fa-plus"></i> Add User Story
+                                    </button>
+                                </div>
+                                
+                                <div id="user-stories-list" class="user-stories-list">
+                                    <p class="empty-state">No user stories created yet. Create user stories for your users.</p>
+                                </div>
+                                
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                    <div id="user-stories-submission-status" style="margin-bottom: 1rem;"></div>
+                                    <button type="button" class="btn btn-success" id="submit-user-stories-btn" onclick="app.submitUserStoriesForVerification()" style="display: none;">
+                                        <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Product Backlog Tab -->
+                    <div id="product-backlog-tab" class="admin-tab-content">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-clipboard-list"></i> Product Backlog</h3>
+                            <div id="product-backlog-content">
+                                <p class="empty-state">Product backlog management coming soon...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Design Tab -->
+                    <div id="design-tab" class="admin-tab-content">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-palette"></i> Design</h3>
+                            <div id="design-content">
+                                <p class="empty-state">Design management coming soon...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Schedule Tab -->
+                    <div id="schedule-tab" class="admin-tab-content">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
+                            <div id="schedule-content">
+                                <p class="empty-state">Schedule management coming soon...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Admin Project Planning Page -->
+            <div id="admin-project-planning" class="page">
+                <div class="page-header">
+                    <h1>Project Planning Management</h1>
+                    <p class="subtitle">Monitor all teams' project planning progress</p>
+                </div>
+                
+                <div class="admin-controls">
+                    <input type="text" id="search-project-planning-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                </div>
+                
+                <div id="admin-project-planning-teams-list" class="admin-teams-list">
+                    <div class="loading-state">Loading teams...</div>
+                </div>
+            </div>
+            
+            <!-- Guide Project Planning Page -->
+            <div id="guide-project-planning" class="page">
+                <div class="page-header">
+                    <h1>Project Planning Verification</h1>
+                    <p class="subtitle">Review and verify user stories submitted by your teams</p>
+                </div>
+                
+                <div id="guide-project-planning-teams-list" class="guide-teams-list">
+                    <div class="loading-state">Loading teams...</div>
+                </div>
+            </div>
+            
             <!-- Problem Statement Modal -->
+            
+            <!-- Add User Modal -->
+            <div id="add-user-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeAddUserModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h2>Add User</h2>
+                        <button type="button" class="modal-close" onclick="app.closeAddUserModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="user-name">User Name:</label>
+                            <input type="text" id="user-name" placeholder="e.g., Student, Admin, Customer" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="user-description">Description (optional):</label>
+                            <textarea id="user-description" placeholder="Brief description of this user type..." rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeAddUserModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.addUser()">Add User</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Add User Story Modal -->
+            <div id="add-user-story-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeAddUserStoryModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Add User Story</h2>
+                        <button type="button" class="modal-close" onclick="app.closeAddUserStoryModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="user-story-user">As a:</label>
+                            <select id="user-story-user" required>
+                                <option value="">Select a user...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="user-story-feature">I want:</label>
+                            <input type="text" id="user-story-feature" placeholder="Enter the feature or functionality..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="user-story-benefit">So that:</label>
+                            <textarea id="user-story-benefit" placeholder="Enter the benefit or value this provides..." rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="user-story-priority">Priority (optional):</label>
+                            <select id="user-story-priority">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeAddUserStoryModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.addUserStory()">Add User Story</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Edit User Story Modal -->
+            <div id="edit-user-story-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeEditUserStoryModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Edit User Story</h2>
+                        <button type="button" class="modal-close" onclick="app.closeEditUserStoryModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="edit-user-story-id">
+                        <div class="form-group">
+                            <label for="edit-user-story-user">As a:</label>
+                            <select id="edit-user-story-user" required>
+                                <option value="">Select a user...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-user-story-feature">I want:</label>
+                            <input type="text" id="edit-user-story-feature" placeholder="Enter the feature or functionality..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-user-story-benefit">So that:</label>
+                            <textarea id="edit-user-story-benefit" placeholder="Enter the benefit or value this provides..." rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-user-story-priority">Priority (optional):</label>
+                            <select id="edit-user-story-priority">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeEditUserStoryModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.saveUserStory()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 

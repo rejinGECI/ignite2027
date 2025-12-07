@@ -249,6 +249,9 @@ const app = {
         // Update mini project visibility
         await this.updateMiniProjectVisibility();
         
+        // Update project planning visibility
+        await this.updateProjectPlanningVisibility();
+        
         // Show/hide navigation based on user role
         if (this.isAdmin || this.userRole === 'admin') {
             // Admin: Show admin menus, hide all student menus
@@ -271,6 +274,10 @@ const app = {
             if (adminMiniProjectSettingsNav) {
                 adminMiniProjectSettingsNav.style.display = 'block';
             }
+            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
+            if (adminProjectPlanningNav) {
+                adminProjectPlanningNav.style.display = 'block';
+            }
             const adminSettingsNav = document.getElementById('admin-settings-nav');
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'block';
@@ -281,11 +288,15 @@ const app = {
             if (guideNav) {
                 guideNav.style.display = 'none';
             }
+            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
+            if (guideProjectPlanningNav) {
+                guideProjectPlanningNav.style.display = 'none';
+            }
             
             // Restore saved page or default to admin progress (home page)
             const savedPage = localStorage.getItem('currentPage');
             // Only use saved page if it's a valid admin page, otherwise default to progress
-            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-miniproject', 'admin-miniproject-settings'];
+            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-miniproject', 'admin-miniproject-settings', 'admin-project-planning'];
             const defaultPage = (savedPage && validAdminPages.includes(savedPage)) ? savedPage : 'admin-progress';
             
             // Make Progress nav active by default or saved page
@@ -322,6 +333,10 @@ const app = {
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
             }
+            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
+            if (adminProjectPlanningNav) {
+                adminProjectPlanningNav.style.display = 'none';
+            }
             document.querySelectorAll('.student-nav').forEach(nav => {
                 nav.style.display = 'none';
             });
@@ -329,6 +344,10 @@ const app = {
             const guideNav = document.getElementById('guide-dashboard-nav');
             if (guideNav) {
                 guideNav.style.display = 'block';
+            }
+            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
+            if (guideProjectPlanningNav) {
+                guideProjectPlanningNav.style.display = 'block';
             }
             
             // Hide user info for guide
@@ -369,6 +388,19 @@ const app = {
             const adminSettingsNav = document.getElementById('admin-settings-nav');
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
+            }
+            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
+            if (adminProjectPlanningNav) {
+                adminProjectPlanningNav.style.display = 'none';
+            }
+            // Hide guide navigation
+            const guideNav = document.getElementById('guide-dashboard-nav');
+            if (guideNav) {
+                guideNav.style.display = 'none';
+            }
+            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
+            if (guideProjectPlanningNav) {
+                guideProjectPlanningNav.style.display = 'none';
             }
             // Show all student navigation items
             document.querySelectorAll('.student-nav').forEach(nav => {
@@ -1019,6 +1051,12 @@ const app = {
                     await this.loadEvaluationStagesDropdown();
                 } else if (pageId === 'guide-dashboard') {
                     await this.loadGuideDashboard();
+                } else if (pageId === 'project-planning') {
+                    await this.loadProjectPlanning();
+                } else if (pageId === 'admin-project-planning') {
+                    await this.loadAdminProjectPlanning();
+                } else if (pageId === 'guide-project-planning') {
+                    await this.loadGuideProjectPlanning();
                 } else if (pageId === 'miniproject') {
                     await this.loadStudentMiniProject();
         } else if (pageId === 'admin-dashboard') {
@@ -3472,6 +3510,40 @@ const app = {
         if (studentNav) studentNav.style.display = enabled ? 'block' : 'none';
         if (adminNav) adminNav.style.display = this.isAdmin ? 'block' : 'none';
         if (adminSettingsNav) adminSettingsNav.style.display = this.isAdmin ? 'block' : 'none';
+    },
+    
+    async updateProjectPlanningVisibility() {
+        // Show/hide navigation items
+        const studentNav = document.getElementById('nav-project-planning');
+        const adminNav = document.getElementById('admin-project-planning-nav');
+        const guideNav = document.getElementById('guide-project-planning-nav');
+        
+        // Always show for admin and guide
+        if (adminNav) adminNav.style.display = this.isAdmin ? 'block' : 'none';
+        if (guideNav) guideNav.style.display = this.isGuide ? 'block' : 'none';
+        
+        // For students, only show if they have a team with approved problem statement
+        if (studentNav && !this.isAdmin && !this.isGuide) {
+            try {
+                const team = await this.getUserTeam();
+                if (team) {
+                    // Check if team has approved problem statement
+                    const problemStatementsQuery = query(
+                        collection(window.firebaseDb, 'problemStatements'),
+                        where('teamId', '==', team.id),
+                        where('approved', '==', true)
+                    );
+                    const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
+                    const hasApproved = !problemStatementsSnapshot.empty;
+                    studentNav.style.display = hasApproved ? 'block' : 'none';
+                } else {
+                    studentNav.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error checking project planning visibility:', error);
+                studentNav.style.display = 'none';
+            }
+        }
     },
     
     async toggleMiniProjectModule() {
@@ -8452,6 +8524,791 @@ const app = {
         } catch (error) {
             console.error('Error approving problem statement:', error);
             alert('Error approving problem statement. Please try again.');
+        }
+    },
+    
+    // ========== PROJECT PLANNING FUNCTIONS ==========
+    
+    // Switch project planning tab
+    switchProjectPlanningTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #design-tab, #schedule-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Remove active class from all tab buttons
+        document.querySelectorAll('.project-planning-container .tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Show selected tab
+        const selectedTab = document.getElementById(`${tabName}-tab`);
+        if (selectedTab) {
+            selectedTab.classList.add('active');
+        }
+        
+        // Activate corresponding button
+        const button = document.querySelector(`.project-planning-container .tab-btn[data-tab="${tabName}"]`);
+        if (button) {
+            button.classList.add('active');
+        }
+    },
+    
+    // Load project planning page (student view)
+    async loadProjectPlanning() {
+        // Check if user has an approved problem statement and team
+        const team = await this.getUserTeam();
+        if (!team) {
+            document.getElementById('project-planning').innerHTML = `
+                <div class="page-header">
+                    <h1>Project Planning</h1>
+                    <p class="subtitle">Plan your project with user stories, backlog, design, and schedule</p>
+                </div>
+                <div class="empty-state">
+                    <i class="fas fa-info-circle" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                    <p>You need to be assigned to a team with an approved problem statement to access project planning.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Load users and user stories
+        await this.loadUsers();
+        await this.loadUserStories();
+    },
+    
+    // Get user's team
+    async getUserTeam() {
+        try {
+            const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
+            if (!userDoc.exists()) return null;
+            
+            const userData = userDoc.data();
+            const teamId = userData.teamId;
+            if (!teamId) return null;
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) return null;
+            
+            return { id: teamDoc.id, ...teamDoc.data() };
+        } catch (error) {
+            console.error('Error getting user team:', error);
+            return null;
+        }
+    },
+    
+    // Load users for the team
+    async loadUsers() {
+        const container = document.getElementById('users-list');
+        if (!container) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            if (users.length === 0) {
+                container.innerHTML = '<p class="empty-state">No users added yet. Add users corresponding to your approved problem statement.</p>';
+                return;
+            }
+            
+            container.innerHTML = users.map(user => `
+                <div class="user-card" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                <i class="fas fa-user"></i> ${this.escapeHtml(user.name)}
+                            </h4>
+                            ${user.description ? `
+                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${this.escapeHtml(user.description)}</p>
+                            ` : ''}
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.deleteUser('${user.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading users:', error);
+            container.innerHTML = '<p class="error-message">Error loading users.</p>';
+        }
+    },
+    
+    // Show add user modal
+    showAddUserModal() {
+        document.getElementById('add-user-modal').style.display = 'flex';
+        document.getElementById('user-name').value = '';
+        document.getElementById('user-description').value = '';
+    },
+    
+    // Close add user modal
+    closeAddUserModal() {
+        document.getElementById('add-user-modal').style.display = 'none';
+    },
+    
+    // Add user
+    async addUser() {
+        const name = document.getElementById('user-name').value.trim();
+        const description = document.getElementById('user-description').value.trim();
+        
+        if (!name) {
+            alert('Please enter a user name.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const userRef = doc(collection(window.firebaseDb, 'projectUsers'));
+            await setDoc(userRef, {
+                teamId: team.id,
+                name: name,
+                description: description || '',
+                createdAt: serverTimestamp()
+            });
+            
+            this.closeAddUserModal();
+            await this.loadUsers();
+        } catch (error) {
+            console.error('Error adding user:', error);
+            alert('Error adding user. Please try again.');
+        }
+    },
+    
+    // Delete user
+    async deleteUser(userId) {
+        if (!confirm('Are you sure you want to delete this user? This will also delete all associated user stories.')) {
+            return;
+        }
+        
+        try {
+            // Delete user
+            await deleteDoc(doc(window.firebaseDb, 'projectUsers', userId));
+            
+            // Delete associated user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('userId', '==', userId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const deletePromises = storiesSnapshot.docs.map(doc => deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+            
+            await this.loadUsers();
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            alert('Error deleting user. Please try again.');
+        }
+    },
+    
+    // Load user stories
+    async loadUserStories() {
+        const container = document.getElementById('user-stories-list');
+        const statusContainer = document.getElementById('user-stories-submission-status');
+        const submitBtn = document.getElementById('submit-user-stories-btn');
+        
+        if (!container) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load users for dropdown
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id),
+                orderBy('createdAt', 'desc')
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                stories.push(story);
+            });
+            
+            // Load submission status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.userStoriesSubmitted === true;
+            const isVerified = planningData && planningData.userStoriesVerified === true;
+            const verificationStatus = planningData ? planningData.userStoriesVerificationStatus : null;
+            
+            // Update status display
+            if (isVerified) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46;">
+                            <i class="fas fa-check-circle"></i>
+                            <strong>User Stories Verified</strong>
+                        </div>
+                        ${verificationStatus && verificationStatus.feedback ? `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.9rem;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                        ` : ''}
+                    </div>
+                `;
+                submitBtn.style.display = 'none';
+            } else if (isSubmitted) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                            <i class="fas fa-clock"></i>
+                            <strong>Submitted for Verification</strong>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.9rem;">Waiting for guide verification...</p>
+                    </div>
+                `;
+                submitBtn.style.display = 'none';
+            } else {
+                statusContainer.innerHTML = '';
+                submitBtn.style.display = stories.length > 0 ? 'inline-flex' : 'none';
+            }
+            
+            if (stories.length === 0) {
+                container.innerHTML = '<p class="empty-state">No user stories created yet. Create user stories for your users.</p>';
+                return;
+            }
+            
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            
+            container.innerHTML = stories.map(story => `
+                <div class="user-story-card" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem; border-left: 4px solid ${priorityColors[story.priority] || priorityColors.medium};">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <div style="margin-bottom: 0.5rem;">
+                                <span style="padding: 3px 8px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                    ${story.priority || 'medium'}
+                                </span>
+                            </div>
+                            <p style="margin: 0; color: var(--text-primary); font-size: 1rem; line-height: 1.6;">
+                                <strong>As a</strong> <span style="color: var(--primary-color);">${this.escapeHtml(story.userName)}</span>, 
+                                <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
+                                <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
+                            </p>
+                        </div>
+                        ${!isSubmitted && !isVerified ? `
+                            <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading user stories:', error);
+            container.innerHTML = '<p class="error-message">Error loading user stories.</p>';
+        }
+    },
+    
+    // Show add user story modal
+    async showAddUserStoryModal() {
+        const modal = document.getElementById('add-user-story-modal');
+        const userSelect = document.getElementById('user-story-user');
+        
+        // Load users
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            userSelect.innerHTML = '<option value="">Select a user...</option>';
+            usersSnapshot.forEach(doc => {
+                const user = doc.data();
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = user.name;
+                userSelect.appendChild(option);
+            });
+            
+            if (usersSnapshot.empty) {
+                alert('Please add users first before creating user stories.');
+                return;
+            }
+            
+            // Reset form
+            document.getElementById('user-story-feature').value = '';
+            document.getElementById('user-story-benefit').value = '';
+            document.getElementById('user-story-priority').value = 'medium';
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading users for modal:', error);
+            alert('Error loading users. Please try again.');
+        }
+    },
+    
+    // Close add user story modal
+    closeAddUserStoryModal() {
+        document.getElementById('add-user-story-modal').style.display = 'none';
+    },
+    
+    // Add user story
+    async addUserStory() {
+        const userId = document.getElementById('user-story-user').value;
+        const feature = document.getElementById('user-story-feature').value.trim();
+        const benefit = document.getElementById('user-story-benefit').value.trim();
+        const priority = document.getElementById('user-story-priority').value;
+        
+        if (!userId || !feature || !benefit) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const storyRef = doc(collection(window.firebaseDb, 'userStories'));
+            await setDoc(storyRef, {
+                teamId: team.id,
+                userId: userId,
+                feature: feature,
+                benefit: benefit,
+                priority: priority || 'medium',
+                createdAt: serverTimestamp()
+            });
+            
+            this.closeAddUserStoryModal();
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error adding user story:', error);
+            alert('Error adding user story. Please try again.');
+        }
+    },
+    
+    // Edit user story
+    async editUserStory(storyId) {
+        try {
+            const storyDoc = await getDoc(doc(window.firebaseDb, 'userStories', storyId));
+            if (!storyDoc.exists()) {
+                alert('User story not found.');
+                return;
+            }
+            
+            const story = storyDoc.data();
+            const team = await this.getUserTeam();
+            
+            // Load users for dropdown
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            const userSelect = document.getElementById('edit-user-story-user');
+            userSelect.innerHTML = '<option value="">Select a user...</option>';
+            usersSnapshot.forEach(doc => {
+                const user = doc.data();
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = user.name;
+                option.selected = doc.id === story.userId;
+                userSelect.appendChild(option);
+            });
+            
+            // Populate form
+            document.getElementById('edit-user-story-id').value = storyId;
+            document.getElementById('edit-user-story-feature').value = story.feature || '';
+            document.getElementById('edit-user-story-benefit').value = story.benefit || '';
+            document.getElementById('edit-user-story-priority').value = story.priority || 'medium';
+            
+            document.getElementById('edit-user-story-modal').style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading user story for editing:', error);
+            alert('Error loading user story. Please try again.');
+        }
+    },
+    
+    // Close edit user story modal
+    closeEditUserStoryModal() {
+        document.getElementById('edit-user-story-modal').style.display = 'none';
+    },
+    
+    // Save user story
+    async saveUserStory() {
+        const storyId = document.getElementById('edit-user-story-id').value;
+        const userId = document.getElementById('edit-user-story-user').value;
+        const feature = document.getElementById('edit-user-story-feature').value.trim();
+        const benefit = document.getElementById('edit-user-story-benefit').value.trim();
+        const priority = document.getElementById('edit-user-story-priority').value;
+        
+        if (!userId || !feature || !benefit) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
+                userId: userId,
+                feature: feature,
+                benefit: benefit,
+                priority: priority || 'medium',
+                updatedAt: serverTimestamp()
+            });
+            
+            this.closeEditUserStoryModal();
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error saving user story:', error);
+            alert('Error saving user story. Please try again.');
+        }
+    },
+    
+    // Delete user story
+    async deleteUserStory(storyId) {
+        if (!confirm('Are you sure you want to delete this user story?')) {
+            return;
+        }
+        
+        try {
+            await deleteDoc(doc(window.firebaseDb, 'userStories', storyId));
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error deleting user story:', error);
+            alert('Error deleting user story. Please try again.');
+        }
+    },
+    
+    // Submit user stories for verification
+    async submitUserStoriesForVerification() {
+        if (!confirm('Are you sure you want to submit your user stories for guide verification? You will not be able to edit them after submission.')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if there are any user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            if (storiesSnapshot.empty) {
+                alert('Please create at least one user story before submitting.');
+                return;
+            }
+            
+            // Update or create project planning document
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', team.id);
+            await setDoc(planningRef, {
+                teamId: team.id,
+                userStoriesSubmitted: true,
+                userStoriesSubmittedAt: serverTimestamp(),
+                userStoriesVerified: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('User stories submitted for verification successfully!');
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error submitting user stories:', error);
+            alert('Error submitting user stories. Please try again.');
+        }
+    },
+    
+    // Load admin project planning page
+    async loadAdminProjectPlanning() {
+        const container = document.getElementById('admin-project-planning-teams-list');
+        if (!container) return;
+        
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            for (const teamDoc of teamsSnapshot.docs) {
+                const team = { id: teamDoc.id, ...teamDoc.data() };
+                if (team.deleted) continue;
+                
+                // Load project planning status
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                // Count users and user stories
+                const usersQuery = query(
+                    collection(window.firebaseDb, 'projectUsers'),
+                    where('teamId', '==', team.id)
+                );
+                const usersSnapshot = await getDocs(usersQuery);
+                const usersCount = usersSnapshot.size;
+                
+                const storiesQuery = query(
+                    collection(window.firebaseDb, 'userStories'),
+                    where('teamId', '==', team.id)
+                );
+                const storiesSnapshot = await getDocs(storiesQuery);
+                const storiesCount = storiesSnapshot.size;
+                
+                team.planningData = planningData;
+                team.usersCount = usersCount;
+                team.storiesCount = storiesCount;
+                teams.push(team);
+            }
+            
+            if (teams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No teams found.</p>';
+                return;
+            }
+            
+            container.innerHTML = teams.map(team => {
+                const isSubmitted = team.planningData && team.planningData.userStoriesSubmitted === true;
+                const isVerified = team.planningData && team.planningData.userStoriesVerified === true;
+                
+                let statusBadge = '';
+                if (isVerified) {
+                    statusBadge = '<span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Verified</span>';
+                } else if (isSubmitted) {
+                    statusBadge = '<span style="padding: 4px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-clock"></i> Pending Verification</span>';
+                } else {
+                    statusBadge = '<span style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-exclamation-circle"></i> Not Submitted</span>';
+                }
+                
+                return `
+                    <div class="admin-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                            <div>
+                                <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                                </h3>
+                                ${team.guideName ? `
+                                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                                        <i class="fas fa-user-tie"></i> Guide: ${this.escapeHtml(team.guideName)}
+                                    </p>
+                                ` : ''}
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                            <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Users</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--text-primary);">${team.usersCount || 0}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">User Stories</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--text-primary);">${team.storiesCount || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading admin project planning:', error);
+            container.innerHTML = '<p class="error-message">Error loading project planning data.</p>';
+        }
+    },
+    
+    // Load guide project planning page
+    async loadGuideProjectPlanning() {
+        const container = document.getElementById('guide-project-planning-teams-list');
+        if (!container) return;
+        
+        try {
+            const guideEmail = this.currentUser.email;
+            
+            // Get teams assigned to this guide
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            for (const teamDoc of teamsSnapshot.docs) {
+                const team = { id: teamDoc.id, ...teamDoc.data() };
+                if (team.deleted) continue;
+                
+                // Match by guideId or guideName
+                const matchesGuide = team.guideId === this.currentUser.uid || 
+                                   team.guideName === guideEmail ||
+                                   (team.guideId && team.guideId === this.currentUser.uid);
+                
+                if (!matchesGuide) continue;
+                
+                // Load project planning status
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                // Load users and user stories
+                const usersQuery = query(
+                    collection(window.firebaseDb, 'projectUsers'),
+                    where('teamId', '==', team.id)
+                );
+                const usersSnapshot = await getDocs(usersQuery);
+                const users = [];
+                usersSnapshot.forEach(doc => {
+                    users.push({ id: doc.id, ...doc.data() });
+                });
+                
+                const storiesQuery = query(
+                    collection(window.firebaseDb, 'userStories'),
+                    where('teamId', '==', team.id),
+                    orderBy('createdAt', 'desc')
+                );
+                const storiesSnapshot = await getDocs(storiesQuery);
+                const stories = [];
+                storiesSnapshot.forEach(doc => {
+                    const story = { id: doc.id, ...doc.data() };
+                    const user = users.find(u => u.id === story.userId);
+                    story.userName = user ? user.name : 'Unknown';
+                    stories.push(story);
+                });
+                
+                team.planningData = planningData;
+                team.users = users;
+                team.stories = stories;
+                teams.push(team);
+            }
+            
+            if (teams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No teams assigned to you yet.</p>';
+                return;
+            }
+            
+            container.innerHTML = teams.map(team => {
+                const isSubmitted = team.planningData && team.planningData.userStoriesSubmitted === true;
+                const isVerified = team.planningData && team.planningData.userStoriesVerified === true;
+                
+                if (!isSubmitted) {
+                    return `
+                        <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                            <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                            </h3>
+                            <p style="color: var(--text-secondary);">User stories not submitted yet.</p>
+                        </div>
+                    `;
+                }
+                
+                const priorityColors = {
+                    low: '#6b7280',
+                    medium: '#3b82f6',
+                    high: '#f59e0b',
+                    critical: '#ef4444'
+                };
+                
+                return `
+                    <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; color: var(--text-primary);">
+                                <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                            </h3>
+                            ${isVerified ? `
+                                <span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                                    <i class="fas fa-check-circle"></i> Verified
+                                </span>
+                            ` : `
+                                <button type="button" class="btn btn-success" onclick="app.verifyUserStories('${team.id}')">
+                                    <i class="fas fa-check"></i> Verify User Stories
+                                </button>
+                            `}
+                        </div>
+                        
+                        <div style="margin-bottom: 1.5rem;">
+                            <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1rem;">
+                                <i class="fas fa-list-ul"></i> User Stories (${team.stories.length})
+                            </h4>
+                            <div style="max-height: 400px; overflow-y: auto;">
+                                ${team.stories.map(story => `
+                                    <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid ${priorityColors[story.priority] || priorityColors.medium}; margin-bottom: 0.5rem;">
+                                        <div style="margin-bottom: 0.25rem;">
+                                            <span style="padding: 2px 6px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
+                                                ${story.priority || 'medium'}
+                                            </span>
+                                        </div>
+                                        <p style="margin: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.5;">
+                                            <strong>As a</strong> <span style="color: var(--primary-color);">${this.escapeHtml(story.userName)}</span>, 
+                                            <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
+                                            <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
+                                        </p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading guide project planning:', error);
+            container.innerHTML = '<p class="error-message">Error loading project planning data.</p>';
+        }
+    },
+    
+    // Verify user stories (guide)
+    async verifyUserStories(teamId) {
+        const feedback = prompt('Enter verification feedback (optional):');
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                teamId: teamId,
+                userStoriesVerified: true,
+                userStoriesVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: feedback || ''
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('User stories verified successfully!');
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error verifying user stories:', error);
+            alert('Error verifying user stories. Please try again.');
         }
     }
 };

@@ -4617,3 +4617,62 @@ body.mobile-menu-open {
     line-height: 1.5;
 }
 
+/* Project Planning Styles */
+.project-planning-container {
+    padding: 1.5rem;
+}
+
+.project-planning-section {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.user-card {
+    transition: all 0.2s;
+}
+
+.user-card:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+
+.user-stories-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.user-story-card {
+    transition: all 0.2s;
+}
+
+.user-story-card:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+
+.admin-teams-list,
+.guide-teams-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.admin-team-card,
+.guide-team-card {
+    transition: all 0.2s;
+}
+
+.admin-team-card:hover,
+.guide-team-card:hover {
+    box-shadow: var(--shadow);
+}
+
