@@ -3516,27 +3516,9 @@ const app = {
         if (adminNav) adminNav.style.display = this.isAdmin ? 'block' : 'none';
         if (guideNav) guideNav.style.display = this.isGuide ? 'block' : 'none';
         
-        // For students, only show if they have a team with approved problem statement
-        if (studentNav && !this.isAdmin && !this.isGuide) {
-            try {
-                const team = await this.getUserTeam();
-                if (team) {
-                    // Check if team has approved problem statement
-                    const problemStatementsQuery = query(
-                        collection(window.firebaseDb, 'problemStatements'),
-                        where('teamId', '==', team.id),
-                        where('approved', '==', true)
-                    );
-                    const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
-                    const hasApproved = !problemStatementsSnapshot.empty;
-                    studentNav.style.display = hasApproved ? 'block' : 'none';
-                } else {
-                    studentNav.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error checking project planning visibility:', error);
-                studentNav.style.display = 'none';
-            }
+        // Hide separate project planning nav for students (it's now in mini project)
+        if (studentNav) {
+            studentNav.style.display = 'none';
         }
     },
     
@@ -7071,6 +7053,11 @@ const app = {
             });
             
             if (!studentTeam) {
+                // Hide tabs if no team
+                const tabsContainer = document.getElementById('miniproject-tabs');
+                if (tabsContainer) {
+                    tabsContainer.style.display = 'none';
+                }
                 container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
@@ -7103,6 +7090,20 @@ const app = {
             
             // Store team ID for problem statements
             this.currentStudentTeamId = studentTeam.id;
+            
+            // Show tabs
+            const tabsContainer = document.getElementById('miniproject-tabs');
+            if (tabsContainer) {
+                tabsContainer.style.display = 'flex';
+            }
+            
+            // Load approved problem statement
+            await this.loadApprovedProblemStatement(studentTeam.id);
+            
+            // Load project planning (always load, even if no approved problem statement yet)
+            // This allows students to prepare user stories in advance
+            await this.loadUsers();
+            await this.loadUserStories();
             
             container.innerHTML = `
                 <div class="miniproject-card">
@@ -8548,43 +8549,145 @@ const app = {
         }
     },
     
-    // Load project planning page (student view)
+    // Load project planning page (student view) - now integrated into mini project
     async loadProjectPlanning() {
-        // Check if user has an approved problem statement and team
-        const team = await this.getUserTeam();
-        if (!team) {
-            document.getElementById('project-planning').innerHTML = `
-                <div class="page-header">
-                    <h1>Project Planning</h1>
-                    <p class="subtitle">Plan your project with user stories, backlog, design, and schedule</p>
+        // This function is kept for backward compatibility but project planning is now in mini project
+        // Redirect to mini project if accessed directly
+        if (document.getElementById('project-planning')) {
+            await this.showPage('miniproject');
+            // Switch to project planning tab
+            setTimeout(() => {
+                this.switchMiniProjectTab('project-planning');
+            }, 100);
+        }
+    },
+    
+    // Load approved problem statement
+    async loadApprovedProblemStatement(teamId) {
+        const section = document.getElementById('approved-problem-statement-section');
+        const content = document.getElementById('approved-problem-statement-content');
+        
+        if (!section || !content) return;
+        
+        try {
+            const problemStatementsQuery = query(
+                collection(window.firebaseDb, 'problemStatements'),
+                where('teamId', '==', teamId),
+                where('approved', '==', true)
+            );
+            const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
+            
+            if (problemStatementsSnapshot.empty) {
+                section.style.display = 'none';
+                return;
+            }
+            
+            const approvedPS = problemStatementsSnapshot.docs[0].data();
+            section.style.display = 'block';
+            
+            content.innerHTML = `
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.1rem;">
+                        ${this.escapeHtml(approvedPS.title || 'Untitled')}
+                    </h4>
+                    ${approvedPS.area ? `
+                        <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                            <i class="fas fa-tag"></i> ${this.escapeHtml(approvedPS.area)}
+                        </span>
+                    ` : ''}
                 </div>
-                <div class="empty-state">
-                    <i class="fas fa-info-circle" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
-                    <p>You need to be assigned to a team with an approved problem statement to access project planning.</p>
+                <div style="padding: 1rem; background: var(--bg-color); border-radius: 6px; margin-bottom: 1rem;">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">
+                        <i class="fas fa-file-alt"></i> Problem Statement:
+                    </div>
+                    <div style="color: var(--text-primary); white-space: pre-wrap; line-height: 1.6;">
+                        ${this.escapeHtml(approvedPS.problemStatement || '')}
+                    </div>
                 </div>
+                ${approvedPS.solution ? `
+                    <div style="padding: 1rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #10b981;">
+                        <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">
+                            <i class="fas fa-lightbulb"></i> Solution:
+                        </div>
+                        <div style="color: var(--text-primary); white-space: pre-wrap; line-height: 1.6;">
+                            ${this.escapeHtml(approvedPS.solution)}
+                        </div>
+                    </div>
+                ` : ''}
             `;
-            return;
+        } catch (error) {
+            console.error('Error loading approved problem statement:', error);
+            section.style.display = 'none';
+        }
+    },
+    
+    // Switch mini project tab
+    switchMiniProjectTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('#project-details-tab, #project-planning-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Remove active class from all tab buttons
+        const tabsContainer = document.getElementById('miniproject-tabs');
+        if (tabsContainer) {
+            tabsContainer.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
         }
         
-        // Load users and user stories
-        await this.loadUsers();
-        await this.loadUserStories();
+        // Show selected tab
+        const selectedTab = document.getElementById(`${tabName}-tab`);
+        if (selectedTab) {
+            selectedTab.classList.add('active');
+        }
+        
+        // Activate corresponding button
+        const button = tabsContainer ? tabsContainer.querySelector(`.tab-btn[data-tab="${tabName}"]`) : null;
+        if (button) {
+            button.classList.add('active');
+        }
     },
     
     // Get user's team
     async getUserTeam() {
         try {
+            // First check if we have a stored team ID from mini project
+            if (this.currentStudentTeamId) {
+                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+                if (teamDoc.exists()) {
+                    return { id: teamDoc.id, ...teamDoc.data() };
+                }
+            }
+            
+            // Fallback to finding team by membership
             const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
             if (!userDoc.exists()) return null;
             
             const userData = userDoc.data();
-            const teamId = userData.teamId;
-            if (!teamId) return null;
+            const studentKtuid = userData.username || '';
             
-            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
-            if (!teamDoc.exists()) return null;
+            // Find team where student is a member
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
             
-            return { id: teamDoc.id, ...teamDoc.data() };
+            for (const teamDoc of teamsSnapshot.docs) {
+                const team = teamDoc.data();
+                if (team.deleted) continue;
+                
+                const members = team.members || [];
+                const isMember = members.some(m => 
+                    (m.ktuid && m.ktuid === studentKtuid) || 
+                    (m.userId && m.userId === this.currentUser.uid) ||
+                    (typeof m === 'string' && m === studentKtuid)
+                );
+                
+                if (isMember) {
+                    return { id: teamDoc.id, ...team };
+                }
+            }
+            
+            return null;
         } catch (error) {
             console.error('Error getting user team:', error);
             return null;

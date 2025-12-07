@@ -983,13 +983,73 @@ Bob Johnson,GHI789</pre>
             <div id="miniproject" class="page">
                 <div class="page-header">
                     <h1>Mini Project</h1>
-                    <p class="subtitle">View your project details and progress</p>
+                    <p class="subtitle">View your project details, planning, and progress</p>
                 </div>
                 
-                <div id="miniproject-content" class="miniproject-content">
-                    <div class="empty-state">
-                        <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
-                        <p>You haven't been assigned to a project team yet.</p>
+                <!-- Tabs -->
+                <div class="admin-tabs" id="miniproject-tabs" style="display: none;">
+                    <button class="tab-btn active" data-tab="project-details" onclick="app.switchMiniProjectTab('project-details')">
+                        <i class="fas fa-info-circle"></i> Project Details
+                    </button>
+                    <button class="tab-btn" data-tab="project-planning" onclick="app.switchMiniProjectTab('project-planning')">
+                        <i class="fas fa-tasks"></i> Project Planning
+                    </button>
+                </div>
+                
+                <!-- Project Details Tab -->
+                <div id="project-details-tab" class="admin-tab-content active">
+                    <div id="miniproject-content" class="miniproject-content">
+                        <div class="empty-state">
+                            <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                            <p>You haven't been assigned to a project team yet.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Project Planning Tab -->
+                <div id="project-planning-tab" class="admin-tab-content">
+                    <div class="project-planning-container">
+                        <!-- Approved Problem Statement Section -->
+                        <div id="approved-problem-statement-section" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); display: none;">
+                            <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i> Approved Problem Statement
+                            </h3>
+                            <div id="approved-problem-statement-content"></div>
+                        </div>
+                        
+                        <!-- User Stories Section -->
+                        <div class="project-planning-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <h3><i class="fas fa-users"></i> Users</h3>
+                                <button type="button" class="btn btn-primary" onclick="app.showAddUserModal()">
+                                    <i class="fas fa-plus"></i> Add User
+                                </button>
+                            </div>
+                            
+                            <div id="users-list" class="users-list">
+                                <p class="empty-state">No users added yet. Add users corresponding to your approved problem statement.</p>
+                            </div>
+                            
+                            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                    <h3><i class="fas fa-list-ul"></i> User Stories</h3>
+                                    <button type="button" class="btn btn-primary" onclick="app.showAddUserStoryModal()">
+                                        <i class="fas fa-plus"></i> Add User Story
+                                    </button>
+                                </div>
+                                
+                                <div id="user-stories-list" class="user-stories-list">
+                                    <p class="empty-state">No user stories created yet. Create user stories for your users.</p>
+                                </div>
+                                
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                    <div id="user-stories-submission-status" style="margin-bottom: 1rem;"></div>
+                                    <button type="button" class="btn btn-success" id="submit-user-stories-btn" onclick="app.submitUserStoriesForVerification()" style="display: none;">
+                                        <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
