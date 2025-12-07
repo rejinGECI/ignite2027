@@ -7747,13 +7747,38 @@ const app = {
             // Render grouped by teams - SIMPLE CLEAN STRUCTURE with collapsible
             container.innerHTML = sortedTeams.map((teamGroup, teamIndex) => {
                 const teamId = `team-${teamIndex}`;
+                
+                // Determine team status for color indication
+                const hasApproved = teamGroup.problemStatements.some(ps => ps.approved);
+                const hasAnyProblemStatements = teamGroup.problemStatements.length > 0;
+                
+                // Set color based on status (matching table colors)
+                let statusColor, statusIcon, statusText;
+                if (hasApproved) {
+                    statusColor = '#10b981'; // Green
+                    statusIcon = 'fa-check-circle';
+                    statusText = 'Approved';
+                } else if (hasAnyProblemStatements) {
+                    statusColor = '#f59e0b'; // Orange/Yellow
+                    statusIcon = 'fa-clock';
+                    statusText = 'Pending';
+                } else {
+                    statusColor = '#ef4444'; // Red
+                    statusIcon = 'fa-exclamation-circle';
+                    statusText = 'No Topics';
+                }
+                
                 return `
                     <div style="margin-bottom: 2rem; width: 100%;">
-                        <div class="team-header-collapsible" onclick="app.toggleTeamProblemStatements('${teamId}')" style="padding: 1rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-bottom: 1rem; cursor: pointer; user-select: none; transition: all 0.2s;">
+                        <div class="team-header-collapsible" onclick="app.toggleTeamProblemStatements('${teamId}')" style="padding: 1rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-bottom: 1rem; cursor: pointer; user-select: none; transition: all 0.2s; border-left: 5px solid ${statusColor};">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
+                                <div style="flex: 1;">
                                     <h3 style="margin: 0; color: white; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem;">
                                         <i class="fas fa-users"></i> ${this.escapeHtml(teamGroup.teamName)}
+                                        <span style="margin-left: 0.75rem; padding: 4px 12px; background: rgba(255, 255, 255, 0.2); border-radius: 4px; font-size: 0.85rem; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                            <i class="fas ${statusIcon}" style="color: ${statusColor};"></i>
+                                            <span style="color: white;">${statusText}</span>
+                                        </span>
                                     </h3>
                                     ${teamGroup.teamData && teamGroup.teamData.guideName ? `
                                         <p style="margin: 0.5rem 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem;">
@@ -7909,13 +7934,12 @@ const app = {
                 return;
             }
             
-            // Create table with status column and color system
+            // Create table
             tableContainer.innerHTML = `
                 <table style="width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);">
                     <thead>
                         <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 12%; min-width: 120px;">Status</th>
-                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 25%; min-width: 200px; white-space: nowrap;">Team Name</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 30%; min-width: 250px; white-space: nowrap;">Team Name</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Guide</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Approved Topic</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Area/Technology</th>
@@ -7924,38 +7948,10 @@ const app = {
                     </thead>
                     <tbody>
                         ${teamsWithApprovedTopics.map(team => {
-                            // Determine status and colors
-                            let statusText, statusColor, statusBgColor, statusIcon, rowBgColor;
-                            
-                            if (team.hasApproved) {
-                                statusText = 'Approved';
-                                statusColor = '#065f46'; // Dark green text
-                                statusBgColor = '#d1fae5'; // Light green background
-                                statusIcon = 'fa-check-circle';
-                                rowBgColor = 'background: #f0fdf4;'; // Very light green row background
-                            } else if (team.hasAnyProblemStatements) {
-                                statusText = 'Pending';
-                                statusColor = '#92400e'; // Dark amber text
-                                statusBgColor = '#fef3c7'; // Light amber background
-                                statusIcon = 'fa-clock';
-                                rowBgColor = 'background: #fffbeb;'; // Very light amber row background
-                            } else {
-                                statusText = 'Not Uploaded';
-                                statusColor = '#991b1b'; // Dark red text
-                                statusBgColor = '#fee2e2'; // Light red background
-                                statusIcon = 'fa-exclamation-circle';
-                                rowBgColor = 'background: #fef2f2;'; // Very light red row background
-                            }
-                            
+                            const rowBgColor = team.hasApproved ? '' : (team.hasAnyProblemStatements ? 'background: #fffbeb;' : 'background: #fef2f2;');
                             return `
                             <tr style="border-bottom: 1px solid var(--border-color); ${rowBgColor}">
-                                <td style="padding: 1rem; vertical-align: middle;">
-                                    <span style="display: inline-flex; align-items: center; padding: 6px 12px; background: ${statusBgColor}; color: ${statusColor}; border-radius: 6px; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">
-                                        <i class="fas ${statusIcon}" style="margin-right: 0.5rem;"></i>
-                                        ${statusText}
-                                    </span>
-                                </td>
-                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 25%; min-width: 200px; white-space: nowrap;">
+                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 30%; min-width: 250px; white-space: nowrap;">
                                     <i class="fas fa-users" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
                                     ${this.escapeHtml(team.teamName)}
                                 </td>
