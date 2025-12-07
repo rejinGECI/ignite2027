@@ -7909,12 +7909,13 @@ const app = {
                 return;
             }
             
-            // Create table
+            // Create table with status column and color system
             tableContainer.innerHTML = `
                 <table style="width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);">
                     <thead>
                         <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 30%; min-width: 250px; white-space: nowrap;">Team Name</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 12%; min-width: 120px;">Status</th>
+                            <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem; width: 25%; min-width: 200px; white-space: nowrap;">Team Name</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Guide</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Approved Topic</th>
                             <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.95rem;">Area/Technology</th>
@@ -7923,10 +7924,38 @@ const app = {
                     </thead>
                     <tbody>
                         ${teamsWithApprovedTopics.map(team => {
-                            const rowBgColor = team.hasApproved ? '' : (team.hasAnyProblemStatements ? 'background: #fffbeb;' : 'background: #fef2f2;');
+                            // Determine status and colors
+                            let statusText, statusColor, statusBgColor, statusIcon, rowBgColor;
+                            
+                            if (team.hasApproved) {
+                                statusText = 'Approved';
+                                statusColor = '#065f46'; // Dark green text
+                                statusBgColor = '#d1fae5'; // Light green background
+                                statusIcon = 'fa-check-circle';
+                                rowBgColor = 'background: #f0fdf4;'; // Very light green row background
+                            } else if (team.hasAnyProblemStatements) {
+                                statusText = 'Pending';
+                                statusColor = '#92400e'; // Dark amber text
+                                statusBgColor = '#fef3c7'; // Light amber background
+                                statusIcon = 'fa-clock';
+                                rowBgColor = 'background: #fffbeb;'; // Very light amber row background
+                            } else {
+                                statusText = 'Not Uploaded';
+                                statusColor = '#991b1b'; // Dark red text
+                                statusBgColor = '#fee2e2'; // Light red background
+                                statusIcon = 'fa-exclamation-circle';
+                                rowBgColor = 'background: #fef2f2;'; // Very light red row background
+                            }
+                            
                             return `
                             <tr style="border-bottom: 1px solid var(--border-color); ${rowBgColor}">
-                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 30%; min-width: 250px; white-space: nowrap;">
+                                <td style="padding: 1rem; vertical-align: middle;">
+                                    <span style="display: inline-flex; align-items: center; padding: 6px 12px; background: ${statusBgColor}; color: ${statusColor}; border-radius: 6px; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">
+                                        <i class="fas ${statusIcon}" style="margin-right: 0.5rem;"></i>
+                                        ${statusText}
+                                    </span>
+                                </td>
+                                <td style="padding: 1rem; font-weight: 600; color: var(--text-primary); width: 25%; min-width: 200px; white-space: nowrap;">
                                     <i class="fas fa-users" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
                                     ${this.escapeHtml(team.teamName)}
                                 </td>
