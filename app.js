@@ -274,10 +274,6 @@ const app = {
             if (adminMiniProjectSettingsNav) {
                 adminMiniProjectSettingsNav.style.display = 'block';
             }
-            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
-            if (adminProjectPlanningNav) {
-                adminProjectPlanningNav.style.display = 'block';
-            }
             const adminSettingsNav = document.getElementById('admin-settings-nav');
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'block';
@@ -288,15 +284,11 @@ const app = {
             if (guideNav) {
                 guideNav.style.display = 'none';
             }
-            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
-            if (guideProjectPlanningNav) {
-                guideProjectPlanningNav.style.display = 'none';
-            }
             
             // Restore saved page or default to admin progress (home page)
             const savedPage = localStorage.getItem('currentPage');
             // Only use saved page if it's a valid admin page, otherwise default to progress
-            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-miniproject', 'admin-miniproject-settings', 'admin-project-planning'];
+            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-miniproject', 'admin-miniproject-settings'];
             const defaultPage = (savedPage && validAdminPages.includes(savedPage)) ? savedPage : 'admin-progress';
             
             // Make Progress nav active by default or saved page
@@ -333,10 +325,6 @@ const app = {
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
             }
-            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
-            if (adminProjectPlanningNav) {
-                adminProjectPlanningNav.style.display = 'none';
-            }
             document.querySelectorAll('.student-nav').forEach(nav => {
                 nav.style.display = 'none';
             });
@@ -344,10 +332,6 @@ const app = {
             const guideNav = document.getElementById('guide-dashboard-nav');
             if (guideNav) {
                 guideNav.style.display = 'block';
-            }
-            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
-            if (guideProjectPlanningNav) {
-                guideProjectPlanningNav.style.display = 'block';
             }
             
             // Hide user info for guide
@@ -389,18 +373,10 @@ const app = {
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
             }
-            const adminProjectPlanningNav = document.getElementById('admin-project-planning-nav');
-            if (adminProjectPlanningNav) {
-                adminProjectPlanningNav.style.display = 'none';
-            }
             // Hide guide navigation
             const guideNav = document.getElementById('guide-dashboard-nav');
             if (guideNav) {
                 guideNav.style.display = 'none';
-            }
-            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
-            if (guideProjectPlanningNav) {
-                guideProjectPlanningNav.style.display = 'none';
             }
             // Show all student navigation items
             document.querySelectorAll('.student-nav').forEach(nav => {
@@ -3507,19 +3483,8 @@ const app = {
     },
     
     async updateProjectPlanningVisibility() {
-        // Show/hide navigation items
-        const studentNav = document.getElementById('nav-project-planning');
-        const adminNav = document.getElementById('admin-project-planning-nav');
-        const guideNav = document.getElementById('guide-project-planning-nav');
-        
-        // Always show for admin and guide
-        if (adminNav) adminNav.style.display = this.isAdmin ? 'block' : 'none';
-        if (guideNav) guideNav.style.display = this.isGuide ? 'block' : 'none';
-        
-        // Hide separate project planning nav for students (it's now in mini project)
-        if (studentNav) {
-            studentNav.style.display = 'none';
-        }
+        // Project planning is now integrated into mini project, so no separate nav items needed
+        // This function is kept for backward compatibility but does nothing
     },
     
     async toggleMiniProjectModule() {
@@ -8840,8 +8805,7 @@ const app = {
             // Load user stories
             const storiesQuery = query(
                 collection(window.firebaseDb, 'userStories'),
-                where('teamId', '==', team.id),
-                orderBy('createdAt', 'desc')
+                where('teamId', '==', team.id)
             );
             const storiesSnapshot = await getDocs(storiesQuery);
             
@@ -8851,6 +8815,13 @@ const app = {
                 const user = users.find(u => u.id === story.userId);
                 story.userName = user ? user.name : 'Unknown';
                 stories.push(story);
+            });
+            
+            // Sort by createdAt in JavaScript (newest first)
+            stories.sort((a, b) => {
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA; // Descending order
             });
             
             // Load submission status
@@ -9292,8 +9263,7 @@ const app = {
                 
                 const storiesQuery = query(
                     collection(window.firebaseDb, 'userStories'),
-                    where('teamId', '==', team.id),
-                    orderBy('createdAt', 'desc')
+                    where('teamId', '==', team.id)
                 );
                 const storiesSnapshot = await getDocs(storiesQuery);
                 const stories = [];
@@ -9302,6 +9272,13 @@ const app = {
                     const user = users.find(u => u.id === story.userId);
                     story.userName = user ? user.name : 'Unknown';
                     stories.push(story);
+                });
+                
+                // Sort by createdAt in JavaScript (newest first)
+                stories.sort((a, b) => {
+                    const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                    const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                    return dateB - dateA; // Descending order
                 });
                 
                 team.planningData = planningData;
