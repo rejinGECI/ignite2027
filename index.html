@@ -139,6 +139,7 @@
                 <li id="admin-miniproject-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject-settings"><i class="fas fa-cog"></i> Mini Project Settings</a></li>
                 <li id="admin-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
                 <li id="guide-dashboard-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-dashboard"><i class="fas fa-user-tie"></i> Guide Dashboard</a></li>
+                <li id="guide-project-planning-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-project-planning"><i class="fas fa-tasks"></i> Project Planning</a></li>
                 <li id="nav-miniproject" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="miniproject"><i class="fas fa-project-diagram"></i> Mini Project</a></li>
                 <li id="nav-dreams" class="student-nav"><a href="#" class="nav-link" data-page="dreams"><i class="fas fa-star"></i> My Dream Life</a></li>
                 <li id="nav-progress" class="student-nav"><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
@@ -967,6 +968,19 @@ Bob Johnson,GHI789</pre>
                         </div>
                     </div>
                     
+                    <!-- Quick Actions -->
+                    <div class="admin-card" style="margin-bottom: 2rem;">
+                        <h3><i class="fas fa-tasks"></i> Quick Actions</h3>
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+                            <button type="button" class="btn btn-primary" onclick="app.showPage('guide-project-planning')">
+                                <i class="fas fa-clipboard-check"></i> Manage Project Planning
+                            </button>
+                        </div>
+                        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+                            Review and approve user stories submitted by your teams for the project planning phase.
+                        </p>
+                    </div>
+                    
                     <div class="guide-teams-section">
                         <h3>My Assigned Teams</h3>
                         <div id="guide-teams-list" class="guide-teams-list">
@@ -1162,12 +1176,38 @@ Bob Johnson,GHI789</pre>
             <!-- Guide Project Planning Page -->
             <div id="guide-project-planning" class="page">
                 <div class="page-header">
-                    <h1>Project Planning Verification</h1>
-                    <p class="subtitle">Review and verify user stories submitted by your teams</p>
+                    <h1>Project Planning Management</h1>
+                    <p class="subtitle">Review, approve, and manage user stories submitted by your teams</p>
                 </div>
                 
                 <div id="guide-project-planning-teams-list" class="guide-teams-list">
                     <div class="loading-state">Loading teams...</div>
+                </div>
+            </div>
+            
+            <!-- Approve/Reject User Stories Modal -->
+            <div id="approve-user-stories-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeApproveUserStoriesModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 700px; max-height: 90vh;">
+                    <div class="modal-header">
+                        <h2>Review User Stories</h2>
+                        <button type="button" class="modal-close" onclick="app.closeApproveUserStoriesModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="approve-user-stories-content">
+                            <!-- Content will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeApproveUserStoriesModal()">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="reject-all-btn" onclick="app.rejectAllUserStories()" style="display: none;">
+                            <i class="fas fa-times-circle"></i> Reject All
+                        </button>
+                        <button type="button" class="btn btn-success" id="approve-all-btn" onclick="app.approveAllUserStories()" style="display: none;">
+                            <i class="fas fa-check-circle"></i> Approve All
+                        </button>
+                    </div>
                 </div>
             </div>
             

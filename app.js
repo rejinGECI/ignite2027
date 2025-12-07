@@ -333,6 +333,10 @@ const app = {
             if (guideNav) {
                 guideNav.style.display = 'block';
             }
+            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
+            if (guideProjectPlanningNav) {
+                guideProjectPlanningNav.style.display = 'block';
+            }
             
             // Hide user info for guide
             const userInfoDiv = document.getElementById('user-info');
@@ -9413,44 +9417,100 @@ const app = {
                     critical: '#ef4444'
                 };
                 
+                // Count approved/rejected stories
+                const approvedCount = team.stories.filter(s => s.approved === true).length;
+                const rejectedCount = team.stories.filter(s => s.rejected === true).length;
+                const pendingCount = team.stories.length - approvedCount - rejectedCount;
+                
                 return `
                     <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
-                            <h3 style="margin: 0; color: var(--text-primary);">
-                                <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
-                            </h3>
+                            <div style="flex: 1;">
+                                <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                                </h3>
+                                <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.85rem;">
+                                    <span style="color: var(--text-secondary);">
+                                        <i class="fas fa-list-ul"></i> ${team.stories.length} Total
+                                    </span>
+                                    ${approvedCount > 0 ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> ${approvedCount} Approved</span>` : ''}
+                                    ${rejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${rejectedCount} Rejected</span>` : ''}
+                                    ${pendingCount > 0 ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> ${pendingCount} Pending</span>` : ''}
+                                </div>
+                            </div>
                             ${isVerified ? `
-                                <span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                                <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
                                     <i class="fas fa-check-circle"></i> Verified
                                 </span>
-                            ` : `
-                                <button type="button" class="btn btn-success" onclick="app.verifyUserStories('${team.id}')">
-                                    <i class="fas fa-check"></i> Verify User Stories
+                            ` : isSubmitted ? `
+                                <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
+                                    <i class="fas fa-clipboard-check"></i> Review & Approve
                                 </button>
-                            `}
+                            ` : ''}
                         </div>
                         
-                        <div style="margin-bottom: 1.5rem;">
+                        <div style="margin-bottom: 1rem;">
                             <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1rem;">
-                                <i class="fas fa-list-ul"></i> User Stories (${team.stories.length})
+                                <i class="fas fa-list-ul"></i> User Stories
                             </h4>
                             <div style="max-height: 400px; overflow-y: auto;">
-                                ${team.stories.map(story => `
-                                    <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid ${priorityColors[story.priority] || priorityColors.medium}; margin-bottom: 0.5rem;">
-                                        <div style="margin-bottom: 0.25rem;">
-                                            <span style="padding: 2px 6px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
-                                                ${story.priority || 'medium'}
-                                            </span>
+                                ${team.stories.length === 0 ? `
+                                    <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No user stories submitted yet.</p>
+                                ` : team.stories.map(story => {
+                                    const isApproved = story.approved === true;
+                                    const isRejected = story.rejected === true;
+                                    const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : priorityColors[story.priority] || priorityColors.medium);
+                                    const statusIcon = isApproved ? 'fa-check-circle' : (isRejected ? 'fa-times-circle' : 'fa-clock');
+                                    const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
+                                    
+                                    return `
+                                        <div style="padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid ${statusColor}; margin-bottom: 0.75rem; position: relative;">
+                                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                                    <span style="padding: 3px 8px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
+                                                        ${story.priority || 'medium'}
+                                                    </span>
+                                                    <span style="padding: 3px 8px; background: ${isApproved ? '#d1fae5' : (isRejected ? '#fee2e2' : '#fef3c7')}; color: ${statusColor}; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">
+                                                        <i class="fas ${statusIcon}"></i> ${statusText}
+                                                    </span>
+                                                </div>
+                                                ${!isApproved && !isRejected && isSubmitted ? `
+                                                    <div style="display: flex; gap: 0.5rem;">
+                                                        <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                            <p style="margin: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.6;">
+                                                <strong>As a</strong> <span style="color: var(--primary-color); font-weight: 600;">${this.escapeHtml(story.userName)}</span>, 
+                                                <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
+                                                <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
+                                            </p>
+                                            ${story.approvalFeedback ? `
+                                                <div style="margin-top: 0.75rem; padding: 0.75rem; background: ${isApproved ? '#f0fdf4' : '#fef2f2'}; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                                    <div style="font-size: 0.8rem; font-weight: 600; color: ${statusColor}; margin-bottom: 0.25rem;">
+                                                        <i class="fas fa-comment"></i> Guide Feedback:
+                                                    </div>
+                                                    <div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.escapeHtml(story.approvalFeedback)}</div>
+                                                </div>
+                                            ` : ''}
                                         </div>
-                                        <p style="margin: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.5;">
-                                            <strong>As a</strong> <span style="color: var(--primary-color);">${this.escapeHtml(story.userName)}</span>, 
-                                            <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
-                                            <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
-                                        </p>
-                                    </div>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                             </div>
                         </div>
+                        
+                        ${isSubmitted && !isVerified && pendingCount === 0 && approvedCount > 0 ? `
+                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" style="width: 100%;" onclick="app.verifyUserStories('${team.id}')">
+                                    <i class="fas fa-check-circle"></i> Verify All User Stories
+                                </button>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             }).join('');
@@ -9460,9 +9520,312 @@ const app = {
         }
     },
     
-    // Verify user stories (guide)
+    // Show approve user stories modal
+    async showApproveUserStoriesModal(teamId) {
+        const modal = document.getElementById('approve-user-stories-modal');
+        const content = document.getElementById('approve-user-stories-content');
+        const approveAllBtn = document.getElementById('approve-all-btn');
+        const rejectAllBtn = document.getElementById('reject-all-btn');
+        
+        if (!modal || !content) return;
+        
+        try {
+            // Load team and user stories
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const team = { id: teamDoc.id, ...teamDoc.data() };
+            
+            // Load users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', teamId)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', teamId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                stories.push(story);
+            });
+            
+            // Sort by createdAt
+            stories.sort((a, b) => {
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA;
+            });
+            
+            const pendingStories = stories.filter(s => !s.approved && !s.rejected);
+            
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            
+            content.innerHTML = `
+                <div style="margin-bottom: 1rem;">
+                    <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                        <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                    </h3>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                        Review and approve user stories for this team. You can approve or reject individual stories or all at once.
+                    </p>
+                </div>
+                <div style="max-height: 50vh; overflow-y: auto;">
+                    ${stories.map(story => {
+                        const isApproved = story.approved === true;
+                        const isRejected = story.rejected === true;
+                        const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : priorityColors[story.priority] || priorityColors.medium);
+                        
+                        return `
+                            <div style="padding: 1rem; background: var(--bg-color); border-radius: 8px; border-left: 4px solid ${statusColor}; margin-bottom: 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                        <span style="padding: 4px 10px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                            ${story.priority || 'medium'}
+                                        </span>
+                                        ${isApproved ? `
+                                            <span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                                <i class="fas fa-check-circle"></i> Approved
+                                            </span>
+                                        ` : isRejected ? `
+                                            <span style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                                <i class="fas fa-times-circle"></i> Rejected
+                                            </span>
+                                        ` : `
+                                            <span style="padding: 4px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                                <i class="fas fa-clock"></i> Pending
+                                            </span>
+                                        `}
+                                    </div>
+                                    ${!isApproved && !isRejected ? `
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectUserStory('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <p style="margin: 0; color: var(--text-primary); font-size: 0.95rem; line-height: 1.6;">
+                                    <strong>As a</strong> <span style="color: var(--primary-color); font-weight: 600;">${this.escapeHtml(story.userName)}</span>, 
+                                    <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
+                                    <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
+                                </p>
+                                ${story.approvalFeedback ? `
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: ${isApproved ? '#f0fdf4' : '#fef2f2'}; border-radius: 6px;">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: ${statusColor}; margin-bottom: 0.25rem;">
+                                            <i class="fas fa-comment"></i> Feedback:
+                                        </div>
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.escapeHtml(story.approvalFeedback)}</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            // Show/hide approve/reject all buttons
+            if (pendingStories.length > 0) {
+                approveAllBtn.style.display = 'inline-flex';
+                rejectAllBtn.style.display = 'inline-flex';
+                approveAllBtn.setAttribute('data-team-id', teamId);
+                rejectAllBtn.setAttribute('data-team-id', teamId);
+            } else {
+                approveAllBtn.style.display = 'none';
+                rejectAllBtn.style.display = 'none';
+            }
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading user stories for approval:', error);
+            alert('Error loading user stories. Please try again.');
+        }
+    },
+    
+    // Close approve user stories modal
+    closeApproveUserStoriesModal() {
+        document.getElementById('approve-user-stories-modal').style.display = 'none';
+    },
+    
+    // Approve individual user story
+    async approveUserStory(storyId, teamId) {
+        const feedback = prompt('Enter approval feedback (optional):');
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
+                approved: true,
+                rejected: false,
+                approvalFeedback: feedback || '',
+                approvedBy: this.currentUser.uid,
+                approvedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Reload the guide project planning view
+            await this.loadGuideProjectPlanning();
+            
+            // Update modal if open
+            const modal = document.getElementById('approve-user-stories-modal');
+            if (modal && modal.style.display !== 'none') {
+                await this.showApproveUserStoriesModal(teamId);
+            }
+        } catch (error) {
+            console.error('Error approving user story:', error);
+            alert('Error approving user story. Please try again.');
+        }
+    },
+    
+    // Reject individual user story
+    async rejectUserStory(storyId, teamId) {
+        const feedback = prompt('Enter rejection feedback (required):');
+        if (!feedback || feedback.trim() === '') {
+            alert('Please provide feedback for rejection.');
+            return;
+        }
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
+                approved: false,
+                rejected: true,
+                approvalFeedback: feedback.trim(),
+                rejectedBy: this.currentUser.uid,
+                rejectedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Reload the guide project planning view
+            await this.loadGuideProjectPlanning();
+            
+            // Update modal if open
+            const modal = document.getElementById('approve-user-stories-modal');
+            if (modal && modal.style.display !== 'none') {
+                await this.showApproveUserStoriesModal(teamId);
+            }
+        } catch (error) {
+            console.error('Error rejecting user story:', error);
+            alert('Error rejecting user story. Please try again.');
+        }
+    },
+    
+    // Approve all pending user stories
+    async approveAllUserStories() {
+        const teamId = document.getElementById('approve-all-btn').getAttribute('data-team-id');
+        if (!teamId) return;
+        
+        if (!confirm('Are you sure you want to approve all pending user stories for this team?')) {
+            return;
+        }
+        
+        const feedback = prompt('Enter approval feedback for all stories (optional):');
+        
+        try {
+            // Get all pending user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', teamId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            const updatePromises = [];
+            storiesSnapshot.forEach(doc => {
+                const story = doc.data();
+                if (!story.approved && !story.rejected) {
+                    updatePromises.push(updateDoc(doc.ref, {
+                        approved: true,
+                        rejected: false,
+                        approvalFeedback: feedback || '',
+                        approvedBy: this.currentUser.uid,
+                        approvedAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    }));
+                }
+            });
+            
+            await Promise.all(updatePromises);
+            
+            alert(`Successfully approved ${updatePromises.length} user story/stories!`);
+            this.closeApproveUserStoriesModal();
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error approving all user stories:', error);
+            alert('Error approving user stories. Please try again.');
+        }
+    },
+    
+    // Reject all pending user stories
+    async rejectAllUserStories() {
+        const teamId = document.getElementById('reject-all-btn').getAttribute('data-team-id');
+        if (!teamId) return;
+        
+        if (!confirm('Are you sure you want to reject all pending user stories for this team? This action cannot be undone easily.')) {
+            return;
+        }
+        
+        const feedback = prompt('Enter rejection feedback for all stories (required):');
+        if (!feedback || feedback.trim() === '') {
+            alert('Please provide feedback for rejection.');
+            return;
+        }
+        
+        try {
+            // Get all pending user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', teamId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            const updatePromises = [];
+            storiesSnapshot.forEach(doc => {
+                const story = doc.data();
+                if (!story.approved && !story.rejected) {
+                    updatePromises.push(updateDoc(doc.ref, {
+                        approved: false,
+                        rejected: true,
+                        approvalFeedback: feedback.trim(),
+                        rejectedBy: this.currentUser.uid,
+                        rejectedAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    }));
+                }
+            });
+            
+            await Promise.all(updatePromises);
+            
+            alert(`Successfully rejected ${updatePromises.length} user story/stories!`);
+            this.closeApproveUserStoriesModal();
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error rejecting all user stories:', error);
+            alert('Error rejecting user stories. Please try again.');
+        }
+    },
+    
+    // Verify user stories (guide) - final verification after all are approved
     async verifyUserStories(teamId) {
-        const feedback = prompt('Enter verification feedback (optional):');
+        const feedback = prompt('Enter final verification feedback (optional):');
         
         try {
             const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
