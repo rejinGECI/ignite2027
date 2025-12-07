@@ -4881,7 +4881,7 @@ const app = {
                 }
             });
             
-            // Load evaluation data for all teams
+            // Load evaluation data and approved problem statements for all teams
             const teamsWithEvaluations = await Promise.all(teams.map(async (team) => {
                 const evaluations = {};
                 for (let i = 0; i < stages.length; i++) {
@@ -4894,7 +4894,29 @@ const app = {
                         console.error(`Error loading evaluation for team ${team.id}, stage ${i}:`, error);
                     }
                 }
-                return { ...team, evaluations };
+                
+                // Load approved problem statement for this team
+                let approvedProblemStatement = null;
+                try {
+                    const problemStatementsQuery = query(
+                        collection(window.firebaseDb, 'problemStatements'),
+                        where('teamId', '==', team.id),
+                        where('approved', '==', true)
+                    );
+                    const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
+                    if (!problemStatementsSnapshot.empty) {
+                        // Get the first approved problem statement
+                        const approvedPS = problemStatementsSnapshot.docs[0];
+                        approvedProblemStatement = {
+                            id: approvedPS.id,
+                            ...approvedPS.data()
+                        };
+                    }
+                } catch (error) {
+                    console.error(`Error loading approved problem statement for team ${team.id}:`, error);
+                }
+                
+                return { ...team, evaluations, approvedProblemStatement };
             }));
             
             // Update stats
@@ -4928,6 +4950,38 @@ const app = {
                     <div class="team-topic" style="margin-bottom: 0.75rem; font-size: 0.9rem;">
                         <strong>Topic:</strong> ${this.escapeHtml(team.topic || 'Not assigned')}
                     </div>
+                    
+                    ${team.approvedProblemStatement ? `
+                        <div class="approved-problem-statement" style="margin-bottom: 0.75rem; padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 4px solid #10b981;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i>
+                                <strong style="font-size: 0.9rem; color: var(--text-primary);">Approved Problem Statement</strong>
+                            </div>
+                            <div style="margin-bottom: 0.5rem;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+                                    ${this.escapeHtml(team.approvedProblemStatement.title || 'Untitled')}
+                                </div>
+                                ${team.approvedProblemStatement.area ? `
+                                    <span style="padding: 3px 8px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.75rem; font-weight: 500;">
+                                        <i class="fas fa-tag"></i> ${this.escapeHtml(team.approvedProblemStatement.area)}
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">
+                                ${this.escapeHtml(team.approvedProblemStatement.problemStatement || '')}
+                            </div>
+                            ${team.approvedProblemStatement.solution ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #d1fae5;">
+                                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+                                        <i class="fas fa-lightbulb"></i> Solution:
+                                    </div>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">
+                                        ${this.escapeHtml(team.approvedProblemStatement.solution)}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
                     
                     ${stages.length > 0 ? `
                         <div class="team-evaluations-summary" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
