@@ -407,12 +407,6 @@ const app = {
                 nav.style.display = 'block';
             });
             
-            // Hide guide navigation
-            const guideNav = document.getElementById('guide-dashboard-nav');
-            if (guideNav) {
-                guideNav.style.display = 'none';
-            }
-            
             // Restore saved page or default to dashboard
             const savedPage = localStorage.getItem('currentPage');
             const defaultPage = savedPage || 'dashboard';
