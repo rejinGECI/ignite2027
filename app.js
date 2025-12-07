@@ -5231,15 +5231,29 @@ const app = {
                         isComplete = hasTeamMarks || hasTeamComments || hasIndividualEvals;
                     }
                     
+                    // Check for PPT upload status
+                    // Check multiple possible field names for PPT/presentation upload
+                    const hasPPT = evalData && (
+                        evalData.pptUrl || 
+                        evalData.presentationUrl || 
+                        evalData.pptFileUrl ||
+                        evalData.presentationFileUrl ||
+                        (evalData.uploadedFiles && evalData.uploadedFiles.some(f => f.type === 'ppt' || f.type === 'pptx' || f.name?.endsWith('.ppt') || f.name?.endsWith('.pptx')))
+                    );
+                    
                     return {
                         ...team,
-                        evaluationStatus: isComplete ? 'completed' : 'pending'
+                        evaluationStatus: isComplete ? 'completed' : 'pending',
+                        hasPPT: !!hasPPT,
+                        pptUrl: evalData?.pptUrl || evalData?.presentationUrl || evalData?.pptFileUrl || evalData?.presentationFileUrl || null
                     };
                 } catch (error) {
                     console.error(`Error checking evaluation for team ${team.id}:`, error);
                     return {
                         ...team,
-                        evaluationStatus: 'pending'
+                        evaluationStatus: 'pending',
+                        hasPPT: false,
+                        pptUrl: null
                     };
                 }
             }));
@@ -5256,6 +5270,19 @@ const app = {
                                 <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : 'fa-clock'}"></i>
                                 ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
                             </span>
+                        </div>
+                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+                                <i class="fas fa-file-powerpoint" style="color: ${team.hasPPT ? '#10b981' : '#ef4444'};"></i>
+                                <span style="color: ${team.hasPPT ? '#10b981' : '#ef4444'}; font-weight: 600;">
+                                    PPT: ${team.hasPPT ? 'Uploaded' : 'Not Uploaded'}
+                                </span>
+                                ${team.hasPPT && team.pptUrl ? `
+                                    <a href="${team.pptUrl}" target="_blank" onclick="event.stopPropagation();" style="margin-left: auto; color: var(--primary-color); text-decoration: none; font-size: 0.85rem;">
+                                        <i class="fas fa-download"></i> Download
+                                    </a>
+                                ` : ''}
+                            </div>
                         </div>
                     </div>
                     ${team.evaluationStatus === 'completed' ? `
