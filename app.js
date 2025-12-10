@@ -7140,17 +7140,13 @@ const app = {
     },
     
     async generatePDFReport(reportContent, teamData, stage) {
-        // Create a new window with the report content
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert('Popup blocked. Please allow popups for this site to generate PDF reports.');
-            return;
-        }
-        
         // Get report title - handle both stage object and simple name object
         const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
+        const teamName = teamData?.groupName || 'Report';
         
-        printWindow.document.write(`
+        // Use blob download approach (same as HTML/DOCX) to avoid popup blockers
+        // User can open the downloaded HTML file and print to PDF from browser
+        const blob = new Blob([`
             <!DOCTYPE html>
             <html>
             <head>
@@ -7166,7 +7162,7 @@ const app = {
                     }
                     body {
                         margin: 0;
-                        padding: 0;
+                        padding: 20px;
                         font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                     }
                     * {
@@ -7178,15 +7174,18 @@ const app = {
                 ${reportContent}
             </body>
             </html>
-        `);
-        printWindow.document.close();
+        `], { type: 'text/html' });
         
-        // Wait for content to load, then print/save as PDF
-        printWindow.onload = function() {
-            setTimeout(() => {
-                printWindow.print();
-            }, 250);
-        };
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
+        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     },
     
     generateHTMLReport(reportContent, teamData, stage) {
