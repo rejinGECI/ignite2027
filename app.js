@@ -2970,19 +2970,25 @@ const app = {
                 });
             }
             
-            // Sort by team name
-            teamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            // Filter out test teams (case-insensitive)
+            const filteredTeamsStatus = teamsStatus.filter(team => {
+                const teamNameLower = (team.teamName || '').toLowerCase();
+                return !teamNameLower.includes('test');
+            });
             
-            if (teamsStatus.length === 0) {
+            // Sort by team name
+            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            
+            if (filteredTeamsStatus.length === 0) {
                 container.innerHTML = '<p class="empty-state">No teams found.</p>';
                 return;
             }
             
             // Calculate summary statistics
-            const totalTeams = teamsStatus.length;
-            const teamsWithStories = teamsStatus.filter(t => t.storiesCount > 0).length;
-            const teamsSubmitted = teamsStatus.filter(t => t.isSubmitted).length;
-            const teamsVerified = teamsStatus.filter(t => t.isVerified).length;
+            const totalTeams = filteredTeamsStatus.length;
+            const teamsWithStories = filteredTeamsStatus.filter(t => t.storiesCount > 0).length;
+            const teamsSubmitted = filteredTeamsStatus.filter(t => t.isSubmitted).length;
+            const teamsVerified = filteredTeamsStatus.filter(t => t.isVerified).length;
             
             container.innerHTML = `
                 <div style="margin-bottom: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
@@ -3016,7 +3022,7 @@ const app = {
                             </tr>
                         </thead>
                         <tbody>
-                            ${teamsStatus.map((team, index) => {
+                            ${filteredTeamsStatus.map((team, index) => {
                                 let submissionBadge = '';
                                 let verificationBadge = '';
                                 
@@ -6421,17 +6427,23 @@ const app = {
                 });
             }
             
+            // Filter out test teams (case-insensitive)
+            const filteredTeamsStatus = teamsStatus.filter(team => {
+                const teamNameLower = (team.teamName || '').toLowerCase();
+                return !teamNameLower.includes('test');
+            });
+            
             // Sort by team name
-            teamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
             
             // Generate based on format
             if (format === 'csv') {
-                this.generateUserStoriesCSVReport(teamsStatus);
+                this.generateUserStoriesCSVReport(filteredTeamsStatus);
             } else if (format === 'json') {
-                this.generateUserStoriesJSONReport(teamsStatus);
+                this.generateUserStoriesJSONReport(filteredTeamsStatus);
             } else {
                 // For PDF/HTML/DOCX, generate HTML report
-                const reportContent = this.generateUserStoriesReportContent(teamsStatus);
+                const reportContent = this.generateUserStoriesReportContent(filteredTeamsStatus);
                 
                 if (format === 'pdf') {
                     await this.generatePDFReport(reportContent, { groupName: 'User Stories Status' }, { name: 'User Stories Submission Status Report' });
@@ -10142,6 +10154,24 @@ const app = {
                             ` : ''}
                         </div>
                         
+                        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
+                            <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1rem;">
+                                <i class="fas fa-users"></i> Users
+                            </h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem;">
+                                ${team.users.length === 0 ? `
+                                    <p style="color: var(--text-secondary); grid-column: 1 / -1; text-align: center; padding: 1rem;">No users added yet.</p>
+                                ` : team.users.map(user => `
+                                    <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px; border: 1px solid var(--border-color);">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <i class="fas fa-user" style="color: var(--primary-color);"></i>
+                                            <span style="color: var(--text-primary); font-weight: 500;">${this.escapeHtml(user.name || 'Unknown User')}</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
                         <div style="margin-bottom: 1rem;">
                             <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1rem;">
                                 <i class="fas fa-list-ul"></i> User Stories
@@ -10281,6 +10311,23 @@ const app = {
                     <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
                         Review and approve user stories for this team. You can approve or reject individual stories or all at once.
                     </p>
+                </div>
+                <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
+                    <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem;">
+                        <i class="fas fa-users"></i> Users
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem;">
+                        ${users.length === 0 ? `
+                            <p style="color: var(--text-secondary); grid-column: 1 / -1; text-align: center; padding: 0.5rem; font-size: 0.9rem;">No users added yet.</p>
+                        ` : users.map(user => `
+                            <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px; border: 1px solid var(--border-color);">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-user" style="color: var(--primary-color); font-size: 0.9rem;"></i>
+                                    <span style="color: var(--text-primary); font-weight: 500; font-size: 0.9rem;">${this.escapeHtml(user.name || 'Unknown User')}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
                 <div style="max-height: 50vh; overflow-y: auto;">
                     ${stories.map(story => {
