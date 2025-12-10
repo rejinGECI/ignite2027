@@ -7142,12 +7142,20 @@ const app = {
     async generatePDFReport(reportContent, teamData, stage) {
         // Create a new window with the report content
         const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Popup blocked. Please allow popups for this site to generate PDF reports.');
+            return;
+        }
+        
+        // Get report title - handle both stage object and simple name object
+        const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
+        
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
-                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <title>${this.escapeHtml(reportTitle)}</title>
                 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <style>
                     @media print {
@@ -7182,13 +7190,17 @@ const app = {
     },
     
     generateHTMLReport(reportContent, teamData, stage) {
+        // Get report title - handle both stage object and simple name object
+        const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
+        const teamName = teamData?.groupName || 'Team';
+        
         // Create a blob with the HTML content
         const blob = new Blob([`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
-                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <title>${this.escapeHtml(reportTitle)}</title>
                 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <style>
                     body {
@@ -7211,7 +7223,8 @@ const app = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.html`;
+        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
+        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -7219,6 +7232,10 @@ const app = {
     },
     
     async generateDOCXReport(reportContent, teamData, stage) {
+        // Get report title - handle both stage object and simple name object
+        const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
+        const teamName = teamData?.groupName || 'Team';
+        
         // For DOCX, we'll create an HTML file that can be opened in Word
         // Word can open HTML files and save them as DOCX
         const blob = new Blob([`
@@ -7226,7 +7243,7 @@ const app = {
             <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
             <head>
                 <meta charset='utf-8'>
-                <title>Evaluation Report - ${this.escapeHtml(stage.name)}</title>
+                <title>${this.escapeHtml(reportTitle)}</title>
                 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
                 <!--[if gte mso 9]>
                 <xml>
@@ -7260,7 +7277,8 @@ const app = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `Evaluation_Report_${this.escapeHtml(teamData.groupName || 'Team')}_${this.escapeHtml(stage.name).replace(/[^a-z0-9]/gi, '_')}.doc`;
+        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
+        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.doc`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
