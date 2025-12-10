@@ -656,24 +656,6 @@ Bob Johnson,GHI789</pre>
                     <div class="loading-state">Loading students...</div>
                 </div>
                 
-                <!-- User Stories Submission Status Section -->
-                <div class="admin-section" style="margin-top: 3rem;">
-                    <div class="admin-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                            <div>
-                                <h3><i class="fas fa-list-check"></i> User Stories Submission Status</h3>
-                                <p style="margin-top: 0.5rem;">View user stories submission status by students and guide verification status.</p>
-                            </div>
-                            <button type="button" class="btn btn-secondary" id="generate-user-stories-report-btn" onclick="app.showUserStoriesReportOptions()" style="white-space: nowrap;">
-                                <i class="fas fa-file-alt"></i> Generate Report
-                            </button>
-                        </div>
-                        <div id="user-stories-status-container">
-                            <div class="loading-state">Loading user stories status...</div>
-                        </div>
-                    </div>
-                </div>
-                
                 <!-- All Student Feedback Section -->
                 <div class="admin-section" style="margin-top: 3rem;">
                     <div class="admin-card">
@@ -805,6 +787,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="problem-statements" onclick="app.switchAdminMiniProjectTab('problem-statements')">
                         <i class="fas fa-file-alt"></i> Problem Statements
                     </button>
+                    <button class="tab-btn" data-tab="user-stories" onclick="app.switchAdminMiniProjectTab('user-stories')">
+                        <i class="fas fa-list-check"></i> User Stories Status
+                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -905,6 +890,24 @@ Bob Johnson,GHI789</pre>
                             
                             <div id="all-problem-statements-list" style="margin-top: 1.5rem;">
                                 <p class="empty-state">Loading problem statements...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- User Stories Status Tab -->
+                    <div id="admin-miniproject-user-stories-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <div>
+                                    <h3><i class="fas fa-list-check"></i> User Stories Submission Status</h3>
+                                    <p style="margin-top: 0.5rem;">View user stories submission status by students and guide verification status.</p>
+                                </div>
+                                <button type="button" class="btn btn-secondary" id="generate-user-stories-report-btn" onclick="app.showUserStoriesReportOptions()" style="white-space: nowrap;">
+                                    <i class="fas fa-file-alt"></i> Generate Report
+                                </button>
+                            </div>
+                            <div id="user-stories-status-container">
+                                <div class="loading-state">Loading user stories status...</div>
                             </div>
                         </div>
                     </div>

@@ -1023,6 +1023,11 @@ const app = {
                     await this.loadGuidesList();
                     await this.loadProjectTeams();
                     await this.loadEvaluationStagesDropdown();
+                    // Load user stories status if on that tab
+                    const userStoriesTab = document.getElementById('admin-miniproject-user-stories-tab');
+                    if (userStoriesTab && userStoriesTab.classList.contains('active')) {
+                        await this.loadUserStoriesStatus();
+                    }
                 } else if (pageId === 'guide-dashboard') {
                     await this.loadGuideDashboard();
                 } else if (pageId === 'project-planning') {
@@ -2725,12 +2730,6 @@ const app = {
             
             // Setup search functionality
             this.setupStudentSearch();
-            
-            // Load all feedback
-            await this.loadAllStudentFeedback();
-            
-            // Load user stories status
-            await this.loadUserStoriesStatus();
         } catch (error) {
             console.error('Error loading students:', error);
             let errorMessage = error.message;
@@ -2907,13 +2906,17 @@ const app = {
     // Load User Stories Status for Admin
     async loadUserStoriesStatus() {
         const container = document.getElementById('user-stories-status-container');
-        if (!container) return;
+        if (!container) {
+            console.warn('User stories status container not found');
+            return;
+        }
         
         if (!this.isAdmin && this.userRole !== 'admin') {
             container.innerHTML = '<div class="error-message">Access denied. Admin access required.</div>';
             return;
         }
         
+        console.log('Loading user stories status...');
         container.innerHTML = '<div class="loading-state">Loading user stories status...</div>';
         
         try {
@@ -5286,6 +5289,10 @@ const app = {
         // Load problem statements when tab is switched
         if (tabName === 'problem-statements') {
             setTimeout(() => this.loadAllProblemStatements(), 100);
+        }
+        // Load user stories status when tab is switched
+        if (tabName === 'user-stories') {
+            setTimeout(() => this.loadUserStoriesStatus(), 100);
         }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
