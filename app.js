@@ -7488,33 +7488,43 @@ const app = {
         tempContainer.style.width = '210mm'; // A4 width
         tempContainer.style.backgroundColor = '#ffffff';
         
-        // Create a style element for fonts
-        const styleElement = document.createElement('style');
-        styleElement.textContent = `
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap');
-            * {
-                box-sizing: border-box;
+        // Check if reportContent is a full HTML document or just content
+        const isFullDocument = reportContent.trim().toLowerCase().startsWith('<!doctype') || 
+                               reportContent.trim().toLowerCase().startsWith('<html');
+        
+        let contentToUse = reportContent;
+        
+        if (isFullDocument) {
+            // Parse the full HTML document to extract the body content
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(reportContent, 'text/html');
+            
+            // Try to get the report-container first, then body, then documentElement
+            let contentToRender = doc.querySelector('.report-container');
+            if (!contentToRender || contentToRender.children.length === 0) {
+                contentToRender = doc.body;
             }
-        `;
-        document.head.appendChild(styleElement);
-        
-        // Parse the HTML content to extract body content
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(reportContent, 'text/html');
-        
-        // Get the body content or the main container
-        let contentToRender = doc.body;
-        if (!contentToRender || contentToRender.children.length === 0) {
-            // If no body, try to get the report-container or use the whole document
-            contentToRender = doc.querySelector('.report-container') || doc.documentElement;
+            if (!contentToRender || contentToRender.children.length === 0) {
+                contentToRender = doc.documentElement;
+            }
+            
+            // Get the innerHTML of the content
+            if (contentToRender) {
+                contentToUse = contentToRender.innerHTML;
+            } else {
+                // Fallback: use the original content
+                contentToUse = reportContent;
+            }
         }
         
-        // Clone the content to avoid modifying the original
-        const clonedContent = contentToRender.cloneNode(true);
-        tempContainer.appendChild(clonedContent);
+        // Set the content
+        tempContainer.innerHTML = contentToUse;
         
-        // Append to body temporarily
+        // Append to body temporarily so html2pdf can render it
         document.body.appendChild(tempContainer);
+        
+        // Wait a bit for fonts and styles to load
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Configure html2pdf options
         const options = {
@@ -7526,7 +7536,9 @@ const app = {
                 useCORS: true,
                 letterRendering: true,
                 logging: false,
-                backgroundColor: '#ffffff'
+                backgroundColor: '#ffffff',
+                windowWidth: 794, // A4 width in pixels at 96 DPI
+                windowHeight: 1123 // A4 height in pixels at 96 DPI
             },
             jsPDF: { 
                 unit: 'mm', 
@@ -7543,12 +7555,9 @@ const app = {
             console.error('Error generating PDF:', error);
             alert('Error generating PDF. Please try again or use HTML format.');
         } finally {
-            // Clean up temporary container and style
+            // Clean up temporary container
             if (tempContainer.parentNode) {
                 tempContainer.parentNode.removeChild(tempContainer);
-            }
-            if (styleElement.parentNode) {
-                styleElement.parentNode.removeChild(styleElement);
             }
         }
     },
