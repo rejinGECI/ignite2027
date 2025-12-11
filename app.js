@@ -11515,7 +11515,17 @@ const app = {
                 noTasksMsg.style.display = 'block';
             }
             
-            // Add event listeners for difficulty and priority
+            const taskDescField = document.getElementById('current-task-description');
+            const taskDiffField = document.getElementById('current-task-difficulty');
+            const taskPriField = document.getElementById('current-task-priority');
+            
+            if (taskDescField) taskDescField.value = '';
+            if (taskDiffField) taskDiffField.value = 'medium';
+            if (taskPriField) taskPriField.value = 'medium';
+            
+            this.updateTaskCount();
+            
+            // Add event listeners for difficulty and priority (if they exist - for backward compatibility)
             const difficultySelect = document.getElementById('product-backlog-difficulty');
             if (difficultySelect) {
                 difficultySelect.addEventListener('change', () => {
@@ -11613,14 +11623,28 @@ const app = {
             
             document.getElementById('product-backlog-user').value = '';
             document.getElementById('product-backlog-user-story').value = '';
+            document.getElementById('current-task-description').value = '';
+            document.getElementById('current-task-difficulty').value = 'medium';
+            document.getElementById('current-task-priority').value = 'medium';
+            
+            this.updateTaskCount();
             
             modal.style.display = 'none';
         }
     },
     
     // Add product backlog
-    // Add a new task row to the list
-    addTaskRow() {
+    // Add task to the list
+    addTaskToList() {
+        const taskDesc = document.getElementById('current-task-description').value.trim();
+        const difficulty = document.getElementById('current-task-difficulty').value;
+        const priority = document.getElementById('current-task-priority').value;
+        
+        if (!taskDesc || !difficulty || !priority) {
+            alert('Please fill in all fields for the task.');
+            return;
+        }
+        
         const tasksList = document.getElementById('product-backlog-tasks-list');
         const noTasksMsg = document.getElementById('no-tasks-message');
         
@@ -11630,74 +11654,105 @@ const app = {
         if (noTasksMsg) noTasksMsg.style.display = 'none';
         
         const taskIndex = tasksList.children.length;
-        const taskRow = document.createElement('div');
-        taskRow.className = 'task-row';
-        taskRow.style.cssText = 'padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); position: relative;';
-        taskRow.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
-                <strong style="color: var(--text-primary);">Task ${taskIndex + 1}</strong>
-                <button type="button" class="btn btn-danger btn-sm" onclick="app.removeTaskRow(this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
-                    <i class="fas fa-trash"></i> Remove
-                </button>
-            </div>
-            <div class="form-group" style="margin-bottom: 0.75rem;">
-                <label style="font-size: 0.9rem; color: var(--text-secondary);">Task Description: <span style="color: #ef4444;">*</span></label>
-                <textarea class="task-description" placeholder="Enter the task description..." rows="2" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                <div class="form-group">
-                    <label style="font-size: 0.9rem; color: var(--text-secondary);">Difficulty: <span style="color: #ef4444;">*</span></label>
-                    <select class="task-difficulty" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
-                        <option value="">Select...</option>
-                        <option value="easy" data-color="#10b981">Easy</option>
-                        <option value="medium" data-color="#3b82f6" selected>Medium</option>
-                        <option value="hard" data-color="#f59e0b">Hard</option>
-                        <option value="very-hard" data-color="#ef4444">Very Hard</option>
-                    </select>
+        
+        // Create task item
+        const taskItem = document.createElement('div');
+        taskItem.className = 'task-item';
+        taskItem.dataset.task = taskDesc;
+        taskItem.dataset.difficulty = difficulty;
+        taskItem.dataset.priority = priority;
+        
+        const difficultyColors = {
+            easy: '#10b981',
+            medium: '#3b82f6',
+            hard: '#f59e0b',
+            'very-hard': '#ef4444'
+        };
+        
+        const priorityColors = {
+            low: '#6b7280',
+            medium: '#3b82f6',
+            high: '#f59e0b',
+            critical: '#ef4444'
+        };
+        
+        const difficultyLabels = {
+            easy: 'Easy',
+            medium: 'Medium',
+            hard: 'Hard',
+            'very-hard': 'Very Hard'
+        };
+        
+        const priorityLabels = {
+            low: 'Low',
+            medium: 'Medium',
+            high: 'High',
+            critical: 'Critical'
+        };
+        
+        taskItem.style.cssText = 'padding: 0.75rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ' + priorityColors[priority] + '; display: flex; justify-content: space-between; align-items: start; gap: 0.75rem;';
+        taskItem.innerHTML = `
+            <div style="flex: 1;">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                    <span style="padding: 2px 8px; background: ${priorityColors[priority]}15; color: ${priorityColors[priority]}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                        ${priorityLabels[priority]}
+                    </span>
+                    <span style="padding: 2px 8px; background: ${difficultyColors[difficulty]}15; color: ${difficultyColors[difficulty]}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                        ${difficultyLabels[difficulty]}
+                    </span>
                 </div>
-                <div class="form-group">
-                    <label style="font-size: 0.9rem; color: var(--text-secondary);">Priority: <span style="color: #ef4444;">*</span></label>
-                    <select class="task-priority" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
-                        <option value="">Select...</option>
-                        <option value="low" data-color="#6b7280">Low</option>
-                        <option value="medium" data-color="#3b82f6" selected>Medium</option>
-                        <option value="high" data-color="#f59e0b">High</option>
-                        <option value="critical" data-color="#ef4444">Critical</option>
-                    </select>
-                </div>
+                <p style="margin: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.5;">${this.escapeHtml(taskDesc)}</p>
             </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeTaskFromList(this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; flex-shrink: 0;">
+                <i class="fas fa-times"></i>
+            </button>
         `;
         
-        tasksList.appendChild(taskRow);
+        tasksList.appendChild(taskItem);
         
-        // Focus on the new task description field
-        const textarea = taskRow.querySelector('.task-description');
-        if (textarea) {
-            setTimeout(() => textarea.focus(), 100);
+        // Clear the form
+        document.getElementById('current-task-description').value = '';
+        document.getElementById('current-task-difficulty').value = 'medium';
+        document.getElementById('current-task-priority').value = 'medium';
+        
+        // Focus back on task description
+        document.getElementById('current-task-description').focus();
+        
+        // Update task count and enable submit button
+        this.updateTaskCount();
+    },
+    
+    // Remove task from list
+    removeTaskFromList(button) {
+        const taskItem = button.closest('.task-item');
+        if (taskItem) {
+            taskItem.remove();
+            this.updateTaskCount();
+            
+            // Show "no tasks" message if list is empty
+            const tasksList = document.getElementById('product-backlog-tasks-list');
+            const noTasksMsg = document.getElementById('no-tasks-message');
+            if (tasksList && tasksList.children.length === 0 && noTasksMsg) {
+                noTasksMsg.style.display = 'block';
+            }
         }
     },
     
-    // Remove a task row
-    removeTaskRow(button) {
-        const taskRow = button.closest('.task-row');
-        if (taskRow) {
-            taskRow.remove();
-            
-            // Update task numbers
-            const tasksList = document.getElementById('product-backlog-tasks-list');
-            if (tasksList) {
-                const rows = tasksList.querySelectorAll('.task-row');
-                rows.forEach((row, index) => {
-                    const title = row.querySelector('strong');
-                    if (title) title.textContent = `Task ${index + 1}`;
-                });
-                
-                // Show "no tasks" message if list is empty
-                const noTasksMsg = document.getElementById('no-tasks-message');
-                if (noTasksMsg && rows.length === 0) {
-                    noTasksMsg.style.display = 'block';
-                }
-            }
+    // Update task count in submit button
+    updateTaskCount() {
+        const tasksList = document.getElementById('product-backlog-tasks-list');
+        const taskCountSpan = document.getElementById('task-count');
+        const submitBtn = document.getElementById('submit-all-tasks-btn');
+        
+        if (!tasksList || !taskCountSpan || !submitBtn) return;
+        
+        const count = tasksList.children.length;
+        taskCountSpan.textContent = count;
+        
+        if (count > 0) {
+            submitBtn.disabled = false;
+        } else {
+            submitBtn.disabled = true;
         }
     },
     
@@ -11710,44 +11765,28 @@ const app = {
             return;
         }
         
-        // Get all task rows
+        // Get all task items from the list
         const tasksList = document.getElementById('product-backlog-tasks-list');
         if (!tasksList) {
             alert('Please add at least one task.');
             return;
         }
         
-        const taskRows = tasksList.querySelectorAll('.task-row');
-        if (taskRows.length === 0) {
-            alert('Please add at least one task.');
+        const taskItems = tasksList.querySelectorAll('.task-item');
+        if (taskItems.length === 0) {
+            alert('Please add at least one task to the list.');
             return;
         }
         
         // Collect all tasks
         const tasks = [];
-        let hasError = false;
-        
-        taskRows.forEach((row, index) => {
-            const taskDesc = row.querySelector('.task-description').value.trim();
-            const difficulty = row.querySelector('.task-difficulty').value;
-            const priority = row.querySelector('.task-priority').value;
-            
-            if (!taskDesc || !difficulty || !priority) {
-                alert(`Please fill in all fields for Task ${index + 1}.`);
-                hasError = true;
-                return;
-            }
-            
+        taskItems.forEach(item => {
             tasks.push({
-                task: taskDesc,
-                difficulty: difficulty,
-                priority: priority
+                task: item.dataset.task,
+                difficulty: item.dataset.difficulty,
+                priority: item.dataset.priority
             });
         });
-        
-        if (hasError || tasks.length === 0) {
-            return;
-        }
         
         try {
             const team = await this.getUserTeam();

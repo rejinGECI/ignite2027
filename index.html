@@ -1519,29 +1519,58 @@ Bob Johnson,GHI789</pre>
                             </select>
                         </div>
                         
-                        <div style="margin: 1.5rem 0; padding: 1rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <h4 style="margin: 0; color: var(--text-primary);">
-                                    <i class="fas fa-tasks"></i> Tasks to be Done
-                                </h4>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.addTaskRow()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-                                    <i class="fas fa-plus"></i> Add Task
+                        <div style="margin: 1.5rem 0; padding: 1.5rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                <i class="fas fa-tasks"></i> Add Tasks
+                            </h4>
+                            
+                            <!-- Current Task Input -->
+                            <div style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: block;">Task Description: <span style="color: #ef4444;">*</span></label>
+                                    <textarea id="current-task-description" placeholder="Enter the task description..." rows="2" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+                                    <div class="form-group">
+                                        <label style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: block;">Difficulty: <span style="color: #ef4444;">*</span></label>
+                                        <select id="current-task-difficulty" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                            <option value="">Select...</option>
+                                            <option value="easy" data-color="#10b981">Easy</option>
+                                            <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                            <option value="hard" data-color="#f59e0b">Hard</option>
+                                            <option value="very-hard" data-color="#ef4444">Very Hard</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.25rem; display: block;">Priority: <span style="color: #ef4444;">*</span></label>
+                                        <select id="current-task-priority" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                            <option value="">Select...</option>
+                                            <option value="low" data-color="#6b7280">Low</option>
+                                            <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                            <option value="high" data-color="#f59e0b">High</option>
+                                            <option value="critical" data-color="#ef4444">Critical</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-success" onclick="app.addTaskToList()" style="width: 100%;">
+                                    <i class="fas fa-plus"></i> Add to List
                                 </button>
                             </div>
                             
-                            <div id="product-backlog-tasks-list" style="display: flex; flex-direction: column; gap: 1rem;">
-                                <!-- Task rows will be added here -->
+                            <!-- Tasks List -->
+                            <div id="product-backlog-tasks-list" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem;">
+                                <!-- Tasks will be added here -->
                             </div>
                             
-                            <div id="no-tasks-message" style="text-align: center; padding: 1.5rem; color: var(--text-secondary); font-style: italic;">
-                                Click "Add Task" to add tasks for this user story
+                            <div id="no-tasks-message" style="text-align: center; padding: 1rem; color: var(--text-secondary); font-style: italic; background: var(--card-bg); border-radius: 6px; border: 1px dashed var(--border-color);">
+                                No tasks added yet. Fill in the form above and click "Add to List"
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="app.closeAddProductBacklogModal()">Cancel</button>
-                        <button type="button" class="btn btn-primary" onclick="app.addProductBacklog()">
-                            <i class="fas fa-plus"></i> Add All Tasks
+                        <button type="button" class="btn btn-primary" onclick="app.addProductBacklog()" id="submit-all-tasks-btn" disabled>
+                            <i class="fas fa-save"></i> Save All Tasks (<span id="task-count">0</span>)
                         </button>
                     </div>
                 </div>
