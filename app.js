@@ -11505,23 +11505,15 @@ const app = {
             }
             
             // Reset form
-            document.getElementById('product-backlog-task').value = '';
-            document.getElementById('product-backlog-difficulty').value = '';
-            document.getElementById('product-backlog-priority').value = '';
+            const tasksList = document.getElementById('product-backlog-tasks-list');
+            if (tasksList) {
+                tasksList.innerHTML = '';
+            }
             
-            // Hide success message
-            const successMsg = document.getElementById('product-backlog-success-message');
-            if (successMsg) successMsg.style.display = 'none';
-            
-            // Reset button visibility
-            const addAnotherBtn = document.getElementById('add-another-backlog-btn');
-            const addBacklogBtn = document.getElementById('add-backlog-btn');
-            if (addAnotherBtn) addAnotherBtn.style.display = 'none';
-            if (addBacklogBtn) addBacklogBtn.style.display = 'inline-flex';
-            
-            // Hide indicators initially
-            document.getElementById('difficulty-indicator').style.display = 'none';
-            document.getElementById('priority-indicator').style.display = 'none';
+            const noTasksMsg = document.getElementById('no-tasks-message');
+            if (noTasksMsg) {
+                noTasksMsg.style.display = 'block';
+            }
             
             // Add event listeners for difficulty and priority
             const difficultySelect = document.getElementById('product-backlog-difficulty');
@@ -11608,41 +11600,152 @@ const app = {
     closeAddProductBacklogModal() {
         const modal = document.getElementById('add-product-backlog-modal');
         if (modal) {
-            // Hide success message
-            const successMsg = document.getElementById('product-backlog-success-message');
-            if (successMsg) successMsg.style.display = 'none';
-            
-            // Reset button visibility
-            const addAnotherBtn = document.getElementById('add-another-backlog-btn');
-            const addBacklogBtn = document.getElementById('add-backlog-btn');
-            if (addAnotherBtn) addAnotherBtn.style.display = 'none';
-            if (addBacklogBtn) addBacklogBtn.style.display = 'inline-flex';
-            
             // Reset form
-            document.getElementById('product-backlog-task').value = '';
-            document.getElementById('product-backlog-difficulty').value = '';
-            document.getElementById('product-backlog-priority').value = '';
+            const tasksList = document.getElementById('product-backlog-tasks-list');
+            if (tasksList) {
+                tasksList.innerHTML = '';
+            }
+            
+            const noTasksMsg = document.getElementById('no-tasks-message');
+            if (noTasksMsg) {
+                noTasksMsg.style.display = 'block';
+            }
+            
             document.getElementById('product-backlog-user').value = '';
             document.getElementById('product-backlog-user-story').value = '';
-            
-            // Hide indicators
-            document.getElementById('difficulty-indicator').style.display = 'none';
-            document.getElementById('priority-indicator').style.display = 'none';
             
             modal.style.display = 'none';
         }
     },
     
     // Add product backlog
-    async addProductBacklog(closeModal = true) {
+    // Add a new task row to the list
+    addTaskRow() {
+        const tasksList = document.getElementById('product-backlog-tasks-list');
+        const noTasksMsg = document.getElementById('no-tasks-message');
+        
+        if (!tasksList) return;
+        
+        // Hide "no tasks" message
+        if (noTasksMsg) noTasksMsg.style.display = 'none';
+        
+        const taskIndex = tasksList.children.length;
+        const taskRow = document.createElement('div');
+        taskRow.className = 'task-row';
+        taskRow.style.cssText = 'padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); position: relative;';
+        taskRow.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                <strong style="color: var(--text-primary);">Task ${taskIndex + 1}</strong>
+                <button type="button" class="btn btn-danger btn-sm" onclick="app.removeTaskRow(this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.9rem; color: var(--text-secondary);">Task Description: <span style="color: #ef4444;">*</span></label>
+                <textarea class="task-description" placeholder="Enter the task description..." rows="2" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div class="form-group">
+                    <label style="font-size: 0.9rem; color: var(--text-secondary);">Difficulty: <span style="color: #ef4444;">*</span></label>
+                    <select class="task-difficulty" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        <option value="">Select...</option>
+                        <option value="easy" data-color="#10b981">Easy</option>
+                        <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                        <option value="hard" data-color="#f59e0b">Hard</option>
+                        <option value="very-hard" data-color="#ef4444">Very Hard</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.9rem; color: var(--text-secondary);">Priority: <span style="color: #ef4444;">*</span></label>
+                    <select class="task-priority" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        <option value="">Select...</option>
+                        <option value="low" data-color="#6b7280">Low</option>
+                        <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                        <option value="high" data-color="#f59e0b">High</option>
+                        <option value="critical" data-color="#ef4444">Critical</option>
+                    </select>
+                </div>
+            </div>
+        `;
+        
+        tasksList.appendChild(taskRow);
+        
+        // Focus on the new task description field
+        const textarea = taskRow.querySelector('.task-description');
+        if (textarea) {
+            setTimeout(() => textarea.focus(), 100);
+        }
+    },
+    
+    // Remove a task row
+    removeTaskRow(button) {
+        const taskRow = button.closest('.task-row');
+        if (taskRow) {
+            taskRow.remove();
+            
+            // Update task numbers
+            const tasksList = document.getElementById('product-backlog-tasks-list');
+            if (tasksList) {
+                const rows = tasksList.querySelectorAll('.task-row');
+                rows.forEach((row, index) => {
+                    const title = row.querySelector('strong');
+                    if (title) title.textContent = `Task ${index + 1}`;
+                });
+                
+                // Show "no tasks" message if list is empty
+                const noTasksMsg = document.getElementById('no-tasks-message');
+                if (noTasksMsg && rows.length === 0) {
+                    noTasksMsg.style.display = 'block';
+                }
+            }
+        }
+    },
+    
+    async addProductBacklog() {
         const userId = document.getElementById('product-backlog-user').value;
         const userStoryId = document.getElementById('product-backlog-user-story').value;
-        const task = document.getElementById('product-backlog-task').value.trim();
-        const difficulty = document.getElementById('product-backlog-difficulty').value;
-        const priority = document.getElementById('product-backlog-priority').value;
         
-        if (!userId || !userStoryId || !task || !difficulty || !priority) {
-            alert('Please fill in all fields.');
+        if (!userId || !userStoryId) {
+            alert('Please select a user and user story.');
+            return;
+        }
+        
+        // Get all task rows
+        const tasksList = document.getElementById('product-backlog-tasks-list');
+        if (!tasksList) {
+            alert('Please add at least one task.');
+            return;
+        }
+        
+        const taskRows = tasksList.querySelectorAll('.task-row');
+        if (taskRows.length === 0) {
+            alert('Please add at least one task.');
+            return;
+        }
+        
+        // Collect all tasks
+        const tasks = [];
+        let hasError = false;
+        
+        taskRows.forEach((row, index) => {
+            const taskDesc = row.querySelector('.task-description').value.trim();
+            const difficulty = row.querySelector('.task-difficulty').value;
+            const priority = row.querySelector('.task-priority').value;
+            
+            if (!taskDesc || !difficulty || !priority) {
+                alert(`Please fill in all fields for Task ${index + 1}.`);
+                hasError = true;
+                return;
+            }
+            
+            tasks.push({
+                task: taskDesc,
+                difficulty: difficulty,
+                priority: priority
+            });
+        });
+        
+        if (hasError || tasks.length === 0) {
             return;
         }
         
@@ -11653,18 +11756,23 @@ const app = {
                 return;
             }
             
-            await addDoc(collection(window.firebaseDb, 'productBacklog'), {
-                teamId: team.id,
-                userId: userId,
-                userStoryId: userStoryId,
-                task: task,
-                difficulty: difficulty,
-                priority: priority,
-                approved: false,
-                rejected: false,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
+            // Add all tasks
+            const addPromises = tasks.map(task => 
+                addDoc(collection(window.firebaseDb, 'productBacklog'), {
+                    teamId: team.id,
+                    userId: userId,
+                    userStoryId: userStoryId,
+                    task: task.task,
+                    difficulty: task.difficulty,
+                    priority: task.priority,
+                    approved: false,
+                    rejected: false,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+            );
+            
+            await Promise.all(addPromises);
             
             // Check if product backlog was previously verified
             const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
@@ -11682,48 +11790,13 @@ const app = {
                 }, { merge: true });
             }
             
-            // Reload product backlog list in background
-            this.loadProductBacklog().catch(err => console.error('Error reloading product backlog:', err));
-            
-            if (closeModal) {
-                this.closeAddProductBacklogModal();
-                alert('Product backlog item added successfully!');
-            } else {
-                // Show success message and reset form for adding another task
-                const successMsg = document.getElementById('product-backlog-success-message');
-                if (successMsg) {
-                    successMsg.style.display = 'block';
-                    // Scroll to top of modal to show success message
-                    successMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-                
-                // Reset only task, difficulty, and priority fields (keep user and user story)
-                document.getElementById('product-backlog-task').value = '';
-                document.getElementById('product-backlog-difficulty').value = '';
-                document.getElementById('product-backlog-priority').value = 'medium'; // Reset to default
-                
-                // Hide indicators
-                document.getElementById('difficulty-indicator').style.display = 'none';
-                document.getElementById('priority-indicator').style.display = 'none';
-                
-                // Show "Add Another Task" button and hide regular "Add Backlog" button
-                const addAnotherBtn = document.getElementById('add-another-backlog-btn');
-                const addBacklogBtn = document.getElementById('add-backlog-btn');
-                if (addAnotherBtn) addAnotherBtn.style.display = 'inline-flex';
-                if (addBacklogBtn) addBacklogBtn.style.display = 'none';
-                
-                // Focus on task field for quick entry
-                document.getElementById('product-backlog-task').focus();
-            }
+            this.closeAddProductBacklogModal();
+            await this.loadProductBacklog();
+            alert(`Successfully added ${tasks.length} task${tasks.length > 1 ? 's' : ''}!`);
         } catch (error) {
             console.error('Error adding product backlog:', error);
             alert('Error adding product backlog. Please try again.');
         }
-    },
-    
-    // Add product backlog and continue (for adding multiple tasks)
-    async addProductBacklogAndContinue() {
-        await this.addProductBacklog(false);
     },
     
     // Edit product backlog
