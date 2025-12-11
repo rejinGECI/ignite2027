@@ -9610,7 +9610,7 @@ const app = {
     // ========== PROJECT PLANNING FUNCTIONS ==========
     
     // Switch project planning tab
-    switchProjectPlanningTab(tabName) {
+    async switchProjectPlanningTab(tabName) {
         // Hide all tabs
         document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #design-tab, #schedule-tab').forEach(tab => {
             tab.classList.remove('active');
@@ -9631,6 +9631,11 @@ const app = {
         const button = document.querySelector(`.project-planning-container .tab-btn[data-tab="${tabName}"]`);
         if (button) {
             button.classList.add('active');
+        }
+        
+        // Load data for the selected tab
+        if (tabName === 'product-backlog') {
+            await this.loadProductBacklog();
         }
     },
     
@@ -10409,9 +10414,18 @@ const app = {
                 const storiesSnapshot = await getDocs(storiesQuery);
                 const storiesCount = storiesSnapshot.size;
                 
+                // Count product backlog
+                const backlogQuery = query(
+                    collection(window.firebaseDb, 'productBacklog'),
+                    where('teamId', '==', team.id)
+                );
+                const backlogSnapshot = await getDocs(backlogQuery);
+                const backlogCount = backlogSnapshot.size;
+                
                 team.planningData = planningData;
                 team.usersCount = usersCount;
                 team.storiesCount = storiesCount;
+                team.backlogCount = backlogCount;
                 teams.push(team);
             }
             
@@ -10423,14 +10437,27 @@ const app = {
             container.innerHTML = teams.map(team => {
                 const isSubmitted = team.planningData && team.planningData.userStoriesSubmitted === true;
                 const isVerified = team.planningData && team.planningData.userStoriesVerified === true;
+                const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
+                const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
                 
                 let statusBadge = '';
-                if (isVerified) {
-                    statusBadge = '<span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Verified</span>';
+                if (isVerified && pbVerified) {
+                    statusBadge = '<span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> All Verified</span>';
+                } else if (isVerified) {
+                    statusBadge = '<span style="padding: 4px 10px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Stories Verified</span>';
                 } else if (isSubmitted) {
                     statusBadge = '<span style="padding: 4px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-clock"></i> Pending Verification</span>';
                 } else {
                     statusBadge = '<span style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-exclamation-circle"></i> Not Submitted</span>';
+                }
+                
+                let pbStatusBadge = '';
+                if (pbVerified) {
+                    pbStatusBadge = '<span style="padding: 4px 10px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Backlog Verified</span>';
+                } else if (pbSubmitted) {
+                    pbStatusBadge = '<span style="padding: 4px 10px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-clock"></i> Backlog Pending</span>';
+                } else {
+                    pbStatusBadge = '<span style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-exclamation-circle"></i> Backlog Not Submitted</span>';
                 }
                 
                 return `
@@ -10446,7 +10473,10 @@ const app = {
                                     </p>
                                 ` : ''}
                             </div>
-                            ${statusBadge}
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-end;">
+                                ${statusBadge}
+                                ${pbStatusBadge}
+                            </div>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;">
                             <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
@@ -10456,6 +10486,10 @@ const app = {
                             <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
                                 <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">User Stories</div>
                                 <div style="font-size: 1.5rem; font-weight: 600; color: var(--text-primary);">${team.storiesCount || 0}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px;">
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Product Backlog</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: var(--text-primary);">${team.backlogCount || 0}</div>
                             </div>
                         </div>
                     </div>
@@ -10526,9 +10560,21 @@ const app = {
                     return dateB - dateA; // Descending order
                 });
                 
+                // Load product backlog
+                const backlogQuery = query(
+                    collection(window.firebaseDb, 'productBacklog'),
+                    where('teamId', '==', team.id)
+                );
+                const backlogSnapshot = await getDocs(backlogQuery);
+                const backlogs = [];
+                backlogSnapshot.forEach(doc => {
+                    backlogs.push({ id: doc.id, ...doc.data() });
+                });
+                
                 team.planningData = planningData;
                 team.users = users;
                 team.stories = stories;
+                team.backlogs = backlogs;
                 teams.push(team);
             }
             
@@ -10564,6 +10610,12 @@ const app = {
                 const rejectedCount = team.stories.filter(s => s.rejected === true).length;
                 const pendingCount = team.stories.length - approvedCount - rejectedCount;
                 
+                const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
+                const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
+                const pbApprovedCount = team.backlogs.filter(b => b.approved === true).length;
+                const pbRejectedCount = team.backlogs.filter(b => b.rejected === true).length;
+                const pbPendingCount = team.backlogs.length - pbApprovedCount - pbRejectedCount;
+                
                 return `
                     <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
@@ -10571,24 +10623,43 @@ const app = {
                                 <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
                                     <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
                                 </h3>
-                                <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.85rem;">
+                                <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.85rem; flex-wrap: wrap;">
                                     <span style="color: var(--text-secondary);">
-                                        <i class="fas fa-list-ul"></i> ${team.stories.length} Total
+                                        <i class="fas fa-list-ul"></i> ${team.stories.length} User Stories
                                     </span>
                                     ${approvedCount > 0 ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> ${approvedCount} Approved</span>` : ''}
                                     ${rejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${rejectedCount} Rejected</span>` : ''}
                                     ${pendingCount > 0 ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> ${pendingCount} Pending</span>` : ''}
+                                    ${backlogs.length > 0 ? `
+                                        <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                            <i class="fas fa-clipboard-list"></i> ${backlogs.length} Product Backlog
+                                        </span>
+                                        ${pbApprovedCount > 0 ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> ${pbApprovedCount} PB Approved</span>` : ''}
+                                        ${pbRejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${pbRejectedCount} PB Rejected</span>` : ''}
+                                        ${pbPendingCount > 0 ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> ${pbPendingCount} PB Pending</span>` : ''}
+                                    ` : ''}
                                 </div>
                             </div>
-                            ${isVerified ? `
-                                <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
-                                    <i class="fas fa-check-circle"></i> Verified
-                                </span>
-                            ` : isSubmitted ? `
-                                <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
-                                    <i class="fas fa-clipboard-check"></i> Review & Approve
-                                </button>
-                            ` : ''}
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                ${isVerified ? `
+                                    <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
+                                        <i class="fas fa-check-circle"></i> Stories Verified
+                                    </span>
+                                ` : isSubmitted ? `
+                                    <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
+                                        <i class="fas fa-clipboard-check"></i> Review Stories
+                                    </button>
+                                ` : ''}
+                                ${pbVerified ? `
+                                    <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
+                                        <i class="fas fa-check-circle"></i> Backlog Verified
+                                    </span>
+                                ` : pbSubmitted ? `
+                                    <button type="button" class="btn btn-primary" onclick="app.showApproveProductBacklogModal('${team.id}')">
+                                        <i class="fas fa-clipboard-check"></i> Review Backlog
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                         
                         <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
@@ -11122,6 +11193,2040 @@ const app = {
             console.error('Error verifying user stories:', error);
             alert('Error verifying user stories. Please try again.');
         }
+    },
+    
+    // ========== PRODUCT BACKLOG FUNCTIONS ==========
+    
+    // Load product backlog (student view)
+    async loadProductBacklog() {
+        const container = document.getElementById('product-backlog-content');
+        const statusContainer = document.getElementById('product-backlog-submission-status');
+        const submitBtn = document.getElementById('submit-product-backlog-btn');
+        
+        if (!container) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                stories.push(story);
+            });
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = { id: doc.id, ...doc.data() };
+                const story = stories.find(s => s.id === backlog.userStoryId);
+                const user = users.find(u => u.id === backlog.userId);
+                backlog.story = story;
+                backlog.userName = user ? user.name : 'Unknown';
+                backlog.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                backlogs.push(backlog);
+            });
+            
+            // Sort by user name, then by user story
+            backlogs.sort((a, b) => {
+                const userCompare = (a.userName || '').localeCompare(b.userName || '');
+                if (userCompare !== 0) return userCompare;
+                const storyCompare = (a.storyText || '').localeCompare(b.storyText || '');
+                if (storyCompare !== 0) return storyCompare;
+                return 0;
+            });
+            
+            // Load submission status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
+            const isVerified = planningData && planningData.productBacklogVerified === true;
+            const verificationStatus = planningData ? planningData.productBacklogVerificationStatus : null;
+            
+            // Check if there are new backlogs added after verification
+            const hasNewBacklogs = isVerified && backlogs.some(b => {
+                const backlogCreatedAt = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                const verifiedAt = verificationStatus?.verifiedAt?.toDate ? verificationStatus.verifiedAt.toDate().getTime() : 0;
+                return backlogCreatedAt > verifiedAt;
+            });
+            
+            // Update status display
+            if (isVerified && !hasNewBacklogs) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46;">
+                            <i class="fas fa-check-circle"></i>
+                            <strong>Product Backlog Verified</strong>
+                        </div>
+                        ${verificationStatus && verificationStatus.feedback ? `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.9rem;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                        ` : ''}
+                        <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
+                            You can add more product backlog items. New items will need guide approval and re-verification.
+                        </p>
+                    </div>
+                `;
+                submitBtn.style.display = 'none';
+            } else if (isVerified && hasNewBacklogs) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <strong>New Backlog Items Added</strong>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.9rem;">
+                            You have added new product backlog items. Please submit them for guide verification again.
+                        </p>
+                    </div>
+                `;
+                submitBtn.style.display = 'inline-flex';
+                submitBtn.textContent = 'Submit New Backlog for Verification';
+            } else if (isSubmitted) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                            <i class="fas fa-clock"></i>
+                            <strong>Submitted for Verification</strong>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.9rem;">Waiting for guide verification...</p>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.85rem; font-style: italic;">
+                            You can add more product backlog items. They will be included in the submission.
+                        </p>
+                    </div>
+                `;
+                submitBtn.style.display = 'none';
+            } else {
+                statusContainer.innerHTML = '';
+                submitBtn.style.display = backlogs.length > 0 ? 'inline-flex' : 'none';
+            }
+            
+            if (backlogs.length === 0) {
+                container.innerHTML = '<p class="empty-state">No product backlog items created yet. Add product backlog items for your user stories.</p>';
+                return;
+            }
+            
+            // Group by user, then by user story
+            const grouped = {};
+            backlogs.forEach(backlog => {
+                const userKey = backlog.userName || 'Unknown';
+                const storyKey = backlog.storyText || 'Unknown Story';
+                if (!grouped[userKey]) grouped[userKey] = {};
+                if (!grouped[userKey][storyKey]) grouped[userKey][storyKey] = [];
+                grouped[userKey][storyKey].push(backlog);
+            });
+            
+            const difficultyColors = {
+                easy: '#10b981',
+                medium: '#3b82f6',
+                hard: '#f59e0b',
+                'very-hard': '#ef4444'
+            };
+            
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            
+            let html = '';
+            for (const [userName, storiesObj] of Object.entries(grouped)) {
+                html += `
+                    <div style="margin-bottom: 2rem;">
+                        <h4 style="margin: 0 0 1rem 0; color: var(--primary-color); font-size: 1.1rem;">
+                            <i class="fas fa-user"></i> ${this.escapeHtml(userName)}
+                        </h4>
+                `;
+                
+                for (const [storyText, items] of Object.entries(storiesObj)) {
+                    html += `
+                        <div style="margin-left: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                            <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
+                                ${this.escapeHtml(storyText)}
+                            </p>
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    `;
+                    
+                    items.forEach(backlog => {
+                        html += `
+                            <div class="product-backlog-card" style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${priorityColors[backlog.priority] || priorityColors.medium};">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div style="flex: 1;">
+                                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                            <span style="padding: 3px 8px; background: ${priorityColors[backlog.priority] || priorityColors.medium}15; color: ${priorityColors[backlog.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                                ${backlog.priority || 'medium'}
+                                            </span>
+                                            <span style="padding: 3px 8px; background: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}15; color: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                                ${(backlog.difficulty || 'medium').replace('-', ' ')}
+                                            </span>
+                                        </div>
+                                        <p style="margin: 0; color: var(--text-primary); font-size: 0.95rem; line-height: 1.5;">
+                                            ${this.escapeHtml(backlog.task)}
+                                        </p>
+                                    </div>
+                                    ${!isSubmitted && !isVerified ? `
+                                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+            }
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading product backlog:', error);
+            container.innerHTML = '<p class="error-message">Error loading product backlog.</p>';
+        }
+    },
+    
+    // Show add product backlog modal
+    async showAddProductBacklogModal() {
+        const modal = document.getElementById('add-product-backlog-modal');
+        const userSelect = document.getElementById('product-backlog-user');
+        const storySelect = document.getElementById('product-backlog-user-story');
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            userSelect.innerHTML = '<option value="">Select a user...</option>';
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                const user = doc.data();
+                users.push({ id: doc.id, ...user });
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = user.name;
+                userSelect.appendChild(option);
+            });
+            
+            if (usersSnapshot.empty) {
+                alert('Please add users first before creating product backlog.');
+                return;
+            }
+            
+            // Load user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            storySelect.innerHTML = '<option value="">Select a user story...</option>';
+            storiesSnapshot.forEach(doc => {
+                const story = doc.data();
+                const user = users.find(u => u.id === story.userId);
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = `As a ${user ? user.name : 'Unknown'}, I want ${story.feature}, so that ${story.benefit}.`;
+                storySelect.appendChild(option);
+            });
+            
+            if (storiesSnapshot.empty) {
+                alert('Please create user stories first before adding product backlog.');
+                return;
+            }
+            
+            // Reset form
+            document.getElementById('product-backlog-task').value = '';
+            document.getElementById('product-backlog-difficulty').value = '';
+            document.getElementById('product-backlog-priority').value = '';
+            
+            // Hide indicators initially
+            document.getElementById('difficulty-indicator').style.display = 'none';
+            document.getElementById('priority-indicator').style.display = 'none';
+            
+            // Add event listeners for difficulty and priority
+            const difficultySelect = document.getElementById('product-backlog-difficulty');
+            if (difficultySelect) {
+                difficultySelect.addEventListener('change', () => {
+                    const selected = difficultySelect.options[difficultySelect.selectedIndex];
+                    const color = selected.getAttribute('data-color');
+                    const text = selected.textContent;
+                    if (color && text) {
+                        const indicator = document.getElementById('difficulty-indicator');
+                        const badge = document.getElementById('difficulty-badge');
+                        const dot = document.getElementById('difficulty-dot');
+                        const textSpan = document.getElementById('difficulty-text');
+                        if (indicator && badge && dot && textSpan) {
+                            badge.style.background = `${color}15`;
+                            badge.style.color = color;
+                            dot.style.background = color;
+                            textSpan.textContent = text;
+                            indicator.style.display = 'block';
+                        }
+                    } else {
+                        document.getElementById('difficulty-indicator').style.display = 'none';
+                    }
+                });
+            }
+            
+            const prioritySelect = document.getElementById('product-backlog-priority');
+            if (prioritySelect) {
+                prioritySelect.addEventListener('change', () => {
+                    const selected = prioritySelect.options[prioritySelect.selectedIndex];
+                    const color = selected.getAttribute('data-color');
+                    const text = selected.textContent;
+                    if (color && text) {
+                        const indicator = document.getElementById('priority-indicator');
+                        const badge = document.getElementById('priority-badge');
+                        const dot = document.getElementById('priority-dot');
+                        const textSpan = document.getElementById('priority-text');
+                        if (indicator && badge && dot && textSpan) {
+                            badge.style.background = `${color}15`;
+                            badge.style.color = color;
+                            dot.style.background = color;
+                            textSpan.textContent = text;
+                            indicator.style.display = 'block';
+                        }
+                    } else {
+                        document.getElementById('priority-indicator').style.display = 'none';
+                    }
+                });
+            }
+            
+            // Update story list when user changes
+            userSelect.addEventListener('change', async () => {
+                const userId = userSelect.value;
+                if (!userId) {
+                    storySelect.innerHTML = '<option value="">Select a user story...</option>';
+                    return;
+                }
+                
+                const userStoriesQuery = query(
+                    collection(window.firebaseDb, 'userStories'),
+                    where('teamId', '==', team.id),
+                    where('userId', '==', userId)
+                );
+                const userStoriesSnapshot = await getDocs(userStoriesQuery);
+                
+                storySelect.innerHTML = '<option value="">Select a user story...</option>';
+                userStoriesSnapshot.forEach(doc => {
+                    const story = doc.data();
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = `I want ${story.feature}, so that ${story.benefit}.`;
+                    storySelect.appendChild(option);
+                });
+            });
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error showing add product backlog modal:', error);
+            alert('Error loading form. Please try again.');
+        }
+    },
+    
+    // Close add product backlog modal
+    closeAddProductBacklogModal() {
+        const modal = document.getElementById('add-product-backlog-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    // Add product backlog
+    async addProductBacklog() {
+        const userId = document.getElementById('product-backlog-user').value;
+        const userStoryId = document.getElementById('product-backlog-user-story').value;
+        const task = document.getElementById('product-backlog-task').value.trim();
+        const difficulty = document.getElementById('product-backlog-difficulty').value;
+        const priority = document.getElementById('product-backlog-priority').value;
+        
+        if (!userId || !userStoryId || !task || !difficulty || !priority) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            await addDoc(collection(window.firebaseDb, 'productBacklog'), {
+                teamId: team.id,
+                userId: userId,
+                userStoryId: userStoryId,
+                task: task,
+                difficulty: difficulty,
+                priority: priority,
+                approved: false,
+                rejected: false,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Check if product backlog was previously verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            
+            if (planningData && planningData.productBacklogVerified === true) {
+                // Reset verification status
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: {
+                        needsReverification: true,
+                        reason: 'New product backlog items added'
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
+            this.closeAddProductBacklogModal();
+            await this.loadProductBacklog();
+            alert('Product backlog item added successfully!');
+        } catch (error) {
+            console.error('Error adding product backlog:', error);
+            alert('Error adding product backlog. Please try again.');
+        }
+    },
+    
+    // Edit product backlog
+    async editProductBacklog(backlogId) {
+        try {
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Product backlog item not found.');
+                return;
+            }
+            
+            const backlog = backlogDoc.data();
+            const team = await this.getUserTeam();
+            if (!team || team.id !== backlog.teamId) {
+                alert('You do not have permission to edit this item.');
+                return;
+            }
+            
+            // Check if submitted or verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
+            const isVerified = planningData && planningData.productBacklogVerified === true;
+            
+            if (isSubmitted || isVerified) {
+                alert('Cannot edit product backlog items that have been submitted or verified.');
+                return;
+            }
+            
+            const modal = document.getElementById('edit-product-backlog-modal');
+            const userSelect = document.getElementById('edit-product-backlog-user');
+            const storySelect = document.getElementById('edit-product-backlog-user-story');
+            
+            // Load users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            
+            userSelect.innerHTML = '<option value="">Select a user...</option>';
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                const user = doc.data();
+                users.push({ id: doc.id, ...user });
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = user.name;
+                if (doc.id === backlog.userId) option.selected = true;
+                userSelect.appendChild(option);
+            });
+            
+            // Load user stories for selected user
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id),
+                where('userId', '==', backlog.userId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            
+            storySelect.innerHTML = '<option value="">Select a user story...</option>';
+            storiesSnapshot.forEach(doc => {
+                const story = doc.data();
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = `I want ${story.feature}, so that ${story.benefit}.`;
+                if (doc.id === backlog.userStoryId) option.selected = true;
+                storySelect.appendChild(option);
+            });
+            
+            document.getElementById('edit-product-backlog-id').value = backlogId;
+            document.getElementById('edit-product-backlog-task').value = backlog.task || '';
+            document.getElementById('edit-product-backlog-difficulty').value = backlog.difficulty || '';
+            document.getElementById('edit-product-backlog-priority').value = backlog.priority || '';
+            
+            // Show indicators
+            const difficultySelect = document.getElementById('edit-product-backlog-difficulty');
+            const difficultyOption = difficultySelect.options[difficultySelect.selectedIndex];
+            if (difficultyOption && difficultyOption.getAttribute('data-color')) {
+                const color = difficultyOption.getAttribute('data-color');
+                const text = difficultyOption.textContent;
+                const indicator = document.getElementById('edit-difficulty-indicator');
+                const badge = document.getElementById('edit-difficulty-badge');
+                const dot = document.getElementById('edit-difficulty-dot');
+                const textSpan = document.getElementById('edit-difficulty-text');
+                if (indicator && badge && dot && textSpan) {
+                    badge.style.background = `${color}15`;
+                    badge.style.color = color;
+                    dot.style.background = color;
+                    textSpan.textContent = text;
+                    indicator.style.display = 'block';
+                }
+            }
+            
+            const prioritySelect = document.getElementById('edit-product-backlog-priority');
+            const priorityOption = prioritySelect.options[prioritySelect.selectedIndex];
+            if (priorityOption && priorityOption.getAttribute('data-color')) {
+                const color = priorityOption.getAttribute('data-color');
+                const text = priorityOption.textContent;
+                const indicator = document.getElementById('edit-priority-indicator-pb');
+                const badge = document.getElementById('edit-priority-badge-pb');
+                const dot = document.getElementById('edit-priority-dot-pb');
+                const textSpan = document.getElementById('edit-priority-text-pb');
+                if (indicator && badge && dot && textSpan) {
+                    badge.style.background = `${color}15`;
+                    badge.style.color = color;
+                    dot.style.background = color;
+                    textSpan.textContent = text;
+                    indicator.style.display = 'block';
+                }
+            }
+            
+            // Update story list when user changes
+            userSelect.addEventListener('change', async () => {
+                const userId = userSelect.value;
+                if (!userId) {
+                    storySelect.innerHTML = '<option value="">Select a user story...</option>';
+                    return;
+                }
+                
+                const userStoriesQuery = query(
+                    collection(window.firebaseDb, 'userStories'),
+                    where('teamId', '==', team.id),
+                    where('userId', '==', userId)
+                );
+                const userStoriesSnapshot = await getDocs(userStoriesQuery);
+                
+                storySelect.innerHTML = '<option value="">Select a user story...</option>';
+                userStoriesSnapshot.forEach(doc => {
+                    const story = doc.data();
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = `I want ${story.feature}, so that ${story.benefit}.`;
+                    storySelect.appendChild(option);
+                });
+            });
+            
+            // Add event listeners for difficulty and priority
+            difficultySelect.addEventListener('change', () => {
+                const selected = difficultySelect.options[difficultySelect.selectedIndex];
+                const color = selected.getAttribute('data-color');
+                const text = selected.textContent;
+                if (color && text) {
+                    const indicator = document.getElementById('edit-difficulty-indicator');
+                    const badge = document.getElementById('edit-difficulty-badge');
+                    const dot = document.getElementById('edit-difficulty-dot');
+                    const textSpan = document.getElementById('edit-difficulty-text');
+                    if (indicator && badge && dot && textSpan) {
+                        badge.style.background = `${color}15`;
+                        badge.style.color = color;
+                        dot.style.background = color;
+                        textSpan.textContent = text;
+                        indicator.style.display = 'block';
+                    }
+                } else {
+                    document.getElementById('edit-difficulty-indicator').style.display = 'none';
+                }
+            });
+            
+            prioritySelect.addEventListener('change', () => {
+                const selected = prioritySelect.options[prioritySelect.selectedIndex];
+                const color = selected.getAttribute('data-color');
+                const text = selected.textContent;
+                if (color && text) {
+                    const indicator = document.getElementById('edit-priority-indicator-pb');
+                    const badge = document.getElementById('edit-priority-badge-pb');
+                    const dot = document.getElementById('edit-priority-dot-pb');
+                    const textSpan = document.getElementById('edit-priority-text-pb');
+                    if (indicator && badge && dot && textSpan) {
+                        badge.style.background = `${color}15`;
+                        badge.style.color = color;
+                        dot.style.background = color;
+                        textSpan.textContent = text;
+                        indicator.style.display = 'block';
+                    }
+                } else {
+                    document.getElementById('edit-priority-indicator-pb').style.display = 'none';
+                }
+            });
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error editing product backlog:', error);
+            alert('Error loading product backlog item. Please try again.');
+        }
+    },
+    
+    // Close edit product backlog modal
+    closeEditProductBacklogModal() {
+        const modal = document.getElementById('edit-product-backlog-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    // Save product backlog
+    async saveProductBacklog() {
+        const backlogId = document.getElementById('edit-product-backlog-id').value;
+        const userId = document.getElementById('edit-product-backlog-user').value;
+        const userStoryId = document.getElementById('edit-product-backlog-user-story').value;
+        const task = document.getElementById('edit-product-backlog-task').value.trim();
+        const difficulty = document.getElementById('edit-product-backlog-difficulty').value;
+        const priority = document.getElementById('edit-product-backlog-priority').value;
+        
+        if (!userId || !userStoryId || !task || !difficulty || !priority) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                userId: userId,
+                userStoryId: userStoryId,
+                task: task,
+                difficulty: difficulty,
+                priority: priority,
+                updatedAt: serverTimestamp()
+            });
+            
+            this.closeEditProductBacklogModal();
+            await this.loadProductBacklog();
+            alert('Product backlog item updated successfully!');
+        } catch (error) {
+            console.error('Error saving product backlog:', error);
+            alert('Error saving product backlog. Please try again.');
+        }
+    },
+    
+    // Delete product backlog
+    async deleteProductBacklog(backlogId) {
+        if (!confirm('Are you sure you want to delete this product backlog item?')) {
+            return;
+        }
+        
+        try {
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Product backlog item not found.');
+                return;
+            }
+            
+            const backlog = backlogDoc.data();
+            const team = await this.getUserTeam();
+            if (!team || team.id !== backlog.teamId) {
+                alert('You do not have permission to delete this item.');
+                return;
+            }
+            
+            // Check if submitted or verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
+            const isVerified = planningData && planningData.productBacklogVerified === true;
+            
+            if (isSubmitted || isVerified) {
+                alert('Cannot delete product backlog items that have been submitted or verified.');
+                return;
+            }
+            
+            await deleteDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            await this.loadProductBacklog();
+            alert('Product backlog item deleted successfully!');
+        } catch (error) {
+            console.error('Error deleting product backlog:', error);
+            alert('Error deleting product backlog. Please try again.');
+        }
+    },
+    
+    // Submit product backlog for verification
+    async submitProductBacklogForVerification() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if there are any product backlog items
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            if (backlogSnapshot.empty) {
+                alert('Please add product backlog items before submitting.');
+                return;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                teamId: team.id,
+                productBacklogSubmitted: true,
+                productBacklogSubmittedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Product backlog submitted for verification successfully!');
+            await this.loadProductBacklog();
+        } catch (error) {
+            console.error('Error submitting product backlog:', error);
+            alert('Error submitting product backlog. Please try again.');
+        }
+    },
+    
+    // Show approve product backlog modal (guide)
+    async showApproveProductBacklogModal(teamId) {
+        const modal = document.getElementById('approve-product-backlog-modal');
+        const content = document.getElementById('approve-product-backlog-content');
+        const approveAllBtn = document.getElementById('approve-all-pb-btn');
+        const rejectAllBtn = document.getElementById('reject-all-pb-btn');
+        const verifyBtn = document.getElementById('verify-product-backlog-btn');
+        
+        if (!modal || !content) return;
+        
+        try {
+            // Load team
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const team = { id: teamDoc.id, ...teamDoc.data() };
+            
+            // Load users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', teamId)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', teamId)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                stories.push(story);
+            });
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = { id: doc.id, ...doc.data() };
+                const story = stories.find(s => s.id === backlog.userStoryId);
+                const user = users.find(u => u.id === backlog.userId);
+                backlog.story = story;
+                backlog.userName = user ? user.name : 'Unknown';
+                backlog.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                backlogs.push(backlog);
+            });
+            
+            // Sort by user name, then by user story
+            backlogs.sort((a, b) => {
+                const userCompare = (a.userName || '').localeCompare(b.userName || '');
+                if (userCompare !== 0) return userCompare;
+                const storyCompare = (a.storyText || '').localeCompare(b.storyText || '');
+                if (storyCompare !== 0) return storyCompare;
+                return 0;
+            });
+            
+            const pendingBacklogs = backlogs.filter(b => !b.approved && !b.rejected);
+            
+            const difficultyColors = {
+                easy: '#10b981',
+                medium: '#3b82f6',
+                hard: '#f59e0b',
+                'very-hard': '#ef4444'
+            };
+            
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            
+            // Group by user, then by user story
+            const grouped = {};
+            backlogs.forEach(backlog => {
+                const userKey = backlog.userName || 'Unknown';
+                const storyKey = backlog.storyText || 'Unknown Story';
+                if (!grouped[userKey]) grouped[userKey] = {};
+                if (!grouped[userKey][storyKey]) grouped[userKey][storyKey] = [];
+                grouped[userKey][storyKey].push(backlog);
+            });
+            
+            let html = `
+                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-color); border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: var(--text-primary);">Team:</strong> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                        </div>
+                        <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                            <span style="color: var(--text-secondary);">Total: ${backlogs.length}</span>
+                            <span style="color: #f59e0b;">Pending: ${pendingBacklogs.length}</span>
+                            <span style="color: #10b981;">Approved: ${backlogs.filter(b => b.approved).length}</span>
+                            <span style="color: #ef4444;">Rejected: ${backlogs.filter(b => b.rejected).length}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            for (const [userName, storiesObj] of Object.entries(grouped)) {
+                html += `
+                    <div style="margin-bottom: 2rem;">
+                        <h4 style="margin: 0 0 1rem 0; color: var(--primary-color); font-size: 1.1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color);">
+                            <i class="fas fa-user"></i> ${this.escapeHtml(userName)}
+                        </h4>
+                `;
+                
+                for (const [storyText, items] of Object.entries(storiesObj)) {
+                    html += `
+                        <div style="margin-left: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                            <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
+                                ${this.escapeHtml(storyText)}
+                            </p>
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    `;
+                    
+                    items.forEach(backlog => {
+                        const isApproved = backlog.approved === true;
+                        const isRejected = backlog.rejected === true;
+                        const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : priorityColors[backlog.priority] || priorityColors.medium);
+                        const statusIcon = isApproved ? 'fa-check-circle' : (isRejected ? 'fa-times-circle' : 'fa-clock');
+                        const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
+                        
+                        html += `
+                            <div style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${statusColor};">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                        <span style="padding: 3px 8px; background: ${priorityColors[backlog.priority] || priorityColors.medium}15; color: ${priorityColors[backlog.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                            ${backlog.priority || 'medium'}
+                                        </span>
+                                        <span style="padding: 3px 8px; background: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}15; color: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                            ${(backlog.difficulty || 'medium').replace('-', ' ')}
+                                        </span>
+                                        <span style="padding: 3px 8px; background: ${isApproved ? '#d1fae5' : (isRejected ? '#fee2e2' : '#fef3c7')}; color: ${statusColor}; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                            <i class="fas ${statusIcon}"></i> ${statusText}
+                                        </span>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        ${isApproved ? `
+                                            <button type="button" class="btn btn-warning btn-sm" onclick="app.revokeProductBacklogApproval('${backlog.id}', '${teamId}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Revoke Approval">
+                                                <i class="fas fa-undo"></i> Revoke
+                                            </button>
+                                        ` : isRejected ? `
+                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveProductBacklog('${backlog.id}', '${teamId}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Approve">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        ` : `
+                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveProductBacklog('${backlog.id}', '${teamId}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Approve">
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectProductBacklog('${backlog.id}', '${teamId}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Reject">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
+                                <p style="margin: 0; color: var(--text-primary); font-size: 0.95rem; line-height: 1.5;">
+                                    ${this.escapeHtml(backlog.task)}
+                                </p>
+                                ${backlog.approvalFeedback ? `
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: ${isApproved ? '#f0fdf4' : '#fef2f2'}; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: ${statusColor}; margin-bottom: 0.25rem;">
+                                            <i class="fas fa-comment"></i> Guide Feedback:
+                                        </div>
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.escapeHtml(backlog.approvalFeedback)}</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+            }
+            
+            content.innerHTML = html;
+            
+            // Show/hide buttons
+            if (pendingBacklogs.length > 0) {
+                approveAllBtn.style.display = 'inline-flex';
+                rejectAllBtn.style.display = 'inline-flex';
+            } else {
+                approveAllBtn.style.display = 'none';
+                rejectAllBtn.style.display = 'none';
+            }
+            
+            // Check if all are approved
+            const allApproved = backlogs.length > 0 && backlogs.every(b => b.approved);
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isVerified = planningData && planningData.productBacklogVerified === true;
+            
+            if (allApproved && !isVerified) {
+                verifyBtn.style.display = 'inline-flex';
+            } else {
+                verifyBtn.style.display = 'none';
+            }
+            
+            // Store teamId for approve/reject all functions
+            modal.dataset.teamId = teamId;
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading product backlog for approval:', error);
+            alert('Error loading product backlog. Please try again.');
+        }
+    },
+    
+    // Close approve product backlog modal
+    closeApproveProductBacklogModal() {
+        const modal = document.getElementById('approve-product-backlog-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    // Approve product backlog item
+    async approveProductBacklog(backlogId, teamId) {
+        const feedback = prompt('Enter approval feedback (optional):');
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                approved: true,
+                rejected: false,
+                approvedBy: this.currentUser.uid,
+                approvedAt: serverTimestamp(),
+                approvalFeedback: feedback || '',
+                updatedAt: serverTimestamp()
+            });
+            
+            // Check if product backlog was previously verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            
+            if (planningData && planningData.productBacklogVerified === true) {
+                // Reset verification status
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: {
+                        needsReverification: true,
+                        reason: 'Product backlog items modified'
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
+            await this.showApproveProductBacklogModal(teamId);
+        } catch (error) {
+            console.error('Error approving product backlog:', error);
+            alert('Error approving product backlog. Please try again.');
+        }
+    },
+    
+    // Reject product backlog item
+    async rejectProductBacklog(backlogId, teamId) {
+        const feedback = prompt('Enter rejection feedback (required):');
+        if (!feedback || !feedback.trim()) {
+            alert('Rejection feedback is required.');
+            return;
+        }
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                approved: false,
+                rejected: true,
+                rejectedBy: this.currentUser.uid,
+                rejectedAt: serverTimestamp(),
+                approvalFeedback: feedback.trim(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Check if product backlog was previously verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            
+            if (planningData && planningData.productBacklogVerified === true) {
+                // Reset verification status
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: {
+                        needsReverification: true,
+                        reason: 'Product backlog items modified'
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
+            await this.showApproveProductBacklogModal(teamId);
+        } catch (error) {
+            console.error('Error rejecting product backlog:', error);
+            alert('Error rejecting product backlog. Please try again.');
+        }
+    },
+    
+    // Revoke product backlog approval
+    async revokeProductBacklogApproval(backlogId, teamId) {
+        const feedback = prompt('Enter reason for revoking approval (optional):');
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                approved: false,
+                rejected: false,
+                approvedBy: null,
+                approvedAt: null,
+                rejectedBy: null,
+                rejectedAt: null,
+                approvalFeedback: feedback || '',
+                updatedAt: serverTimestamp()
+            });
+            
+            // Reset verification status
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                productBacklogVerified: false,
+                productBacklogVerificationStatus: {
+                    needsReverification: true,
+                    reason: 'Product backlog approval revoked'
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            await this.showApproveProductBacklogModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error revoking product backlog approval:', error);
+            alert('Error revoking approval. Please try again.');
+        }
+    },
+    
+    // Approve all product backlog items
+    async approveAllProductBacklog() {
+        const modal = document.getElementById('approve-product-backlog-modal');
+        const teamId = modal ? modal.dataset.teamId : null;
+        if (!teamId) return;
+        
+        if (!confirm('Are you sure you want to approve all pending product backlog items?')) {
+            return;
+        }
+        
+        const feedback = prompt('Enter approval feedback for all items (optional):');
+        
+        try {
+            // Get all pending backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            const updates = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = doc.data();
+                if (!backlog.approved && !backlog.rejected) {
+                    updates.push(updateDoc(doc.ref, {
+                        approved: true,
+                        rejected: false,
+                        approvedBy: this.currentUser.uid,
+                        approvedAt: serverTimestamp(),
+                        approvalFeedback: feedback || '',
+                        updatedAt: serverTimestamp()
+                    }));
+                }
+            });
+            
+            await Promise.all(updates);
+            
+            // Check if product backlog was previously verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            
+            if (planningData && planningData.productBacklogVerified === true) {
+                // Reset verification status
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: {
+                        needsReverification: true,
+                        reason: 'Product backlog items modified'
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
+            alert('All product backlog items approved successfully!');
+            await this.showApproveProductBacklogModal(teamId);
+        } catch (error) {
+            console.error('Error approving all product backlog:', error);
+            alert('Error approving all product backlog. Please try again.');
+        }
+    },
+    
+    // Reject all product backlog items
+    async rejectAllProductBacklog() {
+        const modal = document.getElementById('approve-product-backlog-modal');
+        const teamId = modal ? modal.dataset.teamId : null;
+        if (!teamId) return;
+        
+        if (!confirm('Are you sure you want to reject all pending product backlog items?')) {
+            return;
+        }
+        
+        const feedback = prompt('Enter rejection feedback for all items (required):');
+        if (!feedback || !feedback.trim()) {
+            alert('Rejection feedback is required.');
+            return;
+        }
+        
+        try {
+            // Get all pending backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            const updates = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = doc.data();
+                if (!backlog.approved && !backlog.rejected) {
+                    updates.push(updateDoc(doc.ref, {
+                        approved: false,
+                        rejected: true,
+                        rejectedBy: this.currentUser.uid,
+                        rejectedAt: serverTimestamp(),
+                        approvalFeedback: feedback.trim(),
+                        updatedAt: serverTimestamp()
+                    }));
+                }
+            });
+            
+            await Promise.all(updates);
+            
+            // Check if product backlog was previously verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            
+            if (planningData && planningData.productBacklogVerified === true) {
+                // Reset verification status
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: {
+                        needsReverification: true,
+                        reason: 'Product backlog items modified'
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
+            alert('All product backlog items rejected successfully!');
+            await this.showApproveProductBacklogModal(teamId);
+        } catch (error) {
+            console.error('Error rejecting all product backlog:', error);
+            alert('Error rejecting all product backlog. Please try again.');
+        }
+    },
+    
+    // Verify product backlog (guide) - final verification after all are approved
+    async verifyProductBacklog(teamId) {
+        // Check if there are any pending or rejected backlogs
+        const backlogQuery = query(
+            collection(window.firebaseDb, 'productBacklog'),
+            where('teamId', '==', teamId)
+        );
+        const backlogSnapshot = await getDocs(backlogQuery);
+        
+        const pendingBacklogs = [];
+        backlogSnapshot.forEach(doc => {
+            const backlog = doc.data();
+            if (!backlog.approved || backlog.rejected) {
+                pendingBacklogs.push(backlog);
+            }
+        });
+        
+        if (pendingBacklogs.length > 0) {
+            alert('Please approve or reject all product backlog items before final verification.');
+            return;
+        }
+        
+        const feedback = prompt('Enter final verification feedback (optional):');
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                teamId: teamId,
+                productBacklogVerified: true,
+                productBacklogVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: feedback || ''
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Product backlog verified successfully!');
+            await this.loadGuideProjectPlanning();
+            this.closeApproveProductBacklogModal();
+        } catch (error) {
+            console.error('Error verifying product backlog:', error);
+            alert('Error verifying product backlog. Please try again.');
+        }
+    },
+    
+    // ========== PRODUCT BACKLOG REPORT FUNCTIONS ==========
+    
+    showProductBacklogReportOptions() {
+        const modal = document.getElementById('product-backlog-report-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Set default format to PDF
+            const formatSelect = document.getElementById('product-backlog-report-format');
+            if (formatSelect) {
+                formatSelect.value = 'pdf';
+            }
+            // Set default type to detailed
+            const typeSelect = document.getElementById('product-backlog-report-type');
+            if (typeSelect) {
+                typeSelect.value = 'detailed';
+            }
+        }
+    },
+    
+    closeProductBacklogReportModal() {
+        const modal = document.getElementById('product-backlog-report-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    },
+    
+    async generateProductBacklogReportFromModal() {
+        const formatSelect = document.getElementById('product-backlog-report-format');
+        const typeSelect = document.getElementById('product-backlog-report-type');
+        if (!formatSelect || !typeSelect) return;
+        
+        const format = formatSelect.value;
+        const reportType = typeSelect.value; // 'detailed' or 'minimal'
+        this.closeProductBacklogReportModal();
+        
+        try {
+            await this.generateProductBacklogReport(format, reportType);
+        } catch (error) {
+            console.error('Error generating product backlog report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
+    async generateProductBacklogReport(format, reportType = 'detailed') {
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teamsStatus = [];
+            
+            for (const teamDoc of teamsSnapshot.docs) {
+                const teamData = teamDoc.data();
+                const teamId = teamDoc.id;
+                
+                // Load product backlogs
+                const backlogQuery = query(
+                    collection(window.firebaseDb, 'productBacklog'),
+                    where('teamId', '==', teamId)
+                );
+                const backlogSnapshot = await getDocs(backlogQuery);
+                
+                const backlogs = [];
+                backlogSnapshot.forEach(doc => {
+                    backlogs.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load planning data (submission/verification status)
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
+                const isVerified = planningData && planningData.productBacklogVerified === true;
+                const verificationStatus = planningData ? planningData.productBacklogVerificationStatus : null;
+                
+                // Get guide name if available
+                let guideName = 'N/A';
+                if (teamData.guideId) {
+                    try {
+                        const guideDoc = await getDoc(doc(window.firebaseDb, 'users', teamData.guideId));
+                        if (guideDoc.exists()) {
+                            guideName = guideDoc.data().name || 'Unknown Guide';
+                        }
+                    } catch (e) {
+                        console.warn('Error loading guide name:', e);
+                    }
+                }
+                
+                // Check if there are new backlogs added after verification or if any approved backlogs were revoked
+                let hasNewBacklogsAfterVerification = false;
+                let hasRevokedApprovals = false;
+                if (isVerified && verificationStatus && verificationStatus.verifiedAt) {
+                    const verifiedAt = verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().getTime() : 0;
+                    backlogs.forEach(backlog => {
+                        const backlogCreatedAt = backlog.createdAt?.toDate ? backlog.createdAt.toDate().getTime() : 0;
+                        if (backlogCreatedAt > verifiedAt) {
+                            hasNewBacklogsAfterVerification = true;
+                        }
+                        // Check if backlog was previously approved but is now pending
+                        if (!backlog.approved && !backlog.rejected && backlog.createdAt?.toDate && backlog.createdAt.toDate().getTime() <= verifiedAt) {
+                            hasRevokedApprovals = true;
+                        }
+                    });
+                }
+                
+                // Only load user and story names for backlogs if detailed report is needed
+                if (reportType === 'detailed') {
+                    // Load users
+                    const usersQuery = query(
+                        collection(window.firebaseDb, 'projectUsers'),
+                        where('teamId', '==', teamId)
+                    );
+                    const usersSnapshot = await getDocs(usersQuery);
+                    const usersMap = {};
+                    usersSnapshot.forEach(doc => {
+                        usersMap[doc.id] = doc.data().name || 'Unknown';
+                    });
+                    
+                    // Load user stories
+                    const storiesQuery = query(
+                        collection(window.firebaseDb, 'userStories'),
+                        where('teamId', '==', teamId)
+                    );
+                    const storiesSnapshot = await getDocs(storiesQuery);
+                    const storiesMap = {};
+                    storiesSnapshot.forEach(doc => {
+                        const story = doc.data();
+                        const userName = usersMap[story.userId] || 'Unknown';
+                        storiesMap[doc.id] = {
+                            userName: userName,
+                            feature: story.feature || '',
+                            benefit: story.benefit || ''
+                        };
+                    });
+                    
+                    // Add user and story names to backlogs
+                    backlogs.forEach(backlog => {
+                        backlog.userName = usersMap[backlog.userId] || 'Unknown';
+                        const story = storiesMap[backlog.userStoryId];
+                        if (story) {
+                            backlog.storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
+                        } else {
+                            backlog.storyText = 'Unknown Story';
+                        }
+                    });
+                }
+                
+                teamsStatus.push({
+                    teamId: teamId,
+                    teamName: teamData.groupName || 'Unknown Team',
+                    guideName: guideName,
+                    backlogs: backlogs,
+                    backlogsCount: backlogs.length,
+                    isSubmitted: isSubmitted,
+                    isVerified: isVerified && !hasNewBacklogsAfterVerification && !hasRevokedApprovals,
+                    needsReverification: isVerified && (hasNewBacklogsAfterVerification || hasRevokedApprovals),
+                    verificationStatus: verificationStatus
+                });
+            }
+            
+            // Filter out test teams (case-insensitive)
+            const filteredTeamsStatus = teamsStatus.filter(team => {
+                const teamNameLower = (team.teamName || '').toLowerCase();
+                return !teamNameLower.includes('test');
+            });
+            
+            // Sort by team name
+            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            
+            // Generate based on format
+            if (format === 'csv') {
+                this.generateProductBacklogCSVReport(filteredTeamsStatus, reportType);
+            } else if (format === 'json') {
+                this.generateProductBacklogJSONReport(filteredTeamsStatus, reportType);
+            } else {
+                // For PDF/HTML/DOCX, generate HTML report
+                const reportContent = reportType === 'minimal' 
+                    ? this.generateProductBacklogMinimalReportContent(filteredTeamsStatus)
+                    : this.generateProductBacklogReportContent(filteredTeamsStatus);
+                
+                const reportName = reportType === 'minimal' 
+                    ? 'Product Backlog Status Report (Minimal)'
+                    : 'Product Backlog Submission Status Report';
+                
+                if (format === 'pdf') {
+                    await this.generatePDFReport(reportContent, { groupName: 'Product Backlog Status' }, { name: reportName });
+                } else if (format === 'html') {
+                    this.generateHTMLReport(reportContent, { groupName: 'Product Backlog Status' }, { name: reportName });
+                } else if (format === 'docx') {
+                    await this.generateDOCXReport(reportContent, { groupName: 'Product Backlog Status' }, { name: reportName });
+                }
+            }
+        } catch (error) {
+            console.error('Error generating product backlog report:', error);
+            throw error;
+        }
+    },
+    
+    generateProductBacklogReportContent(teamsStatus) {
+        const difficultyColors = {
+            easy: '#10b981',
+            medium: '#3b82f6',
+            hard: '#f59e0b',
+            'very-hard': '#ef4444'
+        };
+        
+        const priorityColors = {
+            low: '#6b7280',
+            medium: '#3b82f6',
+            high: '#f59e0b',
+            critical: '#ef4444'
+        };
+        
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Product Backlog Submission Status Report</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.5;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #ffffff;
+                    }
+                    .report-container {
+                        max-width: 900px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        background: #ffffff;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding: 30px;
+                        background: #ffffff;
+                        border-bottom: 3px solid #4a5568;
+                    }
+                    .header h1 {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: #1a202c;
+                        margin: 0 0 10px 0;
+                    }
+                    .header p {
+                        font-size: 14px;
+                        color: #718096;
+                        margin: 0;
+                    }
+                    .team-section {
+                        margin-bottom: 40px;
+                        padding: 20px;
+                        background: #f7fafc;
+                        border-radius: 8px;
+                        border-left: 4px solid #4a5568;
+                    }
+                    .team-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 15px;
+                        padding-bottom: 15px;
+                        border-bottom: 2px solid #e2e8f0;
+                    }
+                    .team-name {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 20px;
+                        font-weight: 600;
+                        color: #1a202c;
+                    }
+                    .status-badge {
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                    }
+                    .status-verified {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .status-pending {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .status-not-submitted {
+                        background: #fee2e2;
+                        color: #991b1b;
+                    }
+                    .status-needs-reverification {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .team-info {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                        gap: 15px;
+                        margin-bottom: 20px;
+                    }
+                    .info-item {
+                        padding: 12px;
+                        background: #ffffff;
+                        border-radius: 6px;
+                        border: 1px solid #e2e8f0;
+                    }
+                    .info-label {
+                        font-size: 12px;
+                        color: #718096;
+                        margin-bottom: 5px;
+                        text-transform: uppercase;
+                        font-weight: 600;
+                    }
+                    .info-value {
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #1a202c;
+                    }
+                    .user-section {
+                        margin-top: 20px;
+                        padding: 15px;
+                        background: #ffffff;
+                        border-radius: 6px;
+                        border-left: 3px solid #4a5568;
+                    }
+                    .user-name {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 16px;
+                        font-weight: 600;
+                        color: #2d3748;
+                        margin-bottom: 10px;
+                    }
+                    .story-section {
+                        margin-left: 20px;
+                        margin-top: 15px;
+                        padding: 12px;
+                        background: #f7fafc;
+                        border-radius: 6px;
+                        border-left: 2px solid #cbd5e0;
+                    }
+                    .story-text {
+                        font-size: 13px;
+                        color: #4a5568;
+                        font-style: italic;
+                        margin-bottom: 10px;
+                    }
+                    .backlog-item {
+                        margin: 10px 0;
+                        padding: 12px;
+                        background: #ffffff;
+                        border-radius: 6px;
+                        border-left: 4px solid #cbd5e0;
+                    }
+                    .backlog-header {
+                        display: flex;
+                        gap: 8px;
+                        margin-bottom: 8px;
+                        flex-wrap: wrap;
+                    }
+                    .badge {
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                    }
+                    .backlog-task {
+                        font-size: 14px;
+                        color: #2d3748;
+                        line-height: 1.6;
+                    }
+                    .backlog-status {
+                        margin-top: 8px;
+                        font-size: 12px;
+                        color: #718096;
+                    }
+                    .no-data {
+                        text-align: center;
+                        padding: 30px;
+                        color: #a0aec0;
+                        font-style: italic;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-container">
+                    <div class="header">
+                        <h1>Product Backlog Submission Status Report</h1>
+                        <p>Generated on ${new Date().toLocaleString()}</p>
+                    </div>
+        `;
+        
+        if (teamsStatus.length === 0) {
+            html += '<div class="no-data">No teams found.</div>';
+        } else {
+            teamsStatus.forEach(team => {
+                // Group backlogs by user, then by user story
+                const grouped = {};
+                team.backlogs.forEach(backlog => {
+                    const userKey = backlog.userName || 'Unknown';
+                    const storyKey = backlog.storyText || 'Unknown Story';
+                    if (!grouped[userKey]) grouped[userKey] = {};
+                    if (!grouped[userKey][storyKey]) grouped[userKey][storyKey] = [];
+                    grouped[userKey][storyKey].push(backlog);
+                });
+                
+                let statusClass = 'status-not-submitted';
+                let statusText = 'Not Submitted';
+                if (team.needsReverification) {
+                    statusClass = 'status-needs-reverification';
+                    statusText = 'Needs Re-verification';
+                } else if (team.isVerified) {
+                    statusClass = 'status-verified';
+                    statusText = 'Verified';
+                } else if (team.isSubmitted) {
+                    statusClass = 'status-pending';
+                    statusText = 'Pending Verification';
+                }
+                
+                html += `
+                    <div class="team-section">
+                        <div class="team-header">
+                            <div class="team-name">${this.escapeHtml(team.teamName)}</div>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="team-info">
+                            <div class="info-item">
+                                <div class="info-label">Guide</div>
+                                <div class="info-value">${this.escapeHtml(team.guideName)}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Total Backlog Items</div>
+                                <div class="info-value">${team.backlogsCount}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Approved</div>
+                                <div class="info-value">${team.backlogs.filter(b => b.approved).length}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Rejected</div>
+                                <div class="info-value">${team.backlogs.filter(b => b.rejected).length}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Pending</div>
+                                <div class="info-value">${team.backlogs.filter(b => !b.approved && !b.rejected).length}</div>
+                            </div>
+                        </div>
+                `;
+                
+                if (team.backlogs.length === 0) {
+                    html += '<div class="no-data">No product backlog items found.</div>';
+                } else {
+                    for (const [userName, storiesObj] of Object.entries(grouped)) {
+                        html += `
+                            <div class="user-section">
+                                <div class="user-name">User: ${this.escapeHtml(userName)}</div>
+                        `;
+                        
+                        for (const [storyText, items] of Object.entries(storiesObj)) {
+                            html += `
+                                <div class="story-section">
+                                    <div class="story-text">${this.escapeHtml(storyText)}</div>
+                            `;
+                            
+                            items.forEach(backlog => {
+                                const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
+                                const difficultyColor = difficultyColors[backlog.difficulty] || difficultyColors.medium;
+                                const statusText = backlog.approved ? 'Approved' : (backlog.rejected ? 'Rejected' : 'Pending');
+                                const statusColor = backlog.approved ? '#10b981' : (backlog.rejected ? '#ef4444' : '#f59e0b');
+                                
+                                html += `
+                                    <div class="backlog-item" style="border-left-color: ${priorityColor};">
+                                        <div class="backlog-header">
+                                            <span class="badge" style="background: ${priorityColor}15; color: ${priorityColor};">${backlog.priority || 'medium'}</span>
+                                            <span class="badge" style="background: ${difficultyColor}15; color: ${difficultyColor};">${(backlog.difficulty || 'medium').replace('-', ' ')}</span>
+                                            <span class="badge" style="background: ${statusColor}15; color: ${statusColor};">${statusText}</span>
+                                        </div>
+                                        <div class="backlog-task">${this.escapeHtml(backlog.task)}</div>
+                                        ${backlog.approvalFeedback ? `
+                                            <div class="backlog-status">
+                                                <strong>Feedback:</strong> ${this.escapeHtml(backlog.approvalFeedback)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            });
+                            
+                            html += `</div>`;
+                        }
+                        
+                        html += `</div>`;
+                    }
+                }
+                
+                html += `</div>`;
+            });
+        }
+        
+        html += `
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateProductBacklogMinimalReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Product Backlog Status Report (Minimal)</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.5;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #ffffff;
+                    }
+                    .report-container {
+                        max-width: 900px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        background: #ffffff;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding: 30px;
+                        background: #ffffff;
+                        border-bottom: 3px solid #4a5568;
+                    }
+                    .header h1 {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: #1a202c;
+                        margin: 0 0 10px 0;
+                    }
+                    .header p {
+                        font-size: 14px;
+                        color: #718096;
+                        margin: 0;
+                    }
+                    .team-section {
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background: #f7fafc;
+                        border-radius: 8px;
+                        border-left: 4px solid #4a5568;
+                    }
+                    .team-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 15px;
+                        padding-bottom: 15px;
+                        border-bottom: 2px solid #e2e8f0;
+                    }
+                    .team-name {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 20px;
+                        font-weight: 600;
+                        color: #1a202c;
+                    }
+                    .status-badge {
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                    }
+                    .status-verified {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .status-pending {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .status-not-submitted {
+                        background: #fee2e2;
+                        color: #991b1b;
+                    }
+                    .status-needs-reverification {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .team-info {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                        gap: 15px;
+                    }
+                    .info-item {
+                        padding: 12px;
+                        background: #ffffff;
+                        border-radius: 6px;
+                        border: 1px solid #e2e8f0;
+                    }
+                    .info-label {
+                        font-size: 12px;
+                        color: #718096;
+                        margin-bottom: 5px;
+                        text-transform: uppercase;
+                        font-weight: 600;
+                    }
+                    .info-value {
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #1a202c;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-container">
+                    <div class="header">
+                        <h1>Product Backlog Status Report (Minimal)</h1>
+                        <p>Generated on ${new Date().toLocaleString()}</p>
+                    </div>
+        `;
+        
+        if (teamsStatus.length === 0) {
+            html += '<div style="text-align: center; padding: 30px; color: #a0aec0; font-style: italic;">No teams found.</div>';
+        } else {
+            teamsStatus.forEach(team => {
+                let statusClass = 'status-not-submitted';
+                let statusText = 'Not Submitted';
+                if (team.needsReverification) {
+                    statusClass = 'status-needs-reverification';
+                    statusText = 'Needs Re-verification';
+                } else if (team.isVerified) {
+                    statusClass = 'status-verified';
+                    statusText = 'Verified';
+                } else if (team.isSubmitted) {
+                    statusClass = 'status-pending';
+                    statusText = 'Pending Verification';
+                }
+                
+                html += `
+                    <div class="team-section">
+                        <div class="team-header">
+                            <div class="team-name">${this.escapeHtml(team.teamName)}</div>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="team-info">
+                            <div class="info-item">
+                                <div class="info-label">Guide</div>
+                                <div class="info-value">${this.escapeHtml(team.guideName)}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Total Backlog Items</div>
+                                <div class="info-value">${team.backlogsCount}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Approved</div>
+                                <div class="info-value">${team.backlogs.filter(b => b.approved).length}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Rejected</div>
+                                <div class="info-value">${team.backlogs.filter(b => b.rejected).length}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Pending</div>
+                                <div class="info-value">${team.backlogs.filter(b => !b.approved && !b.rejected).length}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        html += `
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateProductBacklogCSVReport(teamsStatus, reportType) {
+        let csv = 'Team Name,Guide Name,Total Backlog Items,Approved,Rejected,Pending,Status\n';
+        
+        teamsStatus.forEach(team => {
+            let status = 'Not Submitted';
+            if (team.needsReverification) {
+                status = 'Needs Re-verification';
+            } else if (team.isVerified) {
+                status = 'Verified';
+            } else if (team.isSubmitted) {
+                status = 'Pending Verification';
+            }
+            
+            const approved = team.backlogs.filter(b => b.approved).length;
+            const rejected = team.backlogs.filter(b => b.rejected).length;
+            const pending = team.backlogs.filter(b => !b.approved && !b.rejected).length;
+            
+            csv += `"${team.teamName}","${team.guideName}",${team.backlogsCount},${approved},${rejected},${pending},"${status}"\n`;
+            
+            if (reportType === 'detailed') {
+                // Group by user, then by story
+                const grouped = {};
+                team.backlogs.forEach(backlog => {
+                    const userKey = backlog.userName || 'Unknown';
+                    const storyKey = backlog.storyText || 'Unknown Story';
+                    if (!grouped[userKey]) grouped[userKey] = {};
+                    if (!grouped[userKey][storyKey]) grouped[userKey][storyKey] = [];
+                    grouped[userKey][storyKey].push(backlog);
+                });
+                
+                for (const [userName, storiesObj] of Object.entries(grouped)) {
+                    for (const [storyText, items] of Object.entries(storiesObj)) {
+                        items.forEach(backlog => {
+                            const status = backlog.approved ? 'Approved' : (backlog.rejected ? 'Rejected' : 'Pending');
+                            csv += `,"${userName}","${storyText.replace(/"/g, '""')}","${backlog.task.replace(/"/g, '""')}","${backlog.priority || 'medium'}","${(backlog.difficulty || 'medium').replace('-', ' ')}","${status}"\n`;
+                        });
+                    }
+                }
+            }
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `product_backlog_report_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    },
+    
+    generateProductBacklogJSONReport(teamsStatus, reportType) {
+        const reportData = teamsStatus.map(team => {
+            const data = {
+                teamName: team.teamName,
+                guideName: team.guideName,
+                totalBacklogItems: team.backlogsCount,
+                approved: team.backlogs.filter(b => b.approved).length,
+                rejected: team.backlogs.filter(b => b.rejected).length,
+                pending: team.backlogs.filter(b => !b.approved && !b.rejected).length,
+                status: team.needsReverification ? 'Needs Re-verification' : 
+                       (team.isVerified ? 'Verified' : (team.isSubmitted ? 'Pending Verification' : 'Not Submitted'))
+            };
+            
+            if (reportType === 'detailed') {
+                data.backlogs = team.backlogs.map(backlog => ({
+                    task: backlog.task,
+                    priority: backlog.priority || 'medium',
+                    difficulty: backlog.difficulty || 'medium',
+                    userName: backlog.userName || 'Unknown',
+                    storyText: backlog.storyText || 'Unknown Story',
+                    status: backlog.approved ? 'Approved' : (backlog.rejected ? 'Rejected' : 'Pending'),
+                    feedback: backlog.approvalFeedback || ''
+                }));
+            }
+            
+            return data;
+        });
+        
+        const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `product_backlog_report_${new Date().toISOString().split('T')[0]}.json`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 };
 

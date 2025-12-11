@@ -1151,9 +1151,23 @@ Bob Johnson,GHI789</pre>
                     <!-- Product Backlog Tab -->
                     <div id="product-backlog-tab" class="admin-tab-content">
                         <div class="project-planning-section">
-                            <h3><i class="fas fa-clipboard-list"></i> Product Backlog</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <h3><i class="fas fa-clipboard-list"></i> Product Backlog</h3>
+                                <button type="button" class="btn btn-primary" onclick="app.showAddProductBacklogModal()">
+                                    <i class="fas fa-plus"></i> Add Product Backlog
+                                </button>
+                            </div>
+                            
+                            <div id="product-backlog-submission-status" style="margin-bottom: 1rem;"></div>
+                            
                             <div id="product-backlog-content">
-                                <p class="empty-state">Product backlog management coming soon...</p>
+                                <p class="empty-state">Loading product backlog...</p>
+                            </div>
+                            
+                            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" id="submit-product-backlog-btn" onclick="app.submitProductBacklogForVerification()" style="display: none;">
+                                    <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1189,6 +1203,12 @@ Bob Johnson,GHI789</pre>
                 
                 <div class="admin-controls">
                     <input type="text" id="search-project-planning-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                    <button type="button" class="btn btn-primary" onclick="app.showUserStoriesReportOptions()" style="margin-left: 1rem;">
+                        <i class="fas fa-file-download"></i> User Stories Report
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="app.showProductBacklogReportOptions()" style="margin-left: 0.5rem;">
+                        <i class="fas fa-file-download"></i> Product Backlog Report
+                    </button>
                 </div>
                 
                 <div id="admin-project-planning-teams-list" class="admin-teams-list">
@@ -1229,6 +1249,35 @@ Bob Johnson,GHI789</pre>
                         </button>
                         <button type="button" class="btn btn-success" id="approve-all-btn" onclick="app.approveAllUserStories()" style="display: none;">
                             <i class="fas fa-check-circle"></i> Approve All
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Approve/Reject Product Backlog Modal -->
+            <div id="approve-product-backlog-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeApproveProductBacklogModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh;">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-clipboard-check"></i> Review Product Backlog</h2>
+                        <button type="button" class="modal-close" onclick="app.closeApproveProductBacklogModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="approve-product-backlog-content">
+                            <!-- Content will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeApproveProductBacklogModal()">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="reject-all-pb-btn" onclick="app.rejectAllProductBacklog()" style="display: none;">
+                            <i class="fas fa-times-circle"></i> Reject All
+                        </button>
+                        <button type="button" class="btn btn-success" id="approve-all-pb-btn" onclick="app.approveAllProductBacklog()" style="display: none;">
+                            <i class="fas fa-check-circle"></i> Approve All
+                        </button>
+                        <button type="button" class="btn btn-primary" id="verify-product-backlog-btn" onclick="app.verifyProductBacklog()" style="display: none;">
+                            <i class="fas fa-check-double"></i> Verify All Product Backlog
                         </button>
                     </div>
                 </div>
@@ -1355,6 +1404,143 @@ Bob Johnson,GHI789</pre>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="app.closeEditUserStoryModal()">Cancel</button>
                         <button type="button" class="btn btn-primary" onclick="app.saveUserStory()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Add Product Backlog Modal -->
+            <div id="add-product-backlog-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeAddProductBacklogModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 700px;">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-plus-circle"></i> Add Product Backlog</h2>
+                        <button type="button" class="modal-close" onclick="app.closeAddProductBacklogModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="product-backlog-user">User: <span style="color: #ef4444;">*</span></label>
+                            <select id="product-backlog-user" required>
+                                <option value="">Select a user...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-backlog-user-story">User Story: <span style="color: #ef4444;">*</span></label>
+                            <select id="product-backlog-user-story" required>
+                                <option value="">Select a user story...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-backlog-task">Task to be Done: <span style="color: #ef4444;">*</span></label>
+                            <textarea id="product-backlog-task" placeholder="Enter the task description..." rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-backlog-difficulty">Difficulty Level: <span style="color: #ef4444;">*</span></label>
+                            <select id="product-backlog-difficulty" required>
+                                <option value="">Select difficulty...</option>
+                                <option value="easy" data-color="#10b981">Easy</option>
+                                <option value="medium" data-color="#3b82f6">Medium</option>
+                                <option value="hard" data-color="#f59e0b">Hard</option>
+                                <option value="very-hard" data-color="#ef4444">Very Hard</option>
+                            </select>
+                            <div id="difficulty-indicator" style="margin-top: 0.5rem; display: none;">
+                                <span id="difficulty-badge" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="difficulty-dot" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="difficulty-text"></span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-backlog-priority">Priority: <span style="color: #ef4444;">*</span></label>
+                            <select id="product-backlog-priority" required>
+                                <option value="">Select priority...</option>
+                                <option value="low" data-color="#6b7280">Low</option>
+                                <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                <option value="high" data-color="#f59e0b">High</option>
+                                <option value="critical" data-color="#ef4444">Critical</option>
+                            </select>
+                            <div id="priority-indicator" style="margin-top: 0.5rem; display: none;">
+                                <span id="priority-badge" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="priority-dot" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="priority-text"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeAddProductBacklogModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.addProductBacklog()">
+                            <i class="fas fa-plus"></i> Add Backlog
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Edit Product Backlog Modal -->
+            <div id="edit-product-backlog-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeEditProductBacklogModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 700px;">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-edit"></i> Edit Product Backlog</h2>
+                        <button type="button" class="modal-close" onclick="app.closeEditProductBacklogModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="edit-product-backlog-id">
+                        <div class="form-group">
+                            <label for="edit-product-backlog-user">User: <span style="color: #ef4444;">*</span></label>
+                            <select id="edit-product-backlog-user" required>
+                                <option value="">Select a user...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-product-backlog-user-story">User Story: <span style="color: #ef4444;">*</span></label>
+                            <select id="edit-product-backlog-user-story" required>
+                                <option value="">Select a user story...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-product-backlog-task">Task to be Done: <span style="color: #ef4444;">*</span></label>
+                            <textarea id="edit-product-backlog-task" placeholder="Enter the task description..." rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-product-backlog-difficulty">Difficulty Level: <span style="color: #ef4444;">*</span></label>
+                            <select id="edit-product-backlog-difficulty" required>
+                                <option value="">Select difficulty...</option>
+                                <option value="easy" data-color="#10b981">Easy</option>
+                                <option value="medium" data-color="#3b82f6">Medium</option>
+                                <option value="hard" data-color="#f59e0b">Hard</option>
+                                <option value="very-hard" data-color="#ef4444">Very Hard</option>
+                            </select>
+                            <div id="edit-difficulty-indicator" style="margin-top: 0.5rem; display: none;">
+                                <span id="edit-difficulty-badge" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="edit-difficulty-dot" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="edit-difficulty-text"></span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-product-backlog-priority">Priority: <span style="color: #ef4444;">*</span></label>
+                            <select id="edit-product-backlog-priority" required>
+                                <option value="">Select priority...</option>
+                                <option value="low" data-color="#6b7280">Low</option>
+                                <option value="medium" data-color="#3b82f6" selected>Medium</option>
+                                <option value="high" data-color="#f59e0b">High</option>
+                                <option value="critical" data-color="#ef4444">Critical</option>
+                            </select>
+                            <div id="edit-priority-indicator-pb" style="margin-top: 0.5rem; display: none;">
+                                <span id="edit-priority-badge-pb" style="padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span id="edit-priority-dot-pb" style="width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="edit-priority-text-pb"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeEditProductBacklogModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.saveProductBacklog()">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1728,6 +1914,46 @@ Bob Johnson,GHI789</pre>
                 <div class="modal-actions" style="margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" onclick="app.closeUserStoriesReportModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="app.generateUserStoriesReportFromModal()">
+                        <i class="fas fa-file-download"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Product Backlog Report Modal -->
+    <div id="product-backlog-report-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeProductBacklogReportModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-clipboard-list"></i> Generate Product Backlog Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeProductBacklogReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="product-backlog-report-type">Select Report Type *</label>
+                    <select id="product-backlog-report-type" class="form-input" required>
+                        <option value="detailed">Detailed - Includes all product backlog details</option>
+                        <option value="minimal">Minimal - Summary only, no backlog details</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="product-backlog-report-format">Select Report Format *</label>
+                    <select id="product-backlog-report-format" class="form-input" required>
+                        <option value="pdf">PDF - Recommended</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                        <option value="csv">CSV (Spreadsheet)</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                        <em>This will generate a report with product backlog submission status and guide verification status for all teams.</em>
+                    </p>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeProductBacklogReportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateProductBacklogReportFromModal()">
                         <i class="fas fa-file-download"></i> Generate Report
                     </button>
                 </div>
