@@ -7435,48 +7435,122 @@ const app = {
         const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
         const teamName = teamData?.groupName || 'Report';
         
-        // Use blob download approach (same as HTML/DOCX) to avoid popup blockers
-        // User can open the downloaded HTML file and print to PDF from browser
-        const blob = new Blob([`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>${this.escapeHtml(reportTitle)}</title>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
-                <style>
-                    @media print {
-                        @page {
-                            size: A4;
-                            margin: 1cm;
+        // Check if html2pdf is available
+        if (typeof html2pdf === 'undefined') {
+            console.warn('html2pdf.js not loaded, falling back to HTML download');
+            // Fallback to HTML download if html2pdf is not available
+            const blob = new Blob([`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>${this.escapeHtml(reportTitle)}</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page {
+                                size: A4;
+                                margin: 1cm;
+                            }
                         }
-                    }
-                    body {
-                        margin: 0;
-                        padding: 20px;
-                        font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    }
-                    * {
-                        box-sizing: border-box;
-                    }
-                </style>
-            </head>
-            <body>
-                ${reportContent}
-            </body>
-            </html>
-        `], { type: 'text/html' });
+                        body {
+                            margin: 0;
+                            padding: 20px;
+                            font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                        }
+                        * {
+                            box-sizing: border-box;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${reportContent}
+                </body>
+                </html>
+            `], { type: 'text/html' });
+            
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
+            link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            return;
+        }
         
-        // Create download link
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
-        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        // Create a temporary container for the HTML content
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.width = '210mm'; // A4 width
+        tempContainer.style.backgroundColor = '#ffffff';
+        
+        // Create a style element for fonts
+        const styleElement = document.createElement('style');
+        styleElement.textContent = `
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap');
+            * {
+                box-sizing: border-box;
+            }
+        `;
+        document.head.appendChild(styleElement);
+        
+        // Parse the HTML content to extract body content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(reportContent, 'text/html');
+        
+        // Get the body content or the main container
+        let contentToRender = doc.body;
+        if (!contentToRender || contentToRender.children.length === 0) {
+            // If no body, try to get the report-container or use the whole document
+            contentToRender = doc.querySelector('.report-container') || doc.documentElement;
+        }
+        
+        // Clone the content to avoid modifying the original
+        const clonedContent = contentToRender.cloneNode(true);
+        tempContainer.appendChild(clonedContent);
+        
+        // Append to body temporarily
+        document.body.appendChild(tempContainer);
+        
+        // Configure html2pdf options
+        const options = {
+            margin: [10, 10, 10, 10],
+            filename: `${teamName}_${reportTitle.replace(/[^a-z0-9]/gi, '_')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { 
+                scale: 2,
+                useCORS: true,
+                letterRendering: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            },
+            jsPDF: { 
+                unit: 'mm', 
+                format: 'a4', 
+                orientation: 'portrait',
+                compress: true
+            }
+        };
+        
+        try {
+            // Generate and download PDF
+            await html2pdf().set(options).from(tempContainer).save();
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF. Please try again or use HTML format.');
+        } finally {
+            // Clean up temporary container and style
+            if (tempContainer.parentNode) {
+                tempContainer.parentNode.removeChild(tempContainer);
+            }
+            if (styleElement.parentNode) {
+                styleElement.parentNode.removeChild(styleElement);
+            }
+        }
     },
     
     generateHTMLReport(reportContent, teamData, stage) {
