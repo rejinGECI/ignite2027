@@ -7518,16 +7518,16 @@ const app = {
         
         // Create a temporary container div (same approach as working reports)
         const tempContainer = document.createElement('div');
-        tempContainer.style.position = 'absolute';
-        tempContainer.style.left = '-9999px';
+        tempContainer.style.position = 'fixed';
+        tempContainer.style.left = '0';
         tempContainer.style.top = '0';
         tempContainer.style.width = '210mm';
-        tempContainer.style.minHeight = '297mm';
         tempContainer.style.backgroundColor = '#ffffff';
         tempContainer.style.padding = '20px';
         tempContainer.style.fontFamily = "'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         tempContainer.style.color = '#2d3748';
         tempContainer.style.lineHeight = '1.5';
+        tempContainer.style.zIndex = '9999';
         
         // Add font link to head if not already present
         if (!document.querySelector('link[href*="fonts.googleapis.com/css2?family=Montserrat"]')) {
@@ -7544,7 +7544,7 @@ const app = {
         document.body.appendChild(tempContainer);
         
         // Wait for fonts and styles to load
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Configure html2pdf options (same as working reports)
         const options = {
