@@ -11199,9 +11199,35 @@ const app = {
     
     // Load product backlog (student view)
     async loadProductBacklog() {
-        const container = document.getElementById('product-backlog-content');
-        const statusContainer = document.getElementById('product-backlog-submission-status');
-        const submitBtn = document.getElementById('submit-product-backlog-btn');
+        // Find the container in the active/visible context
+        // Check if we're in mini project page or standalone project planning page
+        const miniprojectPage = document.getElementById('miniproject');
+        const standalonePage = document.getElementById('project-planning');
+        
+        let container, statusContainer, submitBtn;
+        
+        // Check which page is currently active/visible
+        if (miniprojectPage && miniprojectPage.classList.contains('active')) {
+            // We're in the mini project page - find elements within the project-planning-tab
+            const projectPlanningTab = document.getElementById('project-planning-tab');
+            if (projectPlanningTab) {
+                container = projectPlanningTab.querySelector('#product-backlog-content');
+                statusContainer = projectPlanningTab.querySelector('#product-backlog-submission-status');
+                submitBtn = projectPlanningTab.querySelector('#submit-product-backlog-btn');
+            }
+        } else if (standalonePage && standalonePage.classList.contains('active')) {
+            // We're in the standalone project planning page
+            container = standalonePage.querySelector('#product-backlog-content');
+            statusContainer = standalonePage.querySelector('#product-backlog-submission-status');
+            submitBtn = standalonePage.querySelector('#submit-product-backlog-btn');
+        }
+        
+        // Fallback to getElementById if not found in specific contexts
+        if (!container) {
+            container = document.getElementById('product-backlog-content');
+            statusContainer = document.getElementById('product-backlog-submission-status');
+            submitBtn = document.getElementById('submit-product-backlog-btn');
+        }
         
         if (!container) return;
         

@@ -1051,36 +1051,98 @@ Bob Johnson,GHI789</pre>
                             <div id="approved-problem-statement-content"></div>
                         </div>
                         
-                        <!-- User Stories Section -->
-                        <div class="project-planning-section">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                                <h3><i class="fas fa-users"></i> Users</h3>
-                                <button type="button" class="btn btn-primary" onclick="app.showAddUserModal()">
-                                    <i class="fas fa-plus"></i> Add User
-                                </button>
-                            </div>
-                            
-                            <div id="users-list" class="users-list">
-                                <p class="empty-state">No users added yet. Add users corresponding to your approved problem statement.</p>
-                            </div>
-                            
-                            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                        <!-- Sub-tabs for Project Planning -->
+                        <div class="admin-tabs">
+                            <button class="tab-btn active" data-tab="user-stories" onclick="app.switchProjectPlanningTab('user-stories')">
+                                <i class="fas fa-list-ul"></i> User Stories
+                            </button>
+                            <button class="tab-btn" data-tab="product-backlog" onclick="app.switchProjectPlanningTab('product-backlog')">
+                                <i class="fas fa-clipboard-list"></i> Product Backlog
+                            </button>
+                            <button class="tab-btn" data-tab="design" onclick="app.switchProjectPlanningTab('design')">
+                                <i class="fas fa-palette"></i> Design
+                            </button>
+                            <button class="tab-btn" data-tab="schedule" onclick="app.switchProjectPlanningTab('schedule')">
+                                <i class="fas fa-calendar-alt"></i> Schedule
+                            </button>
+                        </div>
+                        
+                        <!-- User Stories Tab -->
+                        <div id="user-stories-tab" class="admin-tab-content active">
+                            <div class="project-planning-section">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                                    <h3><i class="fas fa-list-ul"></i> User Stories</h3>
-                                    <button type="button" class="btn btn-primary" onclick="app.showAddUserStoryModal()">
-                                        <i class="fas fa-plus"></i> Add User Story
+                                    <h3><i class="fas fa-users"></i> Users</h3>
+                                    <button type="button" class="btn btn-primary" onclick="app.showAddUserModal()">
+                                        <i class="fas fa-plus"></i> Add User
                                     </button>
                                 </div>
                                 
-                                <div id="user-stories-list" class="user-stories-list">
-                                    <p class="empty-state">No user stories created yet. Create user stories for your users.</p>
+                                <div id="users-list" class="users-list">
+                                    <p class="empty-state">No users added yet. Add users corresponding to your approved problem statement.</p>
+                                </div>
+                                
+                                <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                        <h3><i class="fas fa-list-ul"></i> User Stories</h3>
+                                        <button type="button" class="btn btn-primary" onclick="app.showAddUserStoryModal()">
+                                            <i class="fas fa-plus"></i> Add User Story
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="user-stories-list" class="user-stories-list">
+                                        <p class="empty-state">No user stories created yet. Create user stories for your users.</p>
+                                    </div>
+                                    
+                                    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                        <div id="user-stories-submission-status" style="margin-bottom: 1rem;"></div>
+                                        <button type="button" class="btn btn-success" id="submit-user-stories-btn" onclick="app.submitUserStoriesForVerification()" style="display: none;">
+                                            <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Product Backlog Tab -->
+                        <div id="product-backlog-tab" class="admin-tab-content">
+                            <div class="project-planning-section">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                    <h3><i class="fas fa-clipboard-list"></i> Product Backlog</h3>
+                                    <button type="button" class="btn btn-primary" onclick="app.showAddProductBacklogModal()">
+                                        <i class="fas fa-plus"></i> Add Product Backlog
+                                    </button>
+                                </div>
+                                
+                                <div id="product-backlog-submission-status" style="margin-bottom: 1rem;"></div>
+                                
+                                <div id="product-backlog-content">
+                                    <p class="empty-state">Loading product backlog...</p>
                                 </div>
                                 
                                 <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-                                    <div id="user-stories-submission-status" style="margin-bottom: 1rem;"></div>
-                                    <button type="button" class="btn btn-success" id="submit-user-stories-btn" onclick="app.submitUserStoriesForVerification()" style="display: none;">
+                                    <button type="button" class="btn btn-success" id="submit-product-backlog-btn" onclick="app.submitProductBacklogForVerification()" style="display: none;">
                                         <i class="fas fa-paper-plane"></i> Submit for Guide Verification
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Design Tab -->
+                        <div id="design-tab" class="admin-tab-content">
+                            <div class="project-planning-section">
+                                <h3><i class="fas fa-palette"></i> Design</h3>
+                                <div id="design-content">
+                                    <p class="empty-state">Design management coming soon...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Schedule Tab -->
+                        <div id="schedule-tab" class="admin-tab-content">
+                            <div class="project-planning-section">
+                                <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
+                                <div id="schedule-content">
+                                    <p class="empty-state">Schedule management coming soon...</p>
                                 </div>
                             </div>
                         </div>
