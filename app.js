@@ -2930,13 +2930,17 @@ const app = {
                 const teamData = teamDoc.data();
                 const teamId = teamDoc.id;
                 
-                // Load user stories count
+                // Load user stories
                 const storiesQuery = query(
                     collection(window.firebaseDb, 'userStories'),
                     where('teamId', '==', teamId)
                 );
                 const storiesSnapshot = await getDocs(storiesQuery);
-                const storiesCount = storiesSnapshot.size;
+                const stories = [];
+                storiesSnapshot.forEach(doc => {
+                    stories.push({ id: doc.id, ...doc.data() });
+                });
+                const storiesCount = stories.length;
                 
                 // Load planning data (submission/verification status)
                 const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
@@ -2945,6 +2949,23 @@ const app = {
                 const isSubmitted = planningData && planningData.userStoriesSubmitted === true;
                 const isVerified = planningData && planningData.userStoriesVerified === true;
                 const verificationStatus = planningData ? planningData.userStoriesVerificationStatus : null;
+                
+                // Check if there are new stories added after verification or if any approved stories were revoked
+                let hasNewStoriesAfterVerification = false;
+                let hasRevokedApprovals = false;
+                if (isVerified && verificationStatus && verificationStatus.verifiedAt) {
+                    const verifiedAt = verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().getTime() : 0;
+                    stories.forEach(story => {
+                        const storyCreatedAt = story.createdAt?.toDate ? story.createdAt.toDate().getTime() : 0;
+                        if (storyCreatedAt > verifiedAt) {
+                            hasNewStoriesAfterVerification = true;
+                        }
+                        // Check if story was previously approved but is now pending
+                        if (!story.approved && !story.rejected && story.createdAt?.toDate && story.createdAt.toDate().getTime() <= verifiedAt) {
+                            hasRevokedApprovals = true;
+                        }
+                    });
+                }
                 
                 // Get guide name if available
                 let guideName = 'N/A';
@@ -2965,7 +2986,8 @@ const app = {
                     guideName: guideName,
                     storiesCount: storiesCount,
                     isSubmitted: isSubmitted,
-                    isVerified: isVerified,
+                    isVerified: isVerified && !hasNewStoriesAfterVerification && !hasRevokedApprovals,
+                    needsReverification: isVerified && (hasNewStoriesAfterVerification || hasRevokedApprovals),
                     verificationStatus: verificationStatus
                 });
             }
@@ -3026,7 +3048,10 @@ const app = {
                                 let submissionBadge = '';
                                 let verificationBadge = '';
                                 
-                                if (team.isVerified) {
+                                if (team.needsReverification) {
+                                    verificationBadge = '<span style="padding: 4px 8px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-exclamation-circle"></i> Needs Re-verification</span>';
+                                    submissionBadge = '<span style="padding: 4px 8px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-exclamation-circle"></i> Needs Re-verification</span>';
+                                } else if (team.isVerified) {
                                     verificationBadge = '<span style="padding: 4px 8px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Verified</span>';
                                     submissionBadge = '<span style="padding: 4px 8px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.85rem; font-weight: 600;"><i class="fas fa-check"></i> Submitted</span>';
                                 } else if (team.isSubmitted) {
@@ -6406,6 +6431,23 @@ const app = {
                     }
                 }
                 
+                // Check if there are new stories added after verification or if any approved stories were revoked
+                let hasNewStoriesAfterVerification = false;
+                let hasRevokedApprovals = false;
+                if (isVerified && verificationStatus && verificationStatus.verifiedAt) {
+                    const verifiedAt = verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().getTime() : 0;
+                    stories.forEach(story => {
+                        const storyCreatedAt = story.createdAt?.toDate ? story.createdAt.toDate().getTime() : 0;
+                        if (storyCreatedAt > verifiedAt) {
+                            hasNewStoriesAfterVerification = true;
+                        }
+                        // Check if story was previously approved but is now pending
+                        if (!story.approved && !story.rejected && story.createdAt?.toDate && story.createdAt.toDate().getTime() <= verifiedAt) {
+                            hasRevokedApprovals = true;
+                        }
+                    });
+                }
+                
                 // Only load user names for stories if detailed report is needed
                 if (reportType === 'detailed') {
                 const usersQuery = query(
@@ -6431,7 +6473,8 @@ const app = {
                     stories: stories,
                     storiesCount: stories.length,
                     isSubmitted: isSubmitted,
-                    isVerified: isVerified,
+                    isVerified: isVerified && !hasNewStoriesAfterVerification && !hasRevokedApprovals,
+                    needsReverification: isVerified && (hasNewStoriesAfterVerification || hasRevokedApprovals),
                     verificationStatus: verificationStatus
                 });
             }
@@ -6702,7 +6745,10 @@ const app = {
                         let submissionStatus = '';
                         let verificationStatus = '';
                         
-                        if (team.isVerified) {
+                        if (team.needsReverification) {
+                            submissionStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                            verificationStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                        } else if (team.isVerified) {
                             submissionStatus = '<span class="status-badge status-verified">✓ Verified</span>';
                             verificationStatus = '<span class="status-badge status-verified">✓ Verified</span>';
                         } else if (team.isSubmitted) {
@@ -6976,7 +7022,13 @@ const app = {
                                     let submissionStatus = '';
                                     let verificationStatus = '';
                                     
-                                    if (team.isVerified) {
+                                    if (team.needsReverification) {
+                                        submissionStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                                        verificationStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                                    } else                                     if (team.needsReverification) {
+                                        submissionStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                                        verificationStatus = '<span class="status-badge status-submitted">⏳ Needs Re-verification</span>';
+                                    } else if (team.isVerified) {
                                         submissionStatus = '<span class="status-badge status-verified">✓ Verified</span>';
                                         verificationStatus = '<span class="status-badge status-verified">✓ Verified</span>';
                                     } else if (team.isSubmitted) {
@@ -7042,8 +7094,8 @@ const app = {
             csvRows.push('Team Status');
             csvRows.push('Sl. No.,Team Name,Guide,Stories Count,Submission Status,Verification Status');
             teamsStatus.forEach((team, teamIndex) => {
-                const submissionStatus = team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories';
-                const verificationStatus = team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted';
+                const submissionStatus = team.needsReverification ? 'Needs Re-verification' : team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories';
+                const verificationStatus = team.needsReverification ? 'Needs Re-verification' : team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted';
                 csvRows.push(`${teamIndex + 1},"${team.teamName}","${team.guideName}",${team.storiesCount},"${submissionStatus}","${verificationStatus}"`);
             });
         } else {
@@ -7116,8 +7168,8 @@ const app = {
                 teamName: team.teamName,
                 guideName: team.guideName,
                 storiesCount: team.storiesCount,
-                submissionStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
-                    verificationStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'
+                submissionStatus: team.needsReverification ? 'Needs Re-verification' : team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
+                    verificationStatus: team.needsReverification ? 'Needs Re-verification' : team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'
                 };
                 
                 // Only include stories if detailed report
@@ -9899,8 +9951,15 @@ const app = {
             const isVerified = planningData && planningData.userStoriesVerified === true;
             const verificationStatus = planningData ? planningData.userStoriesVerificationStatus : null;
             
+            // Check if there are new stories added after verification
+            const hasNewStories = isVerified && stories.some(s => {
+                const storyCreatedAt = s.createdAt?.toDate ? s.createdAt.toDate().getTime() : 0;
+                const verifiedAt = verificationStatus?.verifiedAt?.toDate ? verificationStatus.verifiedAt.toDate().getTime() : 0;
+                return storyCreatedAt > verifiedAt;
+            });
+            
             // Update status display
-            if (isVerified) {
+            if (isVerified && !hasNewStories) {
                 statusContainer.innerHTML = `
                     <div style="padding: 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981;">
                         <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46;">
@@ -9910,9 +9969,26 @@ const app = {
                         ${verificationStatus && verificationStatus.feedback ? `
                             <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.9rem;">${this.escapeHtml(verificationStatus.feedback)}</p>
                         ` : ''}
+                        <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
+                            You can add more user stories. New stories will need guide approval and re-verification.
+                        </p>
                     </div>
                 `;
                 submitBtn.style.display = 'none';
+            } else if (isVerified && hasNewStories) {
+                statusContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <strong>New Stories Added</strong>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.9rem;">
+                            You have added new user stories. Please submit them for guide verification again.
+                        </p>
+                    </div>
+                `;
+                submitBtn.style.display = 'inline-flex';
+                submitBtn.textContent = 'Submit New Stories for Verification';
             } else if (isSubmitted) {
                 statusContainer.innerHTML = `
                     <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
@@ -9921,6 +9997,9 @@ const app = {
                             <strong>Submitted for Verification</strong>
                         </div>
                         <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.9rem;">Waiting for guide verification...</p>
+                        <p style="margin: 0.5rem 0 0 0; color: #78350f; font-size: 0.85rem; font-style: italic;">
+                            You can add more user stories. They will be included in the submission.
+                        </p>
                     </div>
                 `;
                 submitBtn.style.display = 'none';
@@ -10102,6 +10181,11 @@ const app = {
                 return;
             }
             
+            // Check if stories were previously verified - if so, reset verification
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', team.id);
+            const planningDoc = await getDoc(planningRef);
+            const wasVerified = planningDoc.exists() && planningDoc.data().userStoriesVerified === true;
+            
             const storyRef = doc(collection(window.firebaseDb, 'userStories'));
             await setDoc(storyRef, {
                 teamId: team.id,
@@ -10112,8 +10196,20 @@ const app = {
                 createdAt: serverTimestamp()
             });
             
+            // Reset verification status if it was previously verified
+            if (wasVerified) {
+                await updateDoc(planningRef, {
+                    userStoriesVerified: false,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            
             this.closeAddUserStoryModal();
             await this.loadUserStories();
+            
+            if (wasVerified) {
+                alert('User story added. Verification status has been reset. Please submit for verification again after guide approval.');
+            }
         } catch (error) {
             console.error('Error adding user story:', error);
             alert('Error adding user story. Please try again.');
@@ -10229,17 +10325,26 @@ const app = {
     
     // Submit user stories for verification
     async submitUserStoriesForVerification() {
-        if (!confirm('Are you sure you want to submit your user stories for guide verification? You will not be able to edit them after submission.')) {
+        const team = await this.getUserTeam();
+        if (!team) {
+            alert('You are not assigned to a team.');
+            return;
+        }
+        
+        // Check current status
+        const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+        const planningData = planningDoc.exists() ? planningDoc.data() : null;
+        const isVerified = planningData && planningData.userStoriesVerified === true;
+        
+        const confirmMessage = isVerified 
+            ? 'Are you sure you want to submit your new user stories for guide verification? This will reset the verification status.'
+            : 'Are you sure you want to submit your user stories for guide verification?';
+        
+        if (!confirm(confirmMessage)) {
             return;
         }
         
         try {
-            const team = await this.getUserTeam();
-            if (!team) {
-                alert('You are not assigned to a team.');
-                return;
-            }
-            
             // Check if there are any user stories
             const storiesQuery = query(
                 collection(window.firebaseDb, 'userStories'),
@@ -10258,7 +10363,7 @@ const app = {
                 teamId: team.id,
                 userStoriesSubmitted: true,
                 userStoriesSubmittedAt: serverTimestamp(),
-                userStoriesVerified: false,
+                userStoriesVerified: false, // Reset verification when re-submitting
                 updatedAt: serverTimestamp()
             }, { merge: true });
             
@@ -10529,14 +10634,24 @@ const app = {
                                                         <i class="fas ${statusIcon}"></i> ${statusText}
                                                     </span>
                                                 </div>
-                                                ${!isApproved && !isRejected && isSubmitted ? `
+                                                ${isSubmitted ? `
                                                     <div style="display: flex; gap: 0.5rem;">
-                                                        <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
-                                                            <i class="fas fa-check"></i>
-                                                        </button>
-                                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
-                                                            <i class="fas fa-times"></i>
-                                                        </button>
+                                                        ${isApproved ? `
+                                                            <button type="button" class="btn btn-warning btn-sm" onclick="app.revokeUserStoryApproval('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Revoke Approval">
+                                                                <i class="fas fa-undo"></i> Revoke
+                                                            </button>
+                                                        ` : isRejected ? `
+                                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Approve">
+                                                                <i class="fas fa-check"></i> Approve
+                                                            </button>
+                                                        ` : `
+                                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Approve">
+                                                                <i class="fas fa-check"></i>
+                                                            </button>
+                                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectUserStory('${story.id}', '${team.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Reject">
+                                                                <i class="fas fa-times"></i>
+                                                            </button>
+                                                        `}
                                                     </div>
                                                 ` : ''}
                                             </div>
@@ -10559,11 +10674,26 @@ const app = {
                             </div>
                         </div>
                         
-                        ${isSubmitted && !isVerified && pendingCount === 0 && approvedCount > 0 ? `
+                        ${isSubmitted && pendingCount === 0 && approvedCount > 0 ? `
                             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
-                                <button type="button" class="btn btn-success" style="width: 100%;" onclick="app.verifyUserStories('${team.id}')">
-                                    <i class="fas fa-check-circle"></i> Verify All User Stories
-                                </button>
+                                ${!isVerified ? `
+                                    <button type="button" class="btn btn-success" style="width: 100%;" onclick="app.verifyUserStories('${team.id}')">
+                                        <i class="fas fa-check-circle"></i> Verify All User Stories
+                                    </button>
+                                ` : `
+                                    <div style="padding: 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981; margin-bottom: 0.75rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                            <i class="fas fa-check-circle"></i>
+                                            <strong>User Stories Verified</strong>
+                                        </div>
+                                        <p style="margin: 0; color: #047857; font-size: 0.9rem;">
+                                            All approved user stories have been verified. You can revoke approval of any story or approve new stories, then verify again.
+                                        </p>
+                                    </div>
+                                    <button type="button" class="btn btn-success" style="width: 100%;" onclick="app.verifyUserStories('${team.id}')">
+                                        <i class="fas fa-check-circle"></i> Re-verify All User Stories
+                                    </button>
+                                `}
                             </div>
                         ` : ''}
                     </div>
@@ -10688,16 +10818,24 @@ const app = {
                                             </span>
                                         `}
                                     </div>
-                                    ${!isApproved && !isRejected ? `
-                                        <div style="display: flex; gap: 0.5rem;">
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        ${isApproved ? `
+                                            <button type="button" class="btn btn-warning btn-sm" onclick="app.revokeUserStoryApproval('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                                                <i class="fas fa-undo"></i> Revoke
+                                            </button>
+                                        ` : isRejected ? `
+                                            <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        ` : `
                                             <button type="button" class="btn btn-success btn-sm" onclick="app.approveUserStory('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                             <button type="button" class="btn btn-danger btn-sm" onclick="app.rejectUserStory('${story.id}', '${teamId}')" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
                                                 <i class="fas fa-times"></i> Reject
                                             </button>
-                                        </div>
-                                    ` : ''}
+                                        `}
+                                    </div>
                                 </div>
                                 <p style="margin: 0; color: var(--text-primary); font-size: 0.95rem; line-height: 1.6;">
                                     <strong>As a</strong> <span style="color: var(--primary-color); font-weight: 600;">${this.escapeHtml(story.userName)}</span>, 
@@ -10755,6 +10893,16 @@ const app = {
                 updatedAt: serverTimestamp()
             });
             
+            // Reset verification status if story was approved after verification
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            const planningDoc = await getDoc(planningRef);
+            if (planningDoc.exists() && planningDoc.data().userStoriesVerified === true) {
+                await updateDoc(planningRef, {
+                    userStoriesVerified: false,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            
             // Reload the guide project planning view
             await this.loadGuideProjectPlanning();
             
@@ -10787,6 +10935,16 @@ const app = {
                 updatedAt: serverTimestamp()
             });
             
+            // Reset verification status if story was rejected after verification
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            const planningDoc = await getDoc(planningRef);
+            if (planningDoc.exists() && planningDoc.data().userStoriesVerified === true) {
+                await updateDoc(planningRef, {
+                    userStoriesVerified: false,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            
             // Reload the guide project planning view
             await this.loadGuideProjectPlanning();
             
@@ -10798,6 +10956,52 @@ const app = {
         } catch (error) {
             console.error('Error rejecting user story:', error);
             alert('Error rejecting user story. Please try again.');
+        }
+    },
+    
+    // Revoke approval of a user story
+    async revokeUserStoryApproval(storyId, teamId) {
+        if (!confirm('Are you sure you want to revoke the approval of this user story?')) {
+            return;
+        }
+        
+        const feedback = prompt('Enter reason for revoking approval (optional):');
+        
+        try {
+            await updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
+                approved: false,
+                rejected: false,
+                approvalFeedback: feedback || '',
+                approvedBy: null,
+                approvedAt: null,
+                rejectedBy: null,
+                rejectedAt: null,
+                updatedAt: serverTimestamp()
+            });
+            
+            // Reset verification status if approval was revoked after verification
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            const planningDoc = await getDoc(planningRef);
+            if (planningDoc.exists() && planningDoc.data().userStoriesVerified === true) {
+                await updateDoc(planningRef, {
+                    userStoriesVerified: false,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            
+            // Reload the guide project planning view
+            await this.loadGuideProjectPlanning();
+            
+            // Update modal if open
+            const modal = document.getElementById('approve-user-stories-modal');
+            if (modal && modal.style.display !== 'none') {
+                await this.showApproveUserStoriesModal(teamId);
+            }
+            
+            alert('User story approval revoked successfully.');
+        } catch (error) {
+            console.error('Error revoking user story approval:', error);
+            alert('Error revoking user story approval. Please try again.');
         }
     },
     
