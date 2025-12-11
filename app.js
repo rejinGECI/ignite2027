@@ -7486,11 +7486,24 @@ const app = {
                                reportContent.trim().toLowerCase().startsWith('<html');
         
         let contentToRender = reportContent;
+        let tempStyleElement = null;
         
-        // If it's a full document, extract the body content
+        // If it's a full document, extract the body content and styles
         if (isFullDocument) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(reportContent, 'text/html');
+            
+            // Get all styles from the document
+            const styleTags = doc.querySelectorAll('style');
+            const stylesToAdd = Array.from(styleTags).map(s => s.innerHTML).join('\n');
+            
+            // Add styles to document head if we have them
+            if (stylesToAdd) {
+                tempStyleElement = document.createElement('style');
+                tempStyleElement.id = 'temp-pdf-styles';
+                tempStyleElement.textContent = stylesToAdd;
+                document.head.appendChild(tempStyleElement);
+            }
             
             // Get the report-container (for user stories reports) or body
             let container = doc.querySelector('.report-container');
@@ -7499,12 +7512,7 @@ const app = {
             }
             
             if (container) {
-                // Get all styles from the document
-                const styleTags = doc.querySelectorAll('style');
-                const styles = Array.from(styleTags).map(s => s.innerHTML).join('\n');
-                
-                // Combine styles and content
-                contentToRender = styles ? `<style>${styles}</style>${container.innerHTML}` : container.innerHTML;
+                contentToRender = container.innerHTML;
             }
         }
         
