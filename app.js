@@ -11509,6 +11509,16 @@ const app = {
             document.getElementById('product-backlog-difficulty').value = '';
             document.getElementById('product-backlog-priority').value = '';
             
+            // Hide success message
+            const successMsg = document.getElementById('product-backlog-success-message');
+            if (successMsg) successMsg.style.display = 'none';
+            
+            // Reset button visibility
+            const addAnotherBtn = document.getElementById('add-another-backlog-btn');
+            const addBacklogBtn = document.getElementById('add-backlog-btn');
+            if (addAnotherBtn) addAnotherBtn.style.display = 'none';
+            if (addBacklogBtn) addBacklogBtn.style.display = 'inline-flex';
+            
             // Hide indicators initially
             document.getElementById('difficulty-indicator').style.display = 'none';
             document.getElementById('priority-indicator').style.display = 'none';
@@ -11597,11 +11607,34 @@ const app = {
     // Close add product backlog modal
     closeAddProductBacklogModal() {
         const modal = document.getElementById('add-product-backlog-modal');
-        if (modal) modal.style.display = 'none';
+        if (modal) {
+            // Hide success message
+            const successMsg = document.getElementById('product-backlog-success-message');
+            if (successMsg) successMsg.style.display = 'none';
+            
+            // Reset button visibility
+            const addAnotherBtn = document.getElementById('add-another-backlog-btn');
+            const addBacklogBtn = document.getElementById('add-backlog-btn');
+            if (addAnotherBtn) addAnotherBtn.style.display = 'none';
+            if (addBacklogBtn) addBacklogBtn.style.display = 'inline-flex';
+            
+            // Reset form
+            document.getElementById('product-backlog-task').value = '';
+            document.getElementById('product-backlog-difficulty').value = '';
+            document.getElementById('product-backlog-priority').value = '';
+            document.getElementById('product-backlog-user').value = '';
+            document.getElementById('product-backlog-user-story').value = '';
+            
+            // Hide indicators
+            document.getElementById('difficulty-indicator').style.display = 'none';
+            document.getElementById('priority-indicator').style.display = 'none';
+            
+            modal.style.display = 'none';
+        }
     },
     
     // Add product backlog
-    async addProductBacklog() {
+    async addProductBacklog(closeModal = true) {
         const userId = document.getElementById('product-backlog-user').value;
         const userStoryId = document.getElementById('product-backlog-user-story').value;
         const task = document.getElementById('product-backlog-task').value.trim();
@@ -11649,13 +11682,48 @@ const app = {
                 }, { merge: true });
             }
             
-            this.closeAddProductBacklogModal();
-            await this.loadProductBacklog();
-            alert('Product backlog item added successfully!');
+            // Reload product backlog list in background
+            this.loadProductBacklog().catch(err => console.error('Error reloading product backlog:', err));
+            
+            if (closeModal) {
+                this.closeAddProductBacklogModal();
+                alert('Product backlog item added successfully!');
+            } else {
+                // Show success message and reset form for adding another task
+                const successMsg = document.getElementById('product-backlog-success-message');
+                if (successMsg) {
+                    successMsg.style.display = 'block';
+                    // Scroll to top of modal to show success message
+                    successMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                
+                // Reset only task, difficulty, and priority fields (keep user and user story)
+                document.getElementById('product-backlog-task').value = '';
+                document.getElementById('product-backlog-difficulty').value = '';
+                document.getElementById('product-backlog-priority').value = 'medium'; // Reset to default
+                
+                // Hide indicators
+                document.getElementById('difficulty-indicator').style.display = 'none';
+                document.getElementById('priority-indicator').style.display = 'none';
+                
+                // Show "Add Another Task" button and hide regular "Add Backlog" button
+                const addAnotherBtn = document.getElementById('add-another-backlog-btn');
+                const addBacklogBtn = document.getElementById('add-backlog-btn');
+                if (addAnotherBtn) addAnotherBtn.style.display = 'inline-flex';
+                if (addBacklogBtn) addBacklogBtn.style.display = 'none';
+                
+                // Focus on task field for quick entry
+                document.getElementById('product-backlog-task').focus();
+            }
         } catch (error) {
             console.error('Error adding product backlog:', error);
             alert('Error adding product backlog. Please try again.');
         }
+    },
+    
+    // Add product backlog and continue (for adding multiple tasks)
+    async addProductBacklogAndContinue() {
+        await this.addProductBacklog(false);
     },
     
     // Edit product backlog

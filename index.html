@@ -1506,6 +1506,9 @@ Bob Johnson,GHI789</pre>
                         </button>
                     </div>
                     <div class="modal-body">
+                        <div id="product-backlog-success-message" style="display: none; padding: 0.75rem 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981; margin-bottom: 1rem; color: #065f46;">
+                            <i class="fas fa-check-circle"></i> <strong>Task added successfully!</strong> You can add another task below.
+                        </div>
                         <div class="form-group">
                             <label for="product-backlog-user">User: <span style="color: #ef4444;">*</span></label>
                             <select id="product-backlog-user" required>
@@ -1557,7 +1560,10 @@ Bob Johnson,GHI789</pre>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="app.closeAddProductBacklogModal()">Cancel</button>
-                        <button type="button" class="btn btn-primary" onclick="app.addProductBacklog()">
+                        <button type="button" class="btn btn-success" id="add-another-backlog-btn" onclick="app.addProductBacklogAndContinue()" style="display: none;">
+                            <i class="fas fa-plus"></i> Add Another Task
+                        </button>
+                        <button type="button" class="btn btn-primary" id="add-backlog-btn" onclick="app.addProductBacklog()">
                             <i class="fas fa-plus"></i> Add Backlog
                         </button>
                     </div>
