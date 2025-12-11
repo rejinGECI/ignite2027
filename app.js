@@ -7435,153 +7435,72 @@ const app = {
         const reportTitle = stage?.name || (typeof stage === 'string' ? stage : 'Report');
         const teamName = teamData?.groupName || 'Report';
         
-        // Check if html2pdf is available
-        if (typeof html2pdf === 'undefined') {
-            console.warn('html2pdf.js not loaded, falling back to HTML download');
-            // Fallback to HTML download if html2pdf is not available
-        const blob = new Blob([`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>${this.escapeHtml(reportTitle)}</title>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
-                <style>
-                    @media print {
-                        @page {
-                            size: A4;
-                            margin: 1cm;
-                        }
-                    }
-                    body {
-                        margin: 0;
-                        padding: 20px;
-                        font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    }
-                    * {
-                        box-sizing: border-box;
-                    }
-                </style>
-            </head>
-            <body>
-                ${reportContent}
-            </body>
-            </html>
-        `], { type: 'text/html' });
-        
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
-        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-            return;
-        }
-        
         // Check if reportContent is a full HTML document or just content
         const isFullDocument = reportContent.trim().toLowerCase().startsWith('<!doctype') || 
                                reportContent.trim().toLowerCase().startsWith('<html');
         
-        let contentToRender = reportContent;
-        let tempStyleElement = null;
+        let htmlContent = '';
         
-        // If it's a full document, extract the body content and styles
+        // If it's a full document, use it directly; otherwise wrap it
         if (isFullDocument) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(reportContent, 'text/html');
-            
-            // Get all styles from the document
-            const styleTags = doc.querySelectorAll('style');
-            const stylesToAdd = Array.from(styleTags).map(s => s.innerHTML).join('\n');
-            
-            // Add styles to document head if we have them
-            if (stylesToAdd) {
-                tempStyleElement = document.createElement('style');
-                tempStyleElement.id = 'temp-pdf-styles';
-                tempStyleElement.textContent = stylesToAdd;
-                document.head.appendChild(tempStyleElement);
-            }
-            
-            // Get the report-container (for user stories reports) or body
-            let container = doc.querySelector('.report-container');
-            if (!container) {
-                container = doc.body;
-            }
-            
-            if (container) {
-                contentToRender = container.innerHTML;
-            }
+            htmlContent = reportContent;
+        } else {
+            // Wrap content in full HTML document (same as generateHTMLReport)
+            htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>${this.escapeHtml(reportTitle)}</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page {
+                                size: A4;
+                                margin: 1cm;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                        }
+                        body {
+                            margin: 0;
+                            padding: 20px;
+                            font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        * {
+                            box-sizing: border-box;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${reportContent}
+                </body>
+                </html>
+            `;
         }
         
-        // Create a temporary container div (same approach as working reports)
-        const tempContainer = document.createElement('div');
-        tempContainer.style.position = 'fixed';
-        tempContainer.style.left = '0';
-        tempContainer.style.top = '0';
-        tempContainer.style.width = '210mm';
-        tempContainer.style.backgroundColor = '#ffffff';
-        tempContainer.style.padding = '20px';
-        tempContainer.style.fontFamily = "'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-        tempContainer.style.color = '#2d3748';
-        tempContainer.style.lineHeight = '1.5';
-        tempContainer.style.zIndex = '9999';
-        
-        // Add font link to head if not already present
-        if (!document.querySelector('link[href*="fonts.googleapis.com/css2?family=Montserrat"]')) {
-            const fontLink = document.createElement('link');
-            fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap';
-            fontLink.rel = 'stylesheet';
-            document.head.appendChild(fontLink);
+        // Open new window and write content (same approach as working print functionality)
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Please allow popups for this site to generate PDF reports.');
+            return;
         }
         
-        // Set the content
-        tempContainer.innerHTML = contentToRender;
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
         
-        // Append to body temporarily so html2pdf can render it
-        document.body.appendChild(tempContainer);
-        
-        // Wait for fonts and styles to load
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Configure html2pdf options (same as working reports)
-        const options = {
-            margin: [10, 10, 10, 10],
-            filename: `${teamName}_${reportTitle.replace(/[^a-z0-9]/gi, '_')}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { 
-                scale: 2,
-                useCORS: true,
-                letterRendering: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            },
-            jsPDF: { 
-                unit: 'mm', 
-                format: 'a4', 
-                orientation: 'portrait',
-                compress: true
-            }
-        };
-        
-        try {
-            // Generate and download PDF from the container (same as working reports)
-            await html2pdf().set(options).from(tempContainer).save();
-        } catch (error) {
-            console.error('Error generating PDF:', error);
-            alert('Error generating PDF. Please try again or use HTML format.');
-        } finally {
-            // Clean up temporary container
-            if (tempContainer.parentNode) {
-                tempContainer.parentNode.removeChild(tempContainer);
-            }
-            // Clean up temporary style element
-            if (tempStyleElement && tempStyleElement.parentNode) {
-                tempStyleElement.parentNode.removeChild(tempStyleElement);
-            }
-        }
+        // Wait for content to load, then trigger print dialog
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
     },
     
     generateHTMLReport(reportContent, teamData, stage) {
