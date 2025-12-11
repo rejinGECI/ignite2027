@@ -6408,20 +6408,20 @@ const app = {
                 
                 // Only load user names for stories if detailed report is needed
                 if (reportType === 'detailed') {
-                    const usersQuery = query(
-                        collection(window.firebaseDb, 'projectUsers'),
-                        where('teamId', '==', teamId)
-                    );
-                    const usersSnapshot = await getDocs(usersQuery);
-                    const usersMap = {};
-                    usersSnapshot.forEach(doc => {
-                        usersMap[doc.id] = doc.data().name || 'Unknown';
-                    });
-                    
-                    // Add user names to stories
-                    stories.forEach(story => {
-                        story.userName = usersMap[story.userId] || 'Unknown';
-                    });
+                const usersQuery = query(
+                    collection(window.firebaseDb, 'projectUsers'),
+                    where('teamId', '==', teamId)
+                );
+                const usersSnapshot = await getDocs(usersQuery);
+                const usersMap = {};
+                usersSnapshot.forEach(doc => {
+                    usersMap[doc.id] = doc.data().name || 'Unknown';
+                });
+                
+                // Add user names to stories
+                stories.forEach(story => {
+                    story.userName = usersMap[story.userId] || 'Unknown';
+                });
                 }
                 
                 teamsStatus.push({
@@ -7048,26 +7048,26 @@ const app = {
             });
         } else {
             // Detailed report - team data with stories
-            teamsStatus.forEach((team, teamIndex) => {
-                csvRows.push(`Team ${teamIndex + 1}: ${team.teamName}`);
-                csvRows.push(`Guide,${team.guideName}`);
-                csvRows.push(`Stories Count,${team.storiesCount}`);
-                csvRows.push(`Submission Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories'}`);
-                csvRows.push(`Verification Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'}`);
-                csvRows.push('');
-                
-                if (team.stories.length > 0) {
-                    csvRows.push('Sl. No.,User,Priority,Feature,Benefit');
-                    team.stories.forEach((story, storyIndex) => {
-                        csvRows.push(`${storyIndex + 1},"${story.userName}","${story.priority || 'medium'}","${story.feature || ''}","${story.benefit || ''}"`);
-                    });
-                } else {
-                    csvRows.push('No user stories created yet.');
-                }
-                
-                csvRows.push('');
-                csvRows.push('');
-            });
+        teamsStatus.forEach((team, teamIndex) => {
+            csvRows.push(`Team ${teamIndex + 1}: ${team.teamName}`);
+            csvRows.push(`Guide,${team.guideName}`);
+            csvRows.push(`Stories Count,${team.storiesCount}`);
+            csvRows.push(`Submission Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories'}`);
+            csvRows.push(`Verification Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'}`);
+            csvRows.push('');
+            
+            if (team.stories.length > 0) {
+                csvRows.push('Sl. No.,User,Priority,Feature,Benefit');
+                team.stories.forEach((story, storyIndex) => {
+                    csvRows.push(`${storyIndex + 1},"${story.userName}","${story.priority || 'medium'}","${story.feature || ''}","${story.benefit || ''}"`);
+                });
+            } else {
+                csvRows.push('No user stories created yet.');
+            }
+            
+            csvRows.push('');
+            csvRows.push('');
+        });
         }
         
         csvRows.push('');
@@ -7111,24 +7111,24 @@ const app = {
             },
             teams: teamsStatus.map((team, teamIndex) => {
                 const teamData = {
-                    serialNumber: teamIndex + 1,
-                    teamId: team.teamId,
-                    teamName: team.teamName,
-                    guideName: team.guideName,
-                    storiesCount: team.storiesCount,
-                    submissionStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
+                serialNumber: teamIndex + 1,
+                teamId: team.teamId,
+                teamName: team.teamName,
+                guideName: team.guideName,
+                storiesCount: team.storiesCount,
+                submissionStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
                     verificationStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'
                 };
                 
                 // Only include stories if detailed report
                 if (reportType === 'detailed') {
                     teamData.stories = team.stories.map((story, storyIndex) => ({
-                        serialNumber: storyIndex + 1,
-                        userId: story.userId,
+                    serialNumber: storyIndex + 1,
+                    userId: story.userId,
                         userName: story.userName || 'Unknown',
-                        priority: story.priority || 'medium',
-                        feature: story.feature || '',
-                        benefit: story.benefit || ''
+                    priority: story.priority || 'medium',
+                    feature: story.feature || '',
+                    benefit: story.benefit || ''
                     }));
                 }
                 
@@ -7439,45 +7439,45 @@ const app = {
         if (typeof html2pdf === 'undefined') {
             console.warn('html2pdf.js not loaded, falling back to HTML download');
             // Fallback to HTML download if html2pdf is not available
-            const blob = new Blob([`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>${this.escapeHtml(reportTitle)}</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
-                    <style>
-                        @media print {
-                            @page {
-                                size: A4;
-                                margin: 1cm;
-                            }
+        const blob = new Blob([`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>${this.escapeHtml(reportTitle)}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    @media print {
+                        @page {
+                            size: A4;
+                            margin: 1cm;
                         }
-                        body {
-                            margin: 0;
-                            padding: 20px;
-                            font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                        }
-                        * {
-                            box-sizing: border-box;
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${reportContent}
-                </body>
-                </html>
-            `], { type: 'text/html' });
-            
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
-            link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+                    }
+                    body {
+                        margin: 0;
+                        padding: 20px;
+                        font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    }
+                    * {
+                        box-sizing: border-box;
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+            </body>
+            </html>
+        `], { type: 'text/html' });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const safeTitle = this.escapeHtml(reportTitle).replace(/[^a-z0-9]/gi, '_');
+        link.download = `${this.escapeHtml(teamName)}_${safeTitle}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
             return;
         }
         
@@ -7486,11 +7486,16 @@ const app = {
                                reportContent.trim().toLowerCase().startsWith('<html');
         
         let contentToRender = reportContent;
+        let stylesToInclude = '';
         
-        // If it's a full document, extract just the body content (like .report-container)
+        // If it's a full document, extract the body content and styles
         if (isFullDocument) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(reportContent, 'text/html');
+            
+            // Extract styles from the document
+            const styleTags = doc.querySelectorAll('style');
+            stylesToInclude = Array.from(styleTags).map(style => style.innerHTML).join('\n');
             
             // Try to get the report-container first (for user stories reports)
             let container = doc.querySelector('.report-container');
@@ -7504,70 +7509,34 @@ const app = {
             }
         }
         
-        // Create a temporary container with the same wrapper as generateHTMLReport
+        // Create a temporary container div (same approach as working reports)
         const tempContainer = document.createElement('div');
         tempContainer.style.position = 'absolute';
         tempContainer.style.left = '-9999px';
         tempContainer.style.width = '210mm';
         tempContainer.style.backgroundColor = '#ffffff';
+        tempContainer.style.fontFamily = "'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         
-        // Create full HTML structure with fonts and styles (same as generateHTMLReport)
-        const fullHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>${this.escapeHtml(reportTitle)}</title>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
-                <style>
-                    body {
-                        margin: 0;
-                        padding: 20px;
-                        font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    }
-                    * {
-                        box-sizing: border-box;
-                    }
-                </style>
-            </head>
-            <body>
-                ${contentToRender}
-            </body>
-            </html>
-        `;
+        // Add font link to head if not already present
+        if (!document.querySelector('link[href*="fonts.googleapis.com/css2?family=Montserrat"]')) {
+            const fontLink = document.createElement('link');
+            fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap';
+            fontLink.rel = 'stylesheet';
+            document.head.appendChild(fontLink);
+        }
         
-        // Create an iframe to render the HTML with proper fonts and styles
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'absolute';
-        iframe.style.left = '-9999px';
-        iframe.style.width = '210mm';
-        iframe.style.height = '297mm';
-        iframe.style.border = 'none';
+        // Set the content with styles if needed
+        if (stylesToInclude) {
+            tempContainer.innerHTML = `<style>${stylesToInclude}</style>${contentToRender}`;
+        } else {
+            tempContainer.innerHTML = contentToRender;
+        }
         
-        document.body.appendChild(iframe);
+        // Append to body temporarily so html2pdf can render it
+        document.body.appendChild(tempContainer);
         
-        // Write the HTML content to the iframe
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-        iframeDoc.open();
-        iframeDoc.write(fullHTML);
-        iframeDoc.close();
-        
-        // Wait for iframe to load and fonts to be ready
-        await new Promise((resolve) => {
-            const checkReady = () => {
-                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-                    // Wait additional time for fonts to load
-                    setTimeout(resolve, 800);
-                } else {
-                    setTimeout(checkReady, 100);
-                }
-            };
-            iframe.onload = checkReady;
-            checkReady();
-        });
-        
-        // Get the body element from iframe
-        const iframeBody = iframe.contentDocument.body;
+        // Wait for fonts and styles to load
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Configure html2pdf options (same as working reports)
         const options = {
@@ -7579,9 +7548,7 @@ const app = {
                 useCORS: true,
                 letterRendering: true,
                 logging: false,
-                backgroundColor: '#ffffff',
-                windowWidth: iframe.contentWindow.innerWidth,
-                windowHeight: iframe.contentWindow.innerHeight
+                backgroundColor: '#ffffff'
             },
             jsPDF: { 
                 unit: 'mm', 
@@ -7592,15 +7559,15 @@ const app = {
         };
         
         try {
-            // Generate and download PDF from iframe body
-            await html2pdf().set(options).from(iframeBody).save();
+            // Generate and download PDF from the container (same as working reports)
+            await html2pdf().set(options).from(tempContainer).save();
         } catch (error) {
             console.error('Error generating PDF:', error);
             alert('Error generating PDF. Please try again or use HTML format.');
         } finally {
-            // Clean up iframe
-            if (iframe.parentNode) {
-                iframe.parentNode.removeChild(iframe);
+            // Clean up temporary container
+            if (tempContainer.parentNode) {
+                tempContainer.parentNode.removeChild(tempContainer);
             }
         }
     },
