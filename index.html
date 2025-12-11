@@ -792,6 +792,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="user-stories" onclick="app.switchAdminMiniProjectTab('user-stories')">
                         <i class="fas fa-list-check"></i> User Stories Status
                     </button>
+                    <button class="tab-btn" data-tab="project-planning" onclick="app.switchAdminMiniProjectTab('project-planning')">
+                        <i class="fas fa-tasks"></i> Project Planning
+                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -910,6 +913,30 @@ Bob Johnson,GHI789</pre>
                             </div>
                             <div id="user-stories-status-container">
                                 <div class="loading-state">Loading user stories status...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Project Planning Tab -->
+                    <div id="admin-miniproject-project-planning-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-tasks"></i> Project Planning Management</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Monitor all teams' project planning progress, including user stories and product backlog submissions.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem;">
+                                <input type="text" id="search-project-planning-teams-tab" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.showUserStoriesReportOptions()" style="margin-left: 1rem;">
+                                    <i class="fas fa-file-download"></i> User Stories Report
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="app.showProductBacklogReportOptions()" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-file-download"></i> Product Backlog Report
+                                </button>
+                            </div>
+                            
+                            <div id="admin-project-planning-teams-list-tab" class="admin-teams-list">
+                                <div class="loading-state">Loading teams...</div>
                             </div>
                         </div>
                     </div>

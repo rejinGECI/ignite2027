@@ -5325,6 +5325,10 @@ const app = {
         if (tabName === 'user-stories') {
             setTimeout(() => this.loadUserStoriesStatus(), 100);
         }
+        // Load project planning when tab is switched
+        if (tabName === 'project-planning') {
+            setTimeout(() => this.loadAdminProjectPlanningTab(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -10380,9 +10384,33 @@ const app = {
         }
     },
     
-    // Load admin project planning page
-    async loadAdminProjectPlanning() {
-        const container = document.getElementById('admin-project-planning-teams-list');
+    // Load admin project planning tab
+    async loadAdminProjectPlanningTab() {
+        const container = document.getElementById('admin-project-planning-teams-list-tab');
+        if (!container) return;
+        
+        // Setup search functionality (remove old listener if exists, then add new one)
+        const searchInput = document.getElementById('search-project-planning-teams-tab');
+        if (searchInput) {
+            // Clone and replace to remove old event listeners
+            const newSearchInput = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+            
+            newSearchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                const teamCards = container.querySelectorAll('.admin-team-card');
+                teamCards.forEach(card => {
+                    const teamName = card.textContent.toLowerCase();
+                    card.style.display = teamName.includes(query) ? 'block' : 'none';
+                });
+            });
+        }
+        
+        await this.loadAdminProjectPlanningData(container);
+    },
+    
+    // Load admin project planning data (shared function)
+    async loadAdminProjectPlanningData(container) {
         if (!container) return;
         
         try {
@@ -10499,6 +10527,14 @@ const app = {
             console.error('Error loading admin project planning:', error);
             container.innerHTML = '<p class="error-message">Error loading project planning data.</p>';
         }
+    },
+    
+    // Load admin project planning page
+    async loadAdminProjectPlanning() {
+        const container = document.getElementById('admin-project-planning-teams-list');
+        if (!container) return;
+        
+        await this.loadAdminProjectPlanningData(container);
     },
     
     // Load guide project planning page
