@@ -1704,6 +1704,13 @@ Bob Johnson,GHI789</pre>
             </div>
             <div class="modal-body">
                 <div class="form-group">
+                    <label for="user-stories-report-type">Select Report Type *</label>
+                    <select id="user-stories-report-type" class="form-input" required>
+                        <option value="detailed">Detailed - Includes all user story details</option>
+                        <option value="minimal">Minimal - Summary only, no user story details</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="user-stories-report-format">Select Report Format *</label>
                     <select id="user-stories-report-format" class="form-input" required>
                         <option value="pdf">PDF - Recommended</option>

@@ -6329,6 +6329,11 @@ const app = {
             if (formatSelect) {
                 formatSelect.value = 'pdf';
             }
+            // Set default type to detailed
+            const typeSelect = document.getElementById('user-stories-report-type');
+            if (typeSelect) {
+                typeSelect.value = 'detailed';
+            }
         }
     },
     
@@ -6341,20 +6346,22 @@ const app = {
     
     async generateUserStoriesReportFromModal() {
         const formatSelect = document.getElementById('user-stories-report-format');
-        if (!formatSelect) return;
+        const typeSelect = document.getElementById('user-stories-report-type');
+        if (!formatSelect || !typeSelect) return;
         
         const format = formatSelect.value;
+        const reportType = typeSelect.value; // 'detailed' or 'minimal'
         this.closeUserStoriesReportModal();
         
         try {
-            await this.generateUserStoriesReport(format);
+            await this.generateUserStoriesReport(format, reportType);
         } catch (error) {
             console.error('Error generating user stories report:', error);
             alert('Error generating report. Please try again.');
         }
     },
     
-    async generateUserStoriesReport(format) {
+    async generateUserStoriesReport(format, reportType = 'detailed') {
         try {
             // Load all teams
             const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
@@ -6399,21 +6406,23 @@ const app = {
                     }
                 }
                 
-                // Load project users to get user names for stories
-                const usersQuery = query(
-                    collection(window.firebaseDb, 'projectUsers'),
-                    where('teamId', '==', teamId)
-                );
-                const usersSnapshot = await getDocs(usersQuery);
-                const usersMap = {};
-                usersSnapshot.forEach(doc => {
-                    usersMap[doc.id] = doc.data().name || 'Unknown';
-                });
-                
-                // Add user names to stories
-                stories.forEach(story => {
-                    story.userName = usersMap[story.userId] || 'Unknown';
-                });
+                // Only load user names for stories if detailed report is needed
+                if (reportType === 'detailed') {
+                    const usersQuery = query(
+                        collection(window.firebaseDb, 'projectUsers'),
+                        where('teamId', '==', teamId)
+                    );
+                    const usersSnapshot = await getDocs(usersQuery);
+                    const usersMap = {};
+                    usersSnapshot.forEach(doc => {
+                        usersMap[doc.id] = doc.data().name || 'Unknown';
+                    });
+                    
+                    // Add user names to stories
+                    stories.forEach(story => {
+                        story.userName = usersMap[story.userId] || 'Unknown';
+                    });
+                }
                 
                 teamsStatus.push({
                     teamId: teamId,
@@ -6438,19 +6447,25 @@ const app = {
             
             // Generate based on format
             if (format === 'csv') {
-                this.generateUserStoriesCSVReport(filteredTeamsStatus);
+                this.generateUserStoriesCSVReport(filteredTeamsStatus, reportType);
             } else if (format === 'json') {
-                this.generateUserStoriesJSONReport(filteredTeamsStatus);
+                this.generateUserStoriesJSONReport(filteredTeamsStatus, reportType);
             } else {
                 // For PDF/HTML/DOCX, generate HTML report
-                const reportContent = this.generateUserStoriesReportContent(filteredTeamsStatus);
+                const reportContent = reportType === 'minimal' 
+                    ? this.generateUserStoriesMinimalReportContent(filteredTeamsStatus)
+                    : this.generateUserStoriesReportContent(filteredTeamsStatus);
+                
+                const reportName = reportType === 'minimal' 
+                    ? 'User Stories Status Report (Minimal)'
+                    : 'User Stories Submission Status Report';
                 
                 if (format === 'pdf') {
-                    await this.generatePDFReport(reportContent, { groupName: 'User Stories Status' }, { name: 'User Stories Submission Status Report' });
+                    await this.generatePDFReport(reportContent, { groupName: 'User Stories Status' }, { name: reportName });
                 } else if (format === 'html') {
-                    this.generateHTMLReport(reportContent, { groupName: 'User Stories Status' }, { name: 'User Stories Submission Status Report' });
+                    this.generateHTMLReport(reportContent, { groupName: 'User Stories Status' }, { name: reportName });
                 } else if (format === 'docx') {
-                    await this.generateDOCXReport(reportContent, { groupName: 'User Stories Status' }, { name: 'User Stories Submission Status Report' });
+                    await this.generateDOCXReport(reportContent, { groupName: 'User Stories Status' }, { name: reportName });
                 }
             }
         } catch (error) {
@@ -6758,15 +6773,261 @@ const app = {
         return html;
     },
     
-    generateUserStoriesCSVReport(teamsStatus) {
+    generateUserStoriesMinimalReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>User Stories Status Report (Minimal)</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.5;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #ffffff;
+                    }
+                    .report-container {
+                        max-width: 900px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        background: #ffffff;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding: 30px;
+                        background: #ffffff;
+                        border-radius: 12px;
+                        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .header-text {
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 15px;
+                        font-weight: 600;
+                        margin-bottom: 10px;
+                        letter-spacing: 1.5px;
+                        color: #1f2937;
+                        text-transform: uppercase;
+                    }
+                    .report-title {
+                        font-family: 'Lato', sans-serif;
+                        font-size: 24px;
+                        font-weight: 700;
+                        margin-top: 20px;
+                        padding: 15px 35px;
+                        background: #f8fafc;
+                        border-radius: 12px;
+                        display: inline-block;
+                        color: #1f2937;
+                        border: 2px solid rgba(0, 0, 0, 0.08);
+                    }
+                    .summary-section {
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background: #f8fafc;
+                        border-radius: 8px;
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .summary-grid {
+                        display: grid;
+                        grid-template-columns: repeat(4, 1fr);
+                        gap: 15px;
+                        margin-top: 15px;
+                    }
+                    .summary-item {
+                        text-align: center;
+                        padding: 15px;
+                        background: #ffffff;
+                        border-radius: 6px;
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .summary-label {
+                        font-size: 12px;
+                        color: #64748b;
+                        margin-bottom: 5px;
+                        font-weight: 600;
+                    }
+                    .summary-value {
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: #1f2937;
+                    }
+                    .teams-table {
+                        width: 100%;
+                        border-collapse: separate;
+                        border-spacing: 0;
+                        margin-top: 15px;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+                        border: 1px solid rgba(0, 0, 0, 0.06);
+                    }
+                    .teams-table th {
+                        background-color: #f8fafc;
+                        color: #1f2937;
+                        font-weight: 700;
+                        font-family: 'Montserrat', sans-serif;
+                        font-size: 12px;
+                        padding: 12px;
+                        text-align: left;
+                        border-bottom: 2px solid #e5e7eb;
+                        letter-spacing: 0.5px;
+                    }
+                    .teams-table td {
+                        padding: 12px;
+                        border-bottom: 1px solid #e5e7eb;
+                        font-size: 13px;
+                        font-family: 'Lato', sans-serif;
+                    }
+                    .teams-table tr:nth-child(even) {
+                        background-color: #f8fafc;
+                    }
+                    .teams-table tr:nth-child(odd) {
+                        background-color: #ffffff;
+                    }
+                    .status-badge {
+                        display: inline-block;
+                        padding: 4px 10px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 600;
+                    }
+                    .status-verified {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .status-submitted {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .status-in-progress {
+                        background: #dbeafe;
+                        color: #1e40af;
+                    }
+                    .status-not-submitted {
+                        background: #fee2e2;
+                        color: #991b1b;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #6b7280;
+                        padding-top: 12px;
+                        border-top: 1px solid #e5e7eb;
+                        font-family: 'Lato', sans-serif;
+                        font-weight: 500;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-container">
+                    <div class="header">
+                        <div class="header-text">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                        <div class="header-text">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                        <div class="header-text" style="margin-bottom: 20px;">ITD 334 MINI PROJECT</div>
+                        <div class="report-title">
+                            User Stories Status Report (Minimal)
+                        </div>
+                    </div>
+                    
+                    <div class="summary-section">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; color: #1f2937; margin-bottom: 10px;">Summary</h3>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-label">Total Teams</div>
+                                <div class="summary-value">${teamsStatus.length}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Teams with Stories</div>
+                                <div class="summary-value">${teamsStatus.filter(t => t.storiesCount > 0).length}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Submitted</div>
+                                <div class="summary-value">${teamsStatus.filter(t => t.isSubmitted).length}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Verified</div>
+                                <div class="summary-value">${teamsStatus.filter(t => t.isVerified).length}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; color: #1f2937; margin-bottom: 15px;">Team Status</h3>
+                        <table class="teams-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">Sl. No.</th>
+                                    <th style="width: 30%;">Team Name</th>
+                                    <th style="width: 20%;">Guide</th>
+                                    <th style="width: 10%;">Stories Count</th>
+                                    <th style="width: 17.5%;">Submission Status</th>
+                                    <th style="width: 17.5%;">Verification Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teamsStatus.map((team, teamIndex) => {
+                                    let submissionStatus = '';
+                                    let verificationStatus = '';
+                                    
+                                    if (team.isVerified) {
+                                        submissionStatus = '<span class="status-badge status-verified">✓ Verified</span>';
+                                        verificationStatus = '<span class="status-badge status-verified">✓ Verified</span>';
+                                    } else if (team.isSubmitted) {
+                                        submissionStatus = '<span class="status-badge status-submitted">⏳ Submitted</span>';
+                                        verificationStatus = '<span class="status-badge status-submitted">⏳ Pending</span>';
+                                    } else if (team.storiesCount > 0) {
+                                        submissionStatus = '<span class="status-badge status-in-progress">📝 In Progress</span>';
+                                        verificationStatus = '<span class="status-badge status-not-submitted">Not Submitted</span>';
+                                    } else {
+                                        submissionStatus = '<span class="status-badge status-not-submitted">✗ No Stories</span>';
+                                        verificationStatus = '<span class="status-badge status-not-submitted">N/A</span>';
+                                    }
+                                    
+                                    return `
+                                        <tr>
+                                            <td style="text-align: center; color: #4b5563; font-weight: 600;">${teamIndex + 1}</td>
+                                            <td style="color: #1f2937; font-weight: 500;">${this.escapeHtml(team.teamName)}</td>
+                                            <td style="color: #64748b;">${this.escapeHtml(team.guideName)}</td>
+                                            <td style="text-align: center; color: #1f2937; font-weight: 600;">${team.storiesCount}</td>
+                                            <td>${submissionStatus}</td>
+                                            <td>${verificationStatus}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="footer">
+                        Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateUserStoriesCSVReport(teamsStatus, reportType = 'detailed') {
         const csvRows = [];
+        const reportTitle = reportType === 'minimal' 
+            ? 'User Stories Status Report (Minimal)'
+            : 'User Stories Submission Status Report';
         
         // Header information
         csvRows.push('DEPARTMENT OF INFORMATION TECHNOLOGY');
         csvRows.push('GOVERNMENT ENGINEERING COLLEGE IDUKKI');
         csvRows.push('ITD 334 MINI PROJECT');
         csvRows.push('');
-        csvRows.push('User Stories Submission Status Report');
+        csvRows.push(reportTitle);
         csvRows.push('');
         csvRows.push('Summary');
         csvRows.push(`Total Teams,${teamsStatus.length}`);
@@ -6776,27 +7037,38 @@ const app = {
         csvRows.push('');
         csvRows.push('');
         
-        // Team data
-        teamsStatus.forEach((team, teamIndex) => {
-            csvRows.push(`Team ${teamIndex + 1}: ${team.teamName}`);
-            csvRows.push(`Guide,${team.guideName}`);
-            csvRows.push(`Stories Count,${team.storiesCount}`);
-            csvRows.push(`Submission Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories'}`);
-            csvRows.push(`Verification Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'}`);
-            csvRows.push('');
-            
-            if (team.stories.length > 0) {
-                csvRows.push('Sl. No.,User,Priority,Feature,Benefit');
-                team.stories.forEach((story, storyIndex) => {
-                    csvRows.push(`${storyIndex + 1},"${story.userName}","${story.priority || 'medium'}","${story.feature || ''}","${story.benefit || ''}"`);
-                });
-            } else {
-                csvRows.push('No user stories created yet.');
-            }
-            
-            csvRows.push('');
-            csvRows.push('');
-        });
+        if (reportType === 'minimal') {
+            // Minimal report - just team status table
+            csvRows.push('Team Status');
+            csvRows.push('Sl. No.,Team Name,Guide,Stories Count,Submission Status,Verification Status');
+            teamsStatus.forEach((team, teamIndex) => {
+                const submissionStatus = team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories';
+                const verificationStatus = team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted';
+                csvRows.push(`${teamIndex + 1},"${team.teamName}","${team.guideName}",${team.storiesCount},"${submissionStatus}","${verificationStatus}"`);
+            });
+        } else {
+            // Detailed report - team data with stories
+            teamsStatus.forEach((team, teamIndex) => {
+                csvRows.push(`Team ${teamIndex + 1}: ${team.teamName}`);
+                csvRows.push(`Guide,${team.guideName}`);
+                csvRows.push(`Stories Count,${team.storiesCount}`);
+                csvRows.push(`Submission Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories'}`);
+                csvRows.push(`Verification Status,${team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'}`);
+                csvRows.push('');
+                
+                if (team.stories.length > 0) {
+                    csvRows.push('Sl. No.,User,Priority,Feature,Benefit');
+                    team.stories.forEach((story, storyIndex) => {
+                        csvRows.push(`${storyIndex + 1},"${story.userName}","${story.priority || 'medium'}","${story.feature || ''}","${story.benefit || ''}"`);
+                    });
+                } else {
+                    csvRows.push('No user stories created yet.');
+                }
+                
+                csvRows.push('');
+                csvRows.push('');
+            });
+        }
         
         csvRows.push('');
         csvRows.push(`Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`);
@@ -6807,20 +7079,28 @@ const app = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `User_Stories_Status_Report_${new Date().toISOString().split('T')[0]}.csv`;
+        const fileName = reportType === 'minimal' 
+            ? `User_Stories_Status_Report_Minimal_${new Date().toISOString().split('T')[0]}.csv`
+            : `User_Stories_Status_Report_${new Date().toISOString().split('T')[0]}.csv`;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     },
     
-    generateUserStoriesJSONReport(teamsStatus) {
+    generateUserStoriesJSONReport(teamsStatus, reportType = 'detailed') {
+        const reportTitle = reportType === 'minimal' 
+            ? 'User Stories Status Report (Minimal)'
+            : 'User Stories Submission Status Report';
+        
         const reportData = {
             header: {
                 department: 'DEPARTMENT OF INFORMATION TECHNOLOGY',
                 college: 'GOVERNMENT ENGINEERING COLLEGE IDUKKI',
                 course: 'ITD 334 MINI PROJECT',
-                reportTitle: 'User Stories Submission Status Report',
+                reportTitle: reportTitle,
+                reportType: reportType,
                 generatedOn: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
             },
             summary: {
@@ -6829,23 +7109,31 @@ const app = {
                 submitted: teamsStatus.filter(t => t.isSubmitted).length,
                 verified: teamsStatus.filter(t => t.isVerified).length
             },
-            teams: teamsStatus.map((team, teamIndex) => ({
-                serialNumber: teamIndex + 1,
-                teamId: team.teamId,
-                teamName: team.teamName,
-                guideName: team.guideName,
-                storiesCount: team.storiesCount,
-                submissionStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
-                verificationStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted',
-                stories: team.stories.map((story, storyIndex) => ({
-                    serialNumber: storyIndex + 1,
-                    userId: story.userId,
-                    userName: story.userName,
-                    priority: story.priority || 'medium',
-                    feature: story.feature || '',
-                    benefit: story.benefit || ''
-                }))
-            }))
+            teams: teamsStatus.map((team, teamIndex) => {
+                const teamData = {
+                    serialNumber: teamIndex + 1,
+                    teamId: team.teamId,
+                    teamName: team.teamName,
+                    guideName: team.guideName,
+                    storiesCount: team.storiesCount,
+                    submissionStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Submitted' : team.storiesCount > 0 ? 'In Progress' : 'No Stories',
+                    verificationStatus: team.isVerified ? 'Verified' : team.isSubmitted ? 'Pending' : 'Not Submitted'
+                };
+                
+                // Only include stories if detailed report
+                if (reportType === 'detailed') {
+                    teamData.stories = team.stories.map((story, storyIndex) => ({
+                        serialNumber: storyIndex + 1,
+                        userId: story.userId,
+                        userName: story.userName || 'Unknown',
+                        priority: story.priority || 'medium',
+                        feature: story.feature || '',
+                        benefit: story.benefit || ''
+                    }));
+                }
+                
+                return teamData;
+            })
         };
         
         const jsonContent = JSON.stringify(reportData, null, 2);
@@ -6853,7 +7141,10 @@ const app = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `User_Stories_Status_Report_${new Date().toISOString().split('T')[0]}.json`;
+        const fileName = reportType === 'minimal' 
+            ? `User_Stories_Status_Report_Minimal_${new Date().toISOString().split('T')[0]}.json`
+            : `User_Stories_Status_Report_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
