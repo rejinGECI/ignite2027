@@ -12646,7 +12646,14 @@ const app = {
     },
     
     // Verify product backlog (guide) - final verification after all are approved
-    async verifyProductBacklog(teamId) {
+    async verifyProductBacklog() {
+        const modal = document.getElementById('approve-product-backlog-modal');
+        const teamId = modal ? modal.dataset.teamId : null;
+        if (!teamId) {
+            alert('Team ID not found. Please try again.');
+            return;
+        }
+        
         // Check if there are any pending or rejected backlogs
         const backlogQuery = query(
             collection(window.firebaseDb, 'productBacklog'),
