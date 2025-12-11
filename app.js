@@ -9612,7 +9612,7 @@ const app = {
     // Switch project planning tab
     async switchProjectPlanningTab(tabName) {
         // Hide all tabs
-        document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #design-tab, #schedule-tab').forEach(tab => {
+        document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #card-sorting-tab, #design-tab, #schedule-tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
