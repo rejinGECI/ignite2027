@@ -10648,9 +10648,9 @@ const app = {
                 
                 const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
                 const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
-                const pbApprovedCount = team.backlogs.filter(b => b.approved === true).length;
-                const pbRejectedCount = team.backlogs.filter(b => b.rejected === true).length;
-                const pbPendingCount = team.backlogs.length - pbApprovedCount - pbRejectedCount;
+                const pbApprovedCount = team.backlogs ? team.backlogs.filter(b => b.approved === true).length : 0;
+                const pbRejectedCount = team.backlogs ? team.backlogs.filter(b => b.rejected === true).length : 0;
+                const pbPendingCount = team.backlogs ? (team.backlogs.length - pbApprovedCount - pbRejectedCount) : 0;
                 
                 return `
                     <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
@@ -10666,9 +10666,9 @@ const app = {
                                     ${approvedCount > 0 ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> ${approvedCount} Approved</span>` : ''}
                                     ${rejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${rejectedCount} Rejected</span>` : ''}
                                     ${pendingCount > 0 ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> ${pendingCount} Pending</span>` : ''}
-                                    ${backlogs.length > 0 ? `
+                                    ${team.backlogs && team.backlogs.length > 0 ? `
                                         <span style="color: var(--text-secondary); margin-left: 0.5rem;">
-                                            <i class="fas fa-clipboard-list"></i> ${backlogs.length} Product Backlog
+                                            <i class="fas fa-clipboard-list"></i> ${team.backlogs.length} Product Backlog
                                         </span>
                                         ${pbApprovedCount > 0 ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> ${pbApprovedCount} PB Approved</span>` : ''}
                                         ${pbRejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${pbRejectedCount} PB Rejected</span>` : ''}
