@@ -7481,50 +7481,67 @@ const app = {
             return;
         }
         
-        // Create a temporary container for the HTML content
-        const tempContainer = document.createElement('div');
-        tempContainer.style.position = 'absolute';
-        tempContainer.style.left = '-9999px';
-        tempContainer.style.width = '210mm'; // A4 width
-        tempContainer.style.backgroundColor = '#ffffff';
-        
         // Check if reportContent is a full HTML document or just content
         const isFullDocument = reportContent.trim().toLowerCase().startsWith('<!doctype') || 
                                reportContent.trim().toLowerCase().startsWith('<html');
         
         let contentToUse = reportContent;
         
-        if (isFullDocument) {
-            // Parse the full HTML document to extract the body content
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(reportContent, 'text/html');
-            
-            // Try to get the report-container first, then body, then documentElement
-            let contentToRender = doc.querySelector('.report-container');
-            if (!contentToRender || contentToRender.children.length === 0) {
-                contentToRender = doc.body;
-            }
-            if (!contentToRender || contentToRender.children.length === 0) {
-                contentToRender = doc.documentElement;
-            }
-            
-            // Get the innerHTML of the content
-            if (contentToRender) {
-                contentToUse = contentToRender.innerHTML;
-            } else {
-                // Fallback: use the original content
-                contentToUse = reportContent;
-            }
+        // If it's not a full document, wrap it like generateHTMLReport does
+        if (!isFullDocument) {
+            contentToUse = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>${this.escapeHtml(reportTitle)}</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        body {
+                            margin: 0;
+                            padding: 20px;
+                            font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                        }
+                        * {
+                            box-sizing: border-box;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${reportContent}
+                </body>
+                </html>
+            `;
         }
         
-        // Set the content
-        tempContainer.innerHTML = contentToUse;
+        // Create an iframe to render the full HTML document
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.left = '-9999px';
+        iframe.style.width = '210mm';
+        iframe.style.height = '297mm';
+        iframe.style.border = 'none';
         
-        // Append to body temporarily so html2pdf can render it
-        document.body.appendChild(tempContainer);
+        document.body.appendChild(iframe);
         
-        // Wait a bit for fonts and styles to load
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Write the HTML content to the iframe
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        iframeDoc.open();
+        iframeDoc.write(contentToUse);
+        iframeDoc.close();
+        
+        // Wait for iframe to load and fonts to be ready
+        await new Promise(resolve => {
+            iframe.onload = () => {
+                setTimeout(resolve, 500); // Wait for fonts and styles to load
+            };
+            if (iframe.contentDocument.readyState === 'complete') {
+                setTimeout(resolve, 500);
+            }
+        });
+        
+        // Get the body element from iframe
+        const iframeBody = iframe.contentDocument.body;
         
         // Configure html2pdf options
         const options = {
@@ -7537,8 +7554,8 @@ const app = {
                 letterRendering: true,
                 logging: false,
                 backgroundColor: '#ffffff',
-                windowWidth: 794, // A4 width in pixels at 96 DPI
-                windowHeight: 1123 // A4 height in pixels at 96 DPI
+                windowWidth: iframe.contentWindow.innerWidth,
+                windowHeight: iframe.contentWindow.innerHeight
             },
             jsPDF: { 
                 unit: 'mm', 
@@ -7549,15 +7566,15 @@ const app = {
         };
         
         try {
-            // Generate and download PDF
-            await html2pdf().set(options).from(tempContainer).save();
+            // Generate and download PDF from iframe body
+            await html2pdf().set(options).from(iframeBody).save();
         } catch (error) {
             console.error('Error generating PDF:', error);
             alert('Error generating PDF. Please try again or use HTML format.');
         } finally {
-            // Clean up temporary container
-            if (tempContainer.parentNode) {
-                tempContainer.parentNode.removeChild(tempContainer);
+            // Clean up iframe
+            if (iframe.parentNode) {
+                iframe.parentNode.removeChild(iframe);
             }
         }
     },
