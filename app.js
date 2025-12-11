@@ -7485,36 +7485,58 @@ const app = {
         const isFullDocument = reportContent.trim().toLowerCase().startsWith('<!doctype') || 
                                reportContent.trim().toLowerCase().startsWith('<html');
         
-        let contentToUse = reportContent;
+        let contentToRender = reportContent;
         
-        // If it's not a full document, wrap it like generateHTMLReport does
-        if (!isFullDocument) {
-            contentToUse = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>${this.escapeHtml(reportTitle)}</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
-                    <style>
-                        body {
-                            margin: 0;
-                            padding: 20px;
-                            font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                        }
-                        * {
-                            box-sizing: border-box;
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${reportContent}
-                </body>
-                </html>
-            `;
+        // If it's a full document, extract just the body content (like .report-container)
+        if (isFullDocument) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(reportContent, 'text/html');
+            
+            // Try to get the report-container first (for user stories reports)
+            let container = doc.querySelector('.report-container');
+            if (!container) {
+                // Fallback to body content
+                container = doc.body;
+            }
+            
+            if (container) {
+                contentToRender = container.innerHTML;
+            }
         }
         
-        // Create an iframe to render the full HTML document
+        // Create a temporary container with the same wrapper as generateHTMLReport
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.width = '210mm';
+        tempContainer.style.backgroundColor = '#ffffff';
+        
+        // Create full HTML structure with fonts and styles (same as generateHTMLReport)
+        const fullHTML = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>${this.escapeHtml(reportTitle)}</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 20px;
+                        font-family: 'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    }
+                    * {
+                        box-sizing: border-box;
+                    }
+                </style>
+            </head>
+            <body>
+                ${contentToRender}
+            </body>
+            </html>
+        `;
+        
+        // Create an iframe to render the HTML with proper fonts and styles
         const iframe = document.createElement('iframe');
         iframe.style.position = 'absolute';
         iframe.style.left = '-9999px';
@@ -7527,23 +7549,27 @@ const app = {
         // Write the HTML content to the iframe
         const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         iframeDoc.open();
-        iframeDoc.write(contentToUse);
+        iframeDoc.write(fullHTML);
         iframeDoc.close();
         
         // Wait for iframe to load and fonts to be ready
-        await new Promise(resolve => {
-            iframe.onload = () => {
-                setTimeout(resolve, 500); // Wait for fonts and styles to load
+        await new Promise((resolve) => {
+            const checkReady = () => {
+                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                    // Wait additional time for fonts to load
+                    setTimeout(resolve, 800);
+                } else {
+                    setTimeout(checkReady, 100);
+                }
             };
-            if (iframe.contentDocument.readyState === 'complete') {
-                setTimeout(resolve, 500);
-            }
+            iframe.onload = checkReady;
+            checkReady();
         });
         
         // Get the body element from iframe
         const iframeBody = iframe.contentDocument.body;
         
-        // Configure html2pdf options
+        // Configure html2pdf options (same as working reports)
         const options = {
             margin: [10, 10, 10, 10],
             filename: `${teamName}_${reportTitle.replace(/[^a-z0-9]/gi, '_')}.pdf`,
