@@ -10029,20 +10029,39 @@ const app = {
                 critical: '#ef4444'
             };
             
-            container.innerHTML = stories.map(story => `
+            container.innerHTML = stories.map(story => {
+                const isApproved = story.approved === true;
+                const isRejected = story.rejected === true;
+                const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : 'transparent');
+                const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
+                
+                return `
                 <div class="user-story-card" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem; border-left: 4px solid ${priorityColors[story.priority] || priorityColors.medium};">
                     <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div style="flex: 1;">
-                            <div style="margin-bottom: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; align-items: center;">
                                 <span style="padding: 3px 8px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
                                     ${story.priority || 'medium'}
                                 </span>
+                                ${(isApproved || isRejected) ? `
+                                    <span style="padding: 3px 8px; background: ${isApproved ? '#d1fae5' : '#fee2e2'}; color: ${statusColor}; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                        <i class="fas ${isApproved ? 'fa-check-circle' : 'fa-times-circle'}"></i> ${statusText}
+                                    </span>
+                                ` : ''}
                             </div>
                             <p style="margin: 0; color: var(--text-primary); font-size: 1rem; line-height: 1.6;">
                                 <strong>As a</strong> <span style="color: var(--primary-color);">${this.escapeHtml(story.userName)}</span>, 
                                 <strong>I want</strong> ${this.escapeHtml(story.feature)}, 
                                 <strong>so that</strong> ${this.escapeHtml(story.benefit)}.
                             </p>
+                            ${story.approvalFeedback ? `
+                                <div style="margin-top: 0.75rem; padding: 0.75rem; background: ${isApproved ? '#f0fdf4' : (isRejected ? '#fef2f2' : '#fef3c7')}; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                    <div style="font-size: 0.8rem; font-weight: 600; color: ${statusColor}; margin-bottom: 0.25rem;">
+                                        <i class="fas fa-comment"></i> Guide Feedback:
+                                    </div>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.escapeHtml(story.approvalFeedback)}</div>
+                                </div>
+                            ` : ''}
                         </div>
                         ${!isSubmitted && !isVerified ? `
                             <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
@@ -10056,7 +10075,8 @@ const app = {
                         ` : ''}
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         } catch (error) {
             console.error('Error loading user stories:', error);
             container.innerHTML = '<p class="error-message">Error loading user stories.</p>';
@@ -11435,21 +11455,39 @@ const app = {
                     `;
                     
                     items.forEach(backlog => {
+                        const isApproved = backlog.approved === true;
+                        const isRejected = backlog.rejected === true;
+                        const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : 'transparent');
+                        const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
+                        
                         html += `
                             <div class="product-backlog-card" style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${priorityColors[backlog.priority] || priorityColors.medium};">
                                 <div style="display: flex; justify-content: space-between; align-items: start;">
                                     <div style="flex: 1;">
-                                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; align-items: center;">
                                             <span style="padding: 3px 8px; background: ${priorityColors[backlog.priority] || priorityColors.medium}15; color: ${priorityColors[backlog.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
                                                 ${backlog.priority || 'medium'}
                                             </span>
                                             <span style="padding: 3px 8px; background: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}15; color: ${difficultyColors[backlog.difficulty] || difficultyColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
                                                 ${(backlog.difficulty || 'medium').replace('-', ' ')}
                                             </span>
+                                            ${(isApproved || isRejected) ? `
+                                                <span style="padding: 3px 8px; background: ${isApproved ? '#d1fae5' : '#fee2e2'}; color: ${statusColor}; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                                    <i class="fas ${isApproved ? 'fa-check-circle' : 'fa-times-circle'}"></i> ${statusText}
+                                                </span>
+                                            ` : ''}
                                         </div>
                                         <p style="margin: 0; color: var(--text-primary); font-size: 0.95rem; line-height: 1.5;">
                                             ${this.escapeHtml(backlog.task)}
                                         </p>
+                                        ${backlog.approvalFeedback ? `
+                                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: ${isApproved ? '#f0fdf4' : (isRejected ? '#fef2f2' : '#fef3c7')}; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                                <div style="font-size: 0.8rem; font-weight: 600; color: ${statusColor}; margin-bottom: 0.25rem;">
+                                                    <i class="fas fa-comment"></i> Guide Feedback:
+                                                </div>
+                                                <div style="font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap;">${this.escapeHtml(backlog.approvalFeedback)}</div>
+                                            </div>
+                                        ` : ''}
                                     </div>
                                     ${!isSubmitted && !isVerified ? `
                                         <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
