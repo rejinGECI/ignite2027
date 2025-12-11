@@ -7486,26 +7486,25 @@ const app = {
                                reportContent.trim().toLowerCase().startsWith('<html');
         
         let contentToRender = reportContent;
-        let stylesToInclude = '';
         
-        // If it's a full document, extract the body content and styles
+        // If it's a full document, extract the body content
         if (isFullDocument) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(reportContent, 'text/html');
             
-            // Extract styles from the document
-            const styleTags = doc.querySelectorAll('style');
-            stylesToInclude = Array.from(styleTags).map(style => style.innerHTML).join('\n');
-            
-            // Try to get the report-container first (for user stories reports)
+            // Get the report-container (for user stories reports) or body
             let container = doc.querySelector('.report-container');
             if (!container) {
-                // Fallback to body content
                 container = doc.body;
             }
             
             if (container) {
-                contentToRender = container.innerHTML;
+                // Get all styles from the document
+                const styleTags = doc.querySelectorAll('style');
+                const styles = Array.from(styleTags).map(s => s.innerHTML).join('\n');
+                
+                // Combine styles and content
+                contentToRender = styles ? `<style>${styles}</style>${container.innerHTML}` : container.innerHTML;
             }
         }
         
@@ -7513,9 +7512,14 @@ const app = {
         const tempContainer = document.createElement('div');
         tempContainer.style.position = 'absolute';
         tempContainer.style.left = '-9999px';
+        tempContainer.style.top = '0';
         tempContainer.style.width = '210mm';
+        tempContainer.style.minHeight = '297mm';
         tempContainer.style.backgroundColor = '#ffffff';
+        tempContainer.style.padding = '20px';
         tempContainer.style.fontFamily = "'Montserrat', 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        tempContainer.style.color = '#2d3748';
+        tempContainer.style.lineHeight = '1.5';
         
         // Add font link to head if not already present
         if (!document.querySelector('link[href*="fonts.googleapis.com/css2?family=Montserrat"]')) {
@@ -7525,18 +7529,14 @@ const app = {
             document.head.appendChild(fontLink);
         }
         
-        // Set the content with styles if needed
-        if (stylesToInclude) {
-            tempContainer.innerHTML = `<style>${stylesToInclude}</style>${contentToRender}`;
-        } else {
-            tempContainer.innerHTML = contentToRender;
-        }
+        // Set the content
+        tempContainer.innerHTML = contentToRender;
         
         // Append to body temporarily so html2pdf can render it
         document.body.appendChild(tempContainer);
         
         // Wait for fonts and styles to load
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Configure html2pdf options (same as working reports)
         const options = {
@@ -7568,6 +7568,10 @@ const app = {
             // Clean up temporary container
             if (tempContainer.parentNode) {
                 tempContainer.parentNode.removeChild(tempContainer);
+            }
+            // Clean up temporary style element
+            if (tempStyleElement && tempStyleElement.parentNode) {
+                tempStyleElement.parentNode.removeChild(tempStyleElement);
             }
         }
     },
