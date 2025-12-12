@@ -13727,30 +13727,30 @@ const app = {
             });
         
         let html = `
-            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; overflow-x: auto;">
                 <div style="text-align: center; margin-bottom: 2rem;">
                     <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem;">
                         ${monthNames[month]} ${year}
                     </h2>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; width: 100%;">
         `;
         
         // Day headers
         dayNames.forEach(day => {
             html += `
-                <div style="text-align: center; padding: 0.75rem; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem;">
+                <div style="text-align: center; padding: 0.75rem; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem; min-width: 0;">
                     ${day}
                 </div>
             `;
         });
         
-        html += '</div><div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem;">';
+        html += '</div><div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; width: 100%;">';
         
         // Empty cells for days before month starts
         for (let i = 0; i < firstDay; i++) {
-            html += '<div style="min-height: 100px;"></div>';
+            html += '<div style="min-height: 100px; min-width: 0;"></div>';
         }
         
         // Calendar days
@@ -13765,7 +13765,7 @@ const app = {
                 <div class="calendar-day" data-date="${dateKey}" 
                      style="min-height: 100px; border: 2px solid ${isToday ? '#3b82f6' : (isImportantDate ? '#ef4444' : '#e5e7eb')}; 
                             border-radius: 8px; padding: 0.5rem; background: ${isToday ? '#eff6ff' : (isImportantDate ? '#fef2f2' : 'white')}; 
-                            cursor: pointer; transition: all 0.2s; position: relative;"
+                            cursor: pointer; transition: all 0.2s; position: relative; min-width: 0; overflow: hidden; word-wrap: break-word;"
                      onclick="app.openScheduleModal('${dateKey}')"
                      onmouseenter="this.style.backgroundColor='${isToday ? '#dbeafe' : (isImportantDate ? '#fee2e2' : '#f8f9fa')}'"
                      onmouseleave="this.style.backgroundColor='${isToday ? '#eff6ff' : (isImportantDate ? '#fef2f2' : 'white')}'">
@@ -13807,11 +13807,11 @@ const app = {
         
         // Add modules and backlogs selection panel
         html += `
-            <div style="margin-top: 2rem; background: #f8f9fa; border-radius: 12px; padding: 1.5rem;">
+            <div style="margin-top: 2rem; background: #f8f9fa; border-radius: 12px; padding: 1.5rem; width: 100%; box-sizing: border-box;">
                 <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">
                     <i class="fas fa-list"></i> Available Product Backlogs by Module
                 </h4>
-                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%;">
         `;
         
         modules.forEach(module => {
