@@ -9694,6 +9694,8 @@ const app = {
             await this.loadProductBacklog();
         } else if (tabName === 'card-sorting') {
             await this.loadCardSorting();
+        } else if (tabName === 'schedule') {
+            await this.loadSchedule();
         }
     },
     
@@ -13641,6 +13643,545 @@ const app = {
     closeBacklogDetailsModal() {
         const modal = document.getElementById('backlog-details-modal');
         if (modal) modal.style.display = 'none';
+    },
+    
+    // ========== SCHEDULE FUNCTIONS ==========
+    
+    async loadSchedule() {
+        const container = document.getElementById('schedule-content');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<p class="empty-state">Loading schedule...</p>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load module assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Group backlogs by module
+            const backlogsByModule = {};
+            backlogs.forEach(backlog => {
+                const moduleId = assignments[backlog.id];
+                if (moduleId) {
+                    if (!backlogsByModule[moduleId]) {
+                        backlogsByModule[moduleId] = [];
+                    }
+                    backlogsByModule[moduleId].push(backlog);
+                }
+            });
+            
+            // Load existing schedules
+            const schedulesQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', team.id)
+            );
+            const schedulesSnapshot = await getDocs(schedulesQuery);
+            const schedules = {};
+            schedulesSnapshot.forEach(doc => {
+                const schedule = doc.data();
+                const key = schedule.moduleId ? `module_${schedule.moduleId}` : `task_${schedule.backlogId}`;
+                schedules[key] = { id: doc.id, ...schedule };
+            });
+            
+            // Build UI
+            let html = `
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <h3 style="margin: 0;"><i class="fas fa-calendar-alt"></i> Schedule</h3>
+                        <button type="button" class="btn btn-primary" onclick="app.showScheduleModal()">
+                            <i class="fas fa-plus"></i> Add Schedule
+                        </button>
+                    </div>
+                    
+                    <div id="schedule-gantt-container" style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow-x: auto;">
+                        <div id="gantt-chart" style="min-width: 100%;">
+                            <!-- Gantt chart will be rendered here -->
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                            <i class="fas fa-list"></i> Scheduled Items
+                        </h4>
+                        <div id="schedule-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                            <!-- Schedule list will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            
+            // Render schedule list and Gantt chart
+            this.renderScheduleList(modules, backlogsByModule, schedules, backlogs);
+            this.renderGanttChart(modules, backlogsByModule, schedules, backlogs);
+            
+        } catch (error) {
+            console.error('Error loading schedule:', error);
+            container.innerHTML = '<p class="error-message">Error loading schedule. Please try again.</p>';
+        }
+    },
+    
+    renderScheduleList(modules, backlogsByModule, schedules, allBacklogs) {
+        const container = document.getElementById('schedule-list');
+        if (!container) return;
+        
+        let html = '';
+        
+        // Module schedules
+        modules.forEach(module => {
+            const moduleBacklogs = backlogsByModule[module.id] || [];
+            if (moduleBacklogs.length === 0) return;
+            
+            const scheduleKey = `module_${module.id}`;
+            const schedule = schedules[scheduleKey];
+            const moduleColor = module.color || '#3b82f6';
+            
+            if (schedule) {
+                const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                
+                html += `
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${moduleColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 1rem;">
+                            <div style="flex: 1;">
+                                <h5 style="margin: 0 0 0.5rem 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
+                                    <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)} (Module)
+                                </h5>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.9rem; color: var(--text-secondary);">
+                                    <span><i class="fas fa-calendar-check"></i> ${startDate.toLocaleDateString()}</span>
+                                    <span><i class="fas fa-calendar-times"></i> ${endDate.toLocaleDateString()}</span>
+                                    <span><i class="fas fa-tasks"></i> ${moduleBacklogs.length} tasks</span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm" onclick="app.deleteSchedule('${schedule.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        // Individual task schedules
+        Object.keys(schedules).forEach(key => {
+            if (key.startsWith('task_')) {
+                const schedule = schedules[key];
+                const backlogId = schedule.backlogId;
+                const backlog = allBacklogs.find(b => b.id === backlogId);
+                
+                if (backlog) {
+                    const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                    const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                    const priorityColors = {
+                        low: '#6b7280',
+                        medium: '#3b82f6',
+                        high: '#f59e0b',
+                        critical: '#ef4444'
+                    };
+                    const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
+                    
+                    html += `
+                        <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${priorityColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 1rem;">
+                                <div style="flex: 1;">
+                                    <h5 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;">
+                                        <i class="fas fa-tasks"></i> ${this.escapeHtml(backlog.task || 'No task')}
+                                    </h5>
+                                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.9rem; color: var(--text-secondary);">
+                                        <span><i class="fas fa-calendar-check"></i> ${startDate.toLocaleDateString()}</span>
+                                        <span><i class="fas fa-calendar-times"></i> ${endDate.toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm" onclick="app.deleteSchedule('${schedule.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        });
+        
+        if (html === '') {
+            html = '<p class="empty-state">No schedules created yet. Click "Add Schedule" to create one.</p>';
+        }
+        
+        container.innerHTML = html;
+    },
+    
+    renderGanttChart(modules, backlogsByModule, schedules, allBacklogs) {
+        const container = document.getElementById('gantt-chart');
+        if (!container) return;
+        
+        // Get all scheduled items with dates
+        const scheduledItems = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Module schedules
+        modules.forEach(module => {
+            const scheduleKey = `module_${module.id}`;
+            const schedule = schedules[scheduleKey];
+            if (schedule) {
+                const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+                
+                scheduledItems.push({
+                    id: schedule.id,
+                    name: module.name,
+                    type: 'module',
+                    startDate: startDate,
+                    endDate: endDate,
+                    color: module.color || '#3b82f6',
+                    taskCount: backlogsByModule[module.id]?.length || 0
+                });
+            }
+        });
+        
+        // Individual task schedules
+        Object.keys(schedules).forEach(key => {
+            if (key.startsWith('task_')) {
+                const schedule = schedules[key];
+                const backlogId = schedule.backlogId;
+                const backlog = allBacklogs.find(b => b.id === backlogId);
+                
+                if (backlog) {
+                    const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                    const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate.setHours(0, 0, 0, 0);
+                    
+                    const priorityColors = {
+                        low: '#6b7280',
+                        medium: '#3b82f6',
+                        high: '#f59e0b',
+                        critical: '#ef4444'
+                    };
+                    
+                    scheduledItems.push({
+                        id: schedule.id,
+                        name: backlog.task || 'No task',
+                        type: 'task',
+                        startDate: startDate,
+                        endDate: endDate,
+                        color: priorityColors[backlog.priority] || priorityColors.medium
+                    });
+                }
+            }
+        });
+        
+        if (scheduledItems.length === 0) {
+            container.innerHTML = '<p class="empty-state" style="text-align: center; padding: 2rem;">No schedules to display. Create a schedule to see the Gantt chart.</p>';
+            return;
+        }
+        
+        // Calculate date range
+        let minDate = new Date(Math.min(...scheduledItems.map(item => item.startDate.getTime())));
+        let maxDate = new Date(Math.max(...scheduledItems.map(item => item.endDate.getTime())));
+        
+        // Add some padding
+        minDate.setDate(minDate.getDate() - 7);
+        maxDate.setDate(maxDate.getDate() + 7);
+        
+        // Calculate days
+        const daysDiff = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+        const dayWidth = Math.max(30, Math.min(50, 1200 / daysDiff));
+        
+        // Build Gantt chart
+        let html = `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; gap: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; position: sticky; top: 0; z-index: 10;">
+                    <div style="min-width: 200px; font-weight: 600; color: var(--text-primary);">Task/Module</div>
+                    <div style="flex: 1; position: relative; min-height: 40px;">
+                        <div style="display: flex; position: absolute; width: 100%; height: 100%;">
+        `;
+        
+        // Date headers
+        const currentDate = new Date(minDate);
+        while (currentDate <= maxDate) {
+            const isToday = currentDate.toDateString() === today.toDateString();
+            html += `
+                <div style="width: ${dayWidth}px; border-right: 1px solid #e5e7eb; text-align: center; padding: 0.5rem 0.25rem; font-size: 0.75rem; ${isToday ? 'background: #dbeafe; font-weight: 600;' : ''}">
+                    <div style="color: ${isToday ? '#3b82f6' : 'var(--text-secondary)'};">${currentDate.getDate()}</div>
+                    <div style="color: ${isToday ? '#3b82f6' : 'var(--text-secondary)'}; font-size: 0.65rem;">${currentDate.toLocaleDateString('en-US', { month: 'short' })}</div>
+                </div>
+            `;
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        html += `
+                        </div>
+                    </div>
+                </div>
+        `;
+        
+        // Task rows
+        scheduledItems.forEach((item, index) => {
+            const startOffset = Math.ceil((item.startDate - minDate) / (1000 * 60 * 60 * 24));
+            const duration = Math.ceil((item.endDate - item.startDate) / (1000 * 60 * 60 * 24)) + 1;
+            const barWidth = duration * dayWidth;
+            const leftOffset = startOffset * dayWidth;
+            
+            html += `
+                <div style="display: flex; gap: 1rem; padding: 0.75rem 1rem; background: ${index % 2 === 0 ? 'white' : '#f8f9fa'}; border-radius: 6px; align-items: center;">
+                    <div style="min-width: 200px; font-weight: 500; color: var(--text-primary);">
+                        ${item.type === 'module' ? '<i class="fas fa-layer-group"></i>' : '<i class="fas fa-tasks"></i>'} 
+                        ${this.escapeHtml(item.name)}
+                        ${item.taskCount ? ` <span style="color: var(--text-secondary); font-size: 0.85rem;">(${item.taskCount} tasks)</span>` : ''}
+                    </div>
+                    <div style="flex: 1; position: relative; height: 32px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
+                        <div style="position: absolute; left: ${leftOffset}px; width: ${barWidth}px; height: 100%; background: ${item.color}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" title="${item.startDate.toLocaleDateString()} - ${item.endDate.toLocaleDateString()}">
+                            ${duration} day${duration !== 1 ? 's' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    },
+    
+    async showScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        if (!modal) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load module assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Populate module dropdown
+            const moduleSelect = document.getElementById('schedule-module');
+            if (moduleSelect) {
+                moduleSelect.innerHTML = '<option value="">Select a module...</option>';
+                modules.forEach(module => {
+                    const moduleBacklogs = backlogs.filter(b => assignments[b.id] === module.id);
+                    if (moduleBacklogs.length > 0) {
+                        moduleSelect.innerHTML += `<option value="${module.id}">${this.escapeHtml(module.name)} (${moduleBacklogs.length} tasks)</option>`;
+                    }
+                });
+            }
+            
+            // Populate task dropdown
+            const taskSelect = document.getElementById('schedule-task');
+            if (taskSelect) {
+                taskSelect.innerHTML = '<option value="">Select a task...</option>';
+                backlogs.forEach(backlog => {
+                    taskSelect.innerHTML += `<option value="${backlog.id}">${this.escapeHtml(backlog.task || 'No task')}</option>`;
+                });
+            }
+            
+            // Reset form
+            document.getElementById('schedule-type').value = 'module';
+            document.getElementById('schedule-module').value = '';
+            document.getElementById('schedule-task').value = '';
+            document.getElementById('schedule-start-date').value = '';
+            document.getElementById('schedule-end-date').value = '';
+            this.onScheduleTypeChange();
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading schedule modal:', error);
+            alert('Error loading schedule form. Please try again.');
+        }
+    },
+    
+    onScheduleTypeChange() {
+        const type = document.getElementById('schedule-type').value;
+        const moduleGroup = document.getElementById('schedule-module-group');
+        const taskGroup = document.getElementById('schedule-task-group');
+        
+        if (type === 'module') {
+            moduleGroup.style.display = 'block';
+            taskGroup.style.display = 'none';
+            document.getElementById('schedule-module').required = true;
+            document.getElementById('schedule-task').required = false;
+        } else {
+            moduleGroup.style.display = 'none';
+            taskGroup.style.display = 'block';
+            document.getElementById('schedule-module').required = false;
+            document.getElementById('schedule-task').required = true;
+        }
+    },
+    
+    closeScheduleModal() {
+        const modal = document.getElementById('schedule-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    async saveSchedule() {
+        const type = document.getElementById('schedule-type').value;
+        const moduleId = document.getElementById('schedule-module').value;
+        const taskId = document.getElementById('schedule-task').value;
+        const startDate = document.getElementById('schedule-start-date').value;
+        const endDate = document.getElementById('schedule-end-date').value;
+        
+        if (!startDate || !endDate) {
+            alert('Please select both start and end dates.');
+            return;
+        }
+        
+        if (new Date(startDate) > new Date(endDate)) {
+            alert('Start date must be before end date.');
+            return;
+        }
+        
+        if (type === 'module' && !moduleId) {
+            alert('Please select a module.');
+            return;
+        }
+        
+        if (type === 'task' && !taskId) {
+            alert('Please select a task.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if schedule already exists
+            const existingQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', team.id)
+            );
+            const existingSnapshot = await getDocs(existingQuery);
+            
+            let existingDoc = null;
+            existingSnapshot.forEach(doc => {
+                const schedule = doc.data();
+                if (type === 'module' && schedule.moduleId === moduleId) {
+                    existingDoc = doc;
+                } else if (type === 'task' && schedule.backlogId === taskId) {
+                    existingDoc = doc;
+                }
+            });
+            
+            const scheduleData = {
+                teamId: team.id,
+                startDate: new Date(startDate + 'T00:00:00'),
+                endDate: new Date(endDate + 'T23:59:59'),
+                createdAt: serverTimestamp(),
+                createdBy: this.currentUser.uid
+            };
+            
+            if (type === 'module') {
+                scheduleData.moduleId = moduleId;
+            } else {
+                scheduleData.backlogId = taskId;
+            }
+            
+            if (existingDoc) {
+                // Update existing schedule
+                await updateDoc(existingDoc.ref, {
+                    ...scheduleData,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                // Create new schedule
+                await setDoc(doc(collection(window.firebaseDb, 'productBacklogSchedules')), scheduleData);
+            }
+            
+            this.closeScheduleModal();
+            await this.loadSchedule();
+            alert('Schedule saved successfully!');
+        } catch (error) {
+            console.error('Error saving schedule:', error);
+            alert('Error saving schedule. Please try again.');
+        }
+    },
+    
+    async deleteSchedule(scheduleId) {
+        if (!confirm('Are you sure you want to delete this schedule?')) {
+            return;
+        }
+        
+        try {
+            await deleteDoc(doc(window.firebaseDb, 'productBacklogSchedules', scheduleId));
+            await this.loadSchedule();
+        } catch (error) {
+            console.error('Error deleting schedule:', error);
+            alert('Error deleting schedule. Please try again.');
+        }
     },
     
     // ========== PRODUCT BACKLOG REPORT FUNCTIONS ==========

@@ -1257,9 +1257,59 @@ Bob Johnson,GHI789</pre>
                         <!-- Schedule Tab -->
                         <div id="schedule-tab" class="admin-tab-content">
                             <div class="project-planning-section">
-                                <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
                                 <div id="schedule-content">
-                                    <p class="empty-state">Schedule management coming soon...</p>
+                                    <p class="empty-state">Loading schedule...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Schedule Modal -->
+                        <div id="schedule-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeScheduleModal()">
+                            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                                <div class="modal-header">
+                                    <h2><i class="fas fa-calendar-plus"></i> Add Schedule</h2>
+                                    <button type="button" class="modal-close" onclick="app.closeScheduleModal()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label>Schedule Type:</label>
+                                        <select id="schedule-type" class="form-control" onchange="app.onScheduleTypeChange()">
+                                            <option value="module">Module (All tasks in module)</option>
+                                            <option value="task">Individual Task</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group" id="schedule-module-group">
+                                        <label>Select Module:</label>
+                                        <select id="schedule-module" class="form-control">
+                                            <option value="">Select a module...</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group" id="schedule-task-group" style="display: none;">
+                                        <label>Select Task:</label>
+                                        <select id="schedule-task" class="form-control">
+                                            <option value="">Select a task...</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>Start Date:</label>
+                                        <input type="date" id="schedule-start-date" class="form-control" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>End Date:</label>
+                                        <input type="date" id="schedule-end-date" class="form-control" required>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="app.closeScheduleModal()">Cancel</button>
+                                    <button type="button" class="btn btn-primary" onclick="app.saveSchedule()">
+                                        <i class="fas fa-save"></i> Save Schedule
+                                    </button>
                                 </div>
                             </div>
                         </div>
