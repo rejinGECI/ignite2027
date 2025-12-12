@@ -13741,14 +13741,14 @@ const app = {
             });
         
         let html = `
-            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; overflow-x: auto;">
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden;">
                 <div style="text-align: center; margin-bottom: 2rem;">
                     <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem;">
                         ${monthNames[month]} ${year}
                     </h2>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; width: 100%;">
+                <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
         `;
         
         // Day headers
@@ -13760,7 +13760,7 @@ const app = {
             `;
         });
         
-        html += '</div><div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; width: 100%;">';
+        html += '</div><div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; width: 100%; max-width: 100%; box-sizing: border-box;">';
         
         // Empty cells for days before month starts
         for (let i = 0; i < firstDay; i++) {
@@ -13821,11 +13821,11 @@ const app = {
         
         // Add modules and backlogs selection panel
         html += `
-            <div style="margin-top: 2rem; background: #f8f9fa; border-radius: 12px; padding: 1.5rem; width: 100%; box-sizing: border-box;">
+            <div style="margin-top: 2rem; background: #f8f9fa; border-radius: 12px; padding: 1.5rem; width: 100%; max-width: 100%; box-sizing: border-box;">
                 <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">
                     <i class="fas fa-list"></i> Available Product Backlogs by Module
                 </h4>
-                <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%;">
+                <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
         `;
         
         modules.forEach(module => {

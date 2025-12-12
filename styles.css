@@ -186,6 +186,9 @@ body.mobile-menu-open {
     max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
+    position: relative;
+    margin: 0;
+    padding: 0;
 }
 
 /* Evaluation Form */
@@ -1121,6 +1124,7 @@ body.mobile-menu-open {
     pointer-events: auto;
     box-sizing: border-box;
     overflow-x: hidden;
+    min-width: 0;
 }
 
 .page {
@@ -4908,6 +4912,16 @@ body.mobile-menu-open {
     max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
+    position: relative;
+    margin: 0;
+}
+
+#schedule-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
 }
 
 .users-list {
