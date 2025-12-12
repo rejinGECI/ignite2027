@@ -22,7 +22,8 @@ import {
     getDocs,
     orderBy,
     limit,
-    serverTimestamp
+    serverTimestamp,
+    Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
     ref,
@@ -3713,6 +3714,9 @@ const app = {
         
         // Load team order settings
         await this.loadTeamOrderSettings();
+        
+        // Load important dates
+        await this.loadImportantDates();
     },
     
     async loadTeamOrderSettings() {
@@ -4093,6 +4097,288 @@ const app = {
         } catch (error) {
             console.error('Error loading admin settings:', error);
         }
+    },
+    
+    async loadImportantDates() {
+        const container = document.getElementById('important-dates-list');
+        if (!container) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+            const importantDates = settingsDoc.exists() && settingsDoc.data().importantDates 
+                ? settingsDoc.data().importantDates 
+                : [];
+            
+            // Process dates to ensure they're in the correct format
+            const processedDates = importantDates.map(dateItem => {
+                let date;
+                if (dateItem.date?.toDate) {
+                    // Firestore Timestamp
+                    date = dateItem.date.toDate();
+                } else if (dateItem.date instanceof Date) {
+                    date = dateItem.date;
+                } else if (typeof dateItem.date === 'string') {
+                    date = new Date(dateItem.date);
+                } else if (dateItem.date?.seconds) {
+                    // Firestore Timestamp object with seconds
+                    date = new Date(dateItem.date.seconds * 1000);
+                } else {
+                    date = new Date(dateItem.date);
+                }
+                return { ...dateItem, date };
+            });
+            
+            // Sort by date
+            processedDates.sort((a, b) => {
+                return a.date - b.date;
+            });
+            
+            if (processedDates.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No important dates configured yet.</p>';
+                return;
+            }
+            
+            let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+            processedDates.forEach((dateItem, index) => {
+                const date = dateItem.date;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const dateOnly = new Date(date);
+                dateOnly.setHours(0, 0, 0, 0);
+                const isPast = dateOnly < today;
+                const isToday = dateOnly.getTime() === today.getTime();
+                const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                
+                html += `
+                    <div style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                                <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${this.escapeHtml(dateItem.name || 'Important Date')}</h4>
+                                ${isToday ? `
+                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                ` : isPast ? `
+                                    <span style="background: #e5e7eb; color: #6b7280; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                ` : `
+                                    <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''} away</span>
+                                `}
+                            </div>
+                            <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem;">
+                                <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                            </p>
+                            ${dateItem.description ? `
+                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                            ` : ''}
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" class="btn btn-sm" onclick="app.editImportantDate(${index})" style="padding: 4px 8px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm" onclick="app.deleteImportantDate(${index})" style="padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading important dates:', error);
+            const container = document.getElementById('important-dates-list');
+            if (container) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">Error loading important dates.</p>';
+            }
+        }
+    },
+    
+    async addImportantDate() {
+        if (!this.isAdmin) {
+            alert('Only administrators can add important dates.');
+            return;
+        }
+        
+        const nameInput = document.getElementById('new-important-date-name');
+        const dateInput = document.getElementById('new-important-date');
+        const descriptionInput = document.getElementById('new-important-date-description');
+        
+        if (!nameInput || !dateInput) return;
+        
+        const name = nameInput.value.trim();
+        const date = dateInput.value;
+        const description = descriptionInput ? descriptionInput.value.trim() : '';
+        
+        if (!name || !date) {
+            alert('Please provide both date name and date.');
+            return;
+        }
+        
+        try {
+            const settingsRef = doc(window.firebaseDb, 'settings', 'schedule');
+            const settingsDoc = await getDoc(settingsRef);
+            const existingDates = settingsDoc.exists() && settingsDoc.data().importantDates 
+                ? settingsDoc.data().importantDates 
+                : [];
+            
+            // Convert date string to Firestore Timestamp
+            const dateObj = new Date(date + 'T00:00:00'); // Add time to ensure correct timezone handling
+            if (isNaN(dateObj.getTime())) {
+                alert('Invalid date format. Please select a valid date.');
+                return;
+            }
+            
+            const dateTimestamp = Timestamp.fromDate(dateObj);
+            
+            // Create new date object - use Timestamp.now() for createdAt since serverTimestamp() doesn't work in arrays
+            const newDateItem = {
+                name: name,
+                date: dateTimestamp,
+                description: description,
+                createdAt: Timestamp.now(),
+                createdBy: this.currentUser.uid
+            };
+            
+            existingDates.push(newDateItem);
+            
+            // Use setDoc if document doesn't exist, otherwise use updateDoc
+            if (settingsDoc.exists()) {
+                await updateDoc(settingsRef, {
+                    importantDates: existingDates,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: this.currentUser.uid
+                });
+            } else {
+                await setDoc(settingsRef, {
+                    importantDates: existingDates,
+                    createdAt: serverTimestamp(),
+                    createdBy: this.currentUser.uid,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: this.currentUser.uid
+                });
+            }
+            
+            // Clear form
+            nameInput.value = '';
+            dateInput.value = '';
+            if (descriptionInput) descriptionInput.value = '';
+            
+            await this.loadImportantDates();
+            alert('Important date added successfully!');
+        } catch (error) {
+            console.error('Error adding important date:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                date: date,
+                name: name
+            });
+            alert('Error adding important date: ' + error.message);
+        }
+    },
+    
+    async editImportantDate(index) {
+        if (!this.isAdmin) {
+            alert('Only administrators can edit important dates.');
+            return;
+        }
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+            if (!settingsDoc.exists()) return;
+            
+            const importantDates = settingsDoc.data().importantDates || [];
+            if (index < 0 || index >= importantDates.length) return;
+            
+            const dateItem = importantDates[index];
+            const date = dateItem.date?.toDate ? dateItem.date.toDate() : new Date(dateItem.date);
+            const dateStr = date.toISOString().split('T')[0];
+            
+            const newName = prompt('Enter new date name:', dateItem.name || '');
+            if (newName === null) return;
+            
+            const newDateStr = prompt('Enter new date (YYYY-MM-DD):', dateStr);
+            if (newDateStr === null) return;
+            
+            const newDescription = prompt('Enter description (optional):', dateItem.description || '');
+            
+            // Convert date string to Firestore Timestamp
+            const dateObj = new Date(newDateStr + 'T00:00:00'); // Add time to ensure correct timezone handling
+            if (isNaN(dateObj.getTime())) {
+                alert('Invalid date format. Please enter a valid date in YYYY-MM-DD format.');
+                return;
+            }
+            const dateTimestamp = Timestamp.fromDate(dateObj);
+            
+            importantDates[index] = {
+                ...importantDates[index], // Preserve existing fields like createdAt, createdBy
+                name: newName.trim(),
+                date: dateTimestamp,
+                description: newDescription ? newDescription.trim() : '',
+                updatedAt: Timestamp.now(), // Use Timestamp.now() instead of serverTimestamp() in arrays
+                updatedBy: this.currentUser.uid
+            };
+            
+            // Use updateDoc since document should exist for editing
+            const settingsRef = doc(window.firebaseDb, 'settings', 'schedule');
+            await updateDoc(settingsRef, {
+                importantDates: importantDates,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            });
+            
+            await this.loadImportantDates();
+            alert('Important date updated successfully!');
+        } catch (error) {
+            console.error('Error editing important date:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                newDateStr: newDateStr,
+                newName: newName
+            });
+            alert('Error editing important date: ' + error.message);
+        }
+    },
+    
+    async deleteImportantDate(index) {
+        if (!this.isAdmin) {
+            alert('Only administrators can delete important dates.');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to delete this important date?')) {
+            return;
+        }
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+            if (!settingsDoc.exists()) return;
+            
+            const importantDates = settingsDoc.data().importantDates || [];
+            if (index < 0 || index >= importantDates.length) return;
+            
+            importantDates.splice(index, 1);
+            
+            // Use updateDoc instead of setDoc to avoid serverTimestamp() issues in arrays
+            await updateDoc(doc(window.firebaseDb, 'settings', 'schedule'), {
+                importantDates: importantDates,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            });
+            
+            await this.loadImportantDates();
+            alert('Important date deleted successfully!');
+        } catch (error) {
+            console.error('Error deleting important date:', error);
+            alert('Error deleting important date. Please try again.');
+        }
+    },
+    
+    // Helper function to create timestamp from date string
+    timestamp(dateString) {
+        const date = new Date(dateString);
+        date.setHours(0, 0, 0, 0);
+        return Timestamp.fromDate(date);
     },
     
     async getGoLiveDate() {
@@ -5376,6 +5662,10 @@ const app = {
         // Load user stories status when tab is switched
         if (tabName === 'user-stories') {
             setTimeout(() => this.loadUserStoriesStatus(), 100);
+        }
+        // Load schedule status when tab is switched
+        if (tabName === 'schedule') {
+            setTimeout(() => this.loadScheduleStatus(), 100);
         }
         // Load project planning when tab is switched
         if (tabName === 'project-planning') {
@@ -10732,13 +11022,15 @@ const app = {
                 const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
                 const csSubmitted = team.planningData && team.planningData.cardSortingSubmitted === true;
                 const csVerified = team.planningData && team.planningData.cardSortingVerified === true;
+                const schedSubmitted = team.planningData && team.planningData.scheduleSubmitted === true;
+                const schedVerified = team.planningData && team.planningData.scheduleVerified === true;
                 
                 // Debug: Log modules for troubleshooting
                 // console.log(`Team ${team.groupName}: modules count = ${team.modules ? team.modules.length : 0}, csSubmitted = ${csSubmitted}, csVerified = ${csVerified}`);
                 
-                // Show team if they have submitted user stories OR product backlog OR card sorting
+                // Show team if they have submitted user stories OR product backlog OR card sorting OR schedule
                 // OR if they have created modules (card sorting in progress)
-                if (!isSubmitted && !pbSubmitted && !csSubmitted && (!team.modules || team.modules.length === 0)) {
+                if (!isSubmitted && !pbSubmitted && !csSubmitted && !schedSubmitted && (!team.modules || team.modules.length === 0)) {
                     return `
                         <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
                             <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
@@ -10797,6 +11089,13 @@ const app = {
                                             <i class="fas fa-sort"></i> Card Sorting (${team.modules.length} modules)
                                         </span>
                                     ` : ''}
+                                    ${schedSubmitted || schedVerified ? `
+                                        <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                            <i class="fas fa-calendar-alt"></i> Schedule
+                                        </span>
+                                        ${schedVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
+                                        ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
+                                    ` : ''}
                                 </div>
                             </div>
                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -10834,6 +11133,15 @@ const app = {
                                     <span style="padding: 6px 12px; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
                                         <i class="fas fa-clock"></i> Card Sorting Not Submitted
                                     </span>
+                                ` : ''}
+                                ${schedVerified ? `
+                                    <button type="button" class="btn btn-warning" onclick="app.showApproveScheduleModal('${team.id}')">
+                                        <i class="fas fa-redo"></i> Re-verify Schedule
+                                    </button>
+                                ` : schedSubmitted ? `
+                                    <button type="button" class="btn btn-warning" onclick="app.showApproveScheduleModal('${team.id}')">
+                                        <i class="fas fa-calendar-check"></i> Review Schedule
+                                    </button>
                                 ` : ''}
                             </div>
                         </div>
@@ -13833,6 +14141,9 @@ const app = {
     
     async loadSchedule() {
         const container = document.getElementById('schedule-content');
+        const statusContainer = document.getElementById('schedule-submission-status');
+        const submitBtn = document.getElementById('submit-schedule-btn');
+        
         if (!container) return;
         
         try {
@@ -13843,6 +14154,13 @@ const app = {
                 container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
                 return;
             }
+            
+            // Load submission status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.scheduleSubmitted === true;
+            const isVerified = planningData && planningData.scheduleVerified === true;
+            const verificationStatus = planningData ? planningData.scheduleVerificationStatus : null;
             
             // Load modules
             const modulesQuery = query(
@@ -13903,6 +14221,43 @@ const app = {
                 schedules[key] = { id: doc.id, ...schedule };
             });
             
+            // Load important dates
+            let processedDates = [];
+            try {
+                const importantDatesDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+                const importantDatesData = importantDatesDoc.exists() ? importantDatesDoc.data() : null;
+                const importantDates = importantDatesData && importantDatesData.importantDates ? importantDatesData.importantDates : [];
+                
+                // Process dates to ensure they're in the correct format
+                if (Array.isArray(importantDates) && importantDates.length > 0) {
+                    processedDates = importantDates.map(dateItem => {
+                        let date;
+                        if (dateItem.date?.toDate) {
+                            // Firestore Timestamp
+                            date = dateItem.date.toDate();
+                        } else if (dateItem.date instanceof Date) {
+                            date = dateItem.date;
+                        } else if (typeof dateItem.date === 'string') {
+                            date = new Date(dateItem.date);
+                        } else if (dateItem.date?.seconds) {
+                            // Firestore Timestamp object with seconds
+                            date = new Date(dateItem.date.seconds * 1000);
+                        } else {
+                            date = new Date(dateItem.date);
+                        }
+                        return { ...dateItem, date };
+                    });
+                    
+                    // Sort by date
+                    processedDates.sort((a, b) => {
+                        return a.date - b.date;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading important dates:', error);
+                processedDates = [];
+            }
+            
             // Build UI
             let html = `
                 <div style="display: flex; flex-direction: column; gap: 2rem;">
@@ -13912,6 +14267,47 @@ const app = {
                             <i class="fas fa-plus"></i> Add Schedule
                         </button>
                     </div>
+                    
+                    ${processedDates.length > 0 ? `
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); color: white;">
+                            <h4 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-calendar-check"></i> Important Dates
+                            </h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                                ${processedDates.map(dateItem => {
+                                    const date = dateItem.date;
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const dateOnly = new Date(date);
+                                    dateOnly.setHours(0, 0, 0, 0);
+                                    const isPast = dateOnly < today;
+                                    const isToday = dateOnly.getTime() === today.getTime();
+                                    const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                    
+                                    return `
+                                        <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                                <h5 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
+                                                ${isToday ? `
+                                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                ` : isPast ? `
+                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                ` : `
+                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                `}
+                                            </div>
+                                            <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                                <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                            </p>
+                                            ${dateItem.description ? `
+                                                <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                     
                     <div id="schedule-gantt-container" style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow-x: auto;">
                         <div id="gantt-chart" style="min-width: 100%;">
@@ -13932,9 +14328,79 @@ const app = {
             
             container.innerHTML = html;
             
+            // Load submission status
+            const schedulePlanningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const schedulePlanningData = schedulePlanningDoc.exists() ? schedulePlanningDoc.data() : null;
+            const scheduleIsSubmitted = schedulePlanningData && schedulePlanningData.scheduleSubmitted === true;
+            const scheduleIsVerified = schedulePlanningData && schedulePlanningData.scheduleVerified === true;
+            const scheduleVerificationStatus = schedulePlanningData ? schedulePlanningData.scheduleVerificationStatus : null;
+            
             // Render schedule list and Gantt chart
             this.renderScheduleList(modules, backlogsByModule, schedules, backlogs);
             this.renderGanttChart(modules, backlogsByModule, schedules, backlogs);
+            
+            // Display submission status
+            const statusContainer = document.getElementById('schedule-submission-status');
+            if (statusContainer) {
+                if (scheduleIsVerified) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Schedule Verified</strong>
+                            </div>
+                            ${scheduleVerificationStatus && scheduleVerificationStatus.feedback ? `
+                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(scheduleVerificationStatus.feedback)}</p>
+                            ` : ''}
+                            ${scheduleVerificationStatus && scheduleVerificationStatus.verifiedAt ? `
+                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                    Verified on: ${scheduleVerificationStatus.verifiedAt.toDate ? scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                            ` : ''}
+                        </div>
+                    `;
+                } else if (scheduleIsSubmitted) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                <i class="fas fa-clock"></i>
+                                <strong>Schedule Submitted for Verification</strong>
+                            </div>
+                            <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.9rem;">Waiting for guide approval...</p>
+                        </div>
+                    `;
+                } else {
+                    statusContainer.innerHTML = '';
+                }
+            }
+            
+            // Show/hide and enable/disable submit button
+            const submitBtn = document.getElementById('submit-schedule-btn');
+            if (submitBtn) {
+                // Check if there are any schedules
+                const hasSchedules = Object.keys(schedules).length > 0;
+                
+                // Always show the button
+                submitBtn.style.display = 'inline-flex';
+                
+                // Disable button if no schedules or if already submitted/verified
+                if (!hasSchedules || scheduleIsSubmitted || scheduleIsVerified) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.6';
+                    submitBtn.style.cursor = 'not-allowed';
+                    
+                    if (scheduleIsSubmitted || scheduleIsVerified) {
+                        submitBtn.title = 'Schedule has already been submitted/verified';
+                    } else if (!hasSchedules) {
+                        submitBtn.title = 'Please create schedules before submitting';
+                    }
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                    submitBtn.title = '';
+                }
+            }
             
         } catch (error) {
             console.error('Error loading schedule:', error);
@@ -14368,6 +14834,49 @@ const app = {
         }
     },
     
+    // Submit schedule for verification
+    async submitScheduleForVerification() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if button is disabled
+            const submitBtn = document.getElementById('submit-schedule-btn');
+            if (submitBtn && submitBtn.disabled) {
+                alert('Please create schedules before submitting.');
+                return;
+            }
+            
+            // Check if there are any schedules
+            const schedulesQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', team.id)
+            );
+            const schedulesSnapshot = await getDocs(schedulesQuery);
+            
+            if (schedulesSnapshot.empty) {
+                alert('Please create schedules before submitting.');
+                return;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                teamId: team.id,
+                scheduleSubmitted: true,
+                scheduleSubmittedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Schedule submitted for verification successfully!');
+            await this.loadSchedule();
+        } catch (error) {
+            console.error('Error submitting schedule:', error);
+            alert('Error submitting schedule. Please try again.');
+        }
+    },
+    
     // ========== CARD SORTING VERIFICATION FUNCTIONS (GUIDE) ==========
     
     async showApproveCardSortingModal(teamId) {
@@ -14624,6 +15133,696 @@ const app = {
             console.error('Error verifying card sorting:', error);
             alert('Error verifying card sorting. Please try again.');
         }
+    },
+    
+    // ========== SCHEDULE VERIFICATION FUNCTIONS (GUIDE) ==========
+    
+    async showApproveScheduleModal(teamId) {
+        const modal = document.getElementById('approve-schedule-modal');
+        const content = document.getElementById('approve-schedule-content');
+        const verifyBtn = document.getElementById('verify-schedule-btn');
+        
+        if (!modal || !content) return;
+        
+        try {
+            modal.dataset.teamId = teamId;
+            modal.style.display = 'flex';
+            content.innerHTML = '<p class="empty-state">Loading schedule...</p>';
+            
+            // Load team info
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                content.innerHTML = '<p class="error-message">Team not found.</p>';
+                return;
+            }
+            const team = { id: teamDoc.id, ...teamDoc.data() };
+            
+            // Load planning data
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isVerified = planningData && planningData.scheduleVerified === true;
+            const verificationStatus = planningData ? planningData.scheduleVerificationStatus : null;
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', teamId)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', teamId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Group backlogs by module
+            const backlogsByModule = {};
+            backlogs.forEach(backlog => {
+                const moduleId = assignments[backlog.id];
+                if (moduleId) {
+                    if (!backlogsByModule[moduleId]) {
+                        backlogsByModule[moduleId] = [];
+                    }
+                    backlogsByModule[moduleId].push(backlog);
+                }
+            });
+            
+            // Load schedules
+            const schedulesQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', teamId)
+            );
+            const schedulesSnapshot = await getDocs(schedulesQuery);
+            const schedules = [];
+            schedulesSnapshot.forEach(doc => {
+                schedules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Build content
+            let html = `
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                            <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                        </h3>
+                        <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                            ${schedules.length} schedule(s) created
+                        </p>
+                    </div>
+                    
+                    ${scheduleIsVerified && scheduleVerificationStatus ? `
+                        <div style="padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Schedule Already Verified</strong>
+                            </div>
+                            ${scheduleVerificationStatus.feedback ? `
+                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(scheduleVerificationStatus.feedback)}</p>
+                            ` : ''}
+                            ${scheduleVerificationStatus.verifiedAt ? `
+                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                    Verified on: ${scheduleVerificationStatus.verifiedAt.toDate ? scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${schedules.length === 0 ? `
+                            <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">No schedules found.</p>
+                        ` : schedules.map(schedule => {
+                            const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                            const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                            const duration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                            
+                            let scheduleName = '';
+                            let scheduleItems = [];
+                            
+                            if (schedule.moduleId) {
+                                const module = modules.find(m => m.id === schedule.moduleId);
+                                if (module) {
+                                    scheduleName = `${module.name} (Module)`;
+                                    scheduleItems = backlogsByModule[schedule.moduleId] || [];
+                                }
+                            } else if (schedule.backlogId) {
+                                const backlog = backlogs.find(b => b.id === schedule.backlogId);
+                                if (backlog) {
+                                    scheduleName = backlog.task || 'Task';
+                                    scheduleItems = [backlog];
+                                }
+                            }
+                            
+                            return `
+                                <div style="padding: 1rem; background: white; border-radius: 8px; border: 1px solid var(--border-color);">
+                                    <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary);">
+                                        <i class="fas fa-calendar-alt"></i> ${this.escapeHtml(scheduleName)}
+                                    </h4>
+                                    <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                        <span><i class="fas fa-calendar-check"></i> Start: ${startDate.toLocaleDateString()}</span>
+                                        <span><i class="fas fa-calendar-times"></i> End: ${endDate.toLocaleDateString()}</span>
+                                        <span><i class="fas fa-clock"></i> Duration: ${duration} day(s)</span>
+                                        <span><i class="fas fa-tasks"></i> Tasks: ${scheduleItems.length}</span>
+                                    </div>
+                                    ${scheduleItems.length > 0 ? `
+                                        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                                            <h5 style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600;">Tasks:</h5>
+                                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                                ${scheduleItems.map(item => `
+                                                    <div style="padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem;">
+                                                        ${this.escapeHtml(item.task || 'No task')}
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+            
+            // Update verify button
+            if (verifyBtn) {
+                if (scheduleIsVerified) {
+                    verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Schedule';
+                    verifyBtn.className = 'btn btn-success';
+                } else {
+                    verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify Schedule';
+                    verifyBtn.className = 'btn btn-primary';
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error loading schedule for verification:', error);
+            content.innerHTML = '<p class="error-message">Error loading schedule. Please try again.</p>';
+        }
+    },
+    
+    closeApproveScheduleModal() {
+        const modal = document.getElementById('approve-schedule-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    async verifySchedule() {
+        const modal = document.getElementById('approve-schedule-modal');
+        const teamId = modal ? modal.dataset.teamId : null;
+        if (!teamId) {
+            alert('Team ID not found. Please try again.');
+            return;
+        }
+        
+        const feedback = prompt('Enter verification feedback (optional):');
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                teamId: teamId,
+                scheduleVerified: true,
+                scheduleVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: feedback || ''
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Schedule verified successfully!');
+            await this.loadGuideProjectPlanning();
+            this.closeApproveScheduleModal();
+        } catch (error) {
+            console.error('Error verifying schedule:', error);
+            alert('Error verifying schedule. Please try again.');
+        }
+    },
+    
+    // ========== SCHEDULE STATUS AND REPORT FUNCTIONS (ADMIN) ==========
+    
+    async loadScheduleStatus() {
+        const container = document.getElementById('schedule-content');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<p class="empty-state">Loading schedule status...</p>';
+            
+            // Load all teams
+            const teamsSnapshot = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                teams.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load planning data for all teams
+            const teamsStatus = [];
+            for (const team of teams) {
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                const isSubmitted = planningData && planningData.scheduleSubmitted === true;
+                const isVerified = planningData && planningData.scheduleVerified === true;
+                
+                // Load schedules count
+                const schedulesQuery = query(
+                    collection(window.firebaseDb, 'productBacklogSchedules'),
+                    where('teamId', '==', team.id)
+                );
+                const schedulesSnapshot = await getDocs(schedulesQuery);
+                const scheduleCount = schedulesSnapshot.size;
+                
+                teamsStatus.push({
+                    teamId: team.id,
+                    teamName: team.groupName || 'Unnamed Team',
+                    guideName: team.guideName || 'Not assigned',
+                    isSubmitted: isSubmitted,
+                    isVerified: isVerified,
+                    scheduleCount: scheduleCount,
+                    verificationStatus: planningData ? planningData.scheduleVerificationStatus : null
+                });
+            }
+            
+            // Apply team order
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(teamsStatus);
+            
+            // Build UI
+            let html = sortedTeamsStatus.map(team => {
+                const statusClass = team.isVerified ? 'status-verified' : (team.isSubmitted ? 'status-submitted' : 'status-not-submitted');
+                const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+                
+                return `
+                    <div class="admin-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 1rem;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-users"></i> ${this.escapeHtml(team.teamName)}
+                                </h4>
+                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                                    Guide: ${this.escapeHtml(team.guideName)} | Schedules: ${team.scheduleCount}
+                                </p>
+                            </div>
+                            <span style="padding: 6px 12px; background: ${team.isVerified ? '#d1fae5' : (team.isSubmitted ? '#fef3c7' : '#fee2e2')}; color: ${team.isVerified ? '#065f46' : (team.isSubmitted ? '#92400e' : '#991b1b')}; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
+                                ${statusText}
+                            </span>
+                        </div>
+                        ${team.verificationStatus && team.verificationStatus.feedback ? `
+                            <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #10b981;">
+                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(team.verificationStatus.feedback)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            if (html === '') {
+                html = '<p class="empty-state">No teams found.</p>';
+            }
+            
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error loading schedule status:', error);
+            container.innerHTML = '<p class="error-message">Error loading schedule status. Please try again.</p>';
+        }
+    },
+    
+    showScheduleReportOptions() {
+        const modal = document.getElementById('schedule-report-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            const formatSelect = document.getElementById('schedule-report-format');
+            if (formatSelect) formatSelect.value = 'pdf';
+        }
+    },
+    
+    closeScheduleReportModal() {
+        const modal = document.getElementById('schedule-report-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    async generateScheduleReportFromModal() {
+        const reportType = document.getElementById('schedule-report-type')?.value;
+        const reportFormat = document.getElementById('schedule-report-format')?.value;
+        
+        if (!reportType || !reportFormat) {
+            alert('Please select both report type and format.');
+            return;
+        }
+        
+        await this.generateScheduleReport(reportFormat, reportType);
+        this.closeScheduleReportModal();
+    },
+    
+    async generateScheduleReport(format, reportType = 'detailed') {
+        try {
+            // Load all teams
+            const teamsSnapshot = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                teams.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load planning data and schedules for all teams
+            const teamsStatus = [];
+            for (const team of teams) {
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                const isSubmitted = planningData && planningData.scheduleSubmitted === true;
+                const isVerified = planningData && planningData.scheduleVerified === true;
+                
+                // Load schedules
+                const schedulesQuery = query(
+                    collection(window.firebaseDb, 'productBacklogSchedules'),
+                    where('teamId', '==', team.id)
+                );
+                const schedulesSnapshot = await getDocs(schedulesQuery);
+                const schedules = [];
+                schedulesSnapshot.forEach(doc => {
+                    schedules.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load modules and backlogs for detailed report
+                let modules = [];
+                let backlogs = [];
+                let assignments = {};
+                
+                if (reportType === 'detailed') {
+                    const modulesQuery = query(
+                        collection(window.firebaseDb, 'cardSortingModules'),
+                        where('teamId', '==', team.id)
+                    );
+                    const modulesSnapshot = await getDocs(modulesQuery);
+                    modulesSnapshot.forEach(doc => {
+                        modules.push({ id: doc.id, ...doc.data() });
+                    });
+                    
+                    const backlogQuery = query(
+                        collection(window.firebaseDb, 'productBacklog'),
+                        where('teamId', '==', team.id)
+                    );
+                    const backlogSnapshot = await getDocs(backlogQuery);
+                    backlogSnapshot.forEach(doc => {
+                        backlogs.push({ id: doc.id, ...doc.data() });
+                    });
+                    
+                    const assignmentsQuery = query(
+                        collection(window.firebaseDb, 'cardSortingAssignments'),
+                        where('teamId', '==', team.id)
+                    );
+                    const assignmentsSnapshot = await getDocs(assignmentsQuery);
+                    assignmentsSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        assignments[data.backlogId] = data.moduleId;
+                    });
+                }
+                
+                teamsStatus.push({
+                    teamId: team.id,
+                    teamName: team.groupName || 'Unnamed Team',
+                    guideName: team.guideName || 'Not assigned',
+                    isSubmitted: isSubmitted,
+                    isVerified: isVerified,
+                    schedules: schedules,
+                    modules: modules,
+                    backlogs: backlogs,
+                    assignments: assignments,
+                    verificationStatus: planningData ? planningData.scheduleVerificationStatus : null
+                });
+            }
+            
+            // Apply team order
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(teamsStatus);
+            
+            // Generate report based on format
+            if (format === 'csv') {
+                this.generateScheduleCSVReport(sortedTeamsStatus, reportType);
+            } else if (format === 'json') {
+                this.generateScheduleJSONReport(sortedTeamsStatus, reportType);
+            } else if (format === 'html') {
+                this.generateScheduleHTMLReport(sortedTeamsStatus, reportType);
+            } else if (format === 'pdf') {
+                await this.generateSchedulePDFReport(sortedTeamsStatus, reportType);
+            } else if (format === 'docx') {
+                await this.generateScheduleHTMLReport(sortedTeamsStatus, reportType, true);
+            }
+            
+        } catch (error) {
+            console.error('Error generating schedule report:', error);
+            alert('Error generating report: ' + error.message);
+        }
+    },
+    
+    generateScheduleHTMLReport(teamsStatus, reportType, downloadAsDocx = false) {
+        const html = reportType === 'detailed' 
+            ? this.generateScheduleDetailedReportContent(teamsStatus)
+            : this.generateScheduleMinimalReportContent(teamsStatus);
+        
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schedule-report-${reportType}-${new Date().toISOString().split('T')[0]}.${downloadAsDocx ? 'html' : 'html'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        if (downloadAsDocx) {
+            alert('HTML file downloaded. You can open it in Word and save as DOCX.');
+        }
+    },
+    
+    generateScheduleDetailedReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Schedule Report - Detailed</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; }
+                    h1 { color: #1e40af; }
+                    .team-section { margin: 30px 0; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; }
+                    .team-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+                    .team-name { font-size: 1.2em; font-weight: 600; color: #111827; }
+                    .status-badge { padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.9em; }
+                    .status-verified { background: #d1fae5; color: #065f46; }
+                    .status-submitted { background: #fef3c7; color: #92400e; }
+                    .status-not-submitted { background: #fee2e2; color: #991b1b; }
+                    .schedule-item { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 6px; border-left: 4px solid #3b82f6; }
+                    .schedule-header { font-weight: 600; color: #1e40af; margin-bottom: 10px; }
+                    .schedule-details { display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9em; color: #64748b; }
+                </style>
+            </head>
+            <body>
+                <h1>Schedule Submission Status Report - Detailed</h1>
+                <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+        `;
+        
+        teamsStatus.forEach(team => {
+            const statusClass = team.isVerified ? 'status-verified' : (team.isSubmitted ? 'status-submitted' : 'status-not-submitted');
+            const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            
+            html += `
+                <div class="team-section">
+                    <div class="team-header">
+                        <div>
+                            <div class="team-name">${this.escapeHtml(team.teamName)}</div>
+                            <div style="color: #64748b; font-size: 0.9em; margin-top: 5px;">Guide: ${this.escapeHtml(team.guideName)}</div>
+                        </div>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    
+                    ${team.schedules.length > 0 ? `
+                        <div style="margin-top: 15px;">
+                            <h3 style="color: #1e40af; font-size: 1em; margin-bottom: 10px;">Schedules (${team.schedules.length}):</h3>
+                            ${team.schedules.map(schedule => {
+                                const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
+                                const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                                const duration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                                
+                                let scheduleName = '';
+                                if (schedule.moduleId) {
+                                    const module = team.modules.find(m => m.id === schedule.moduleId);
+                                    scheduleName = module ? `${module.name} (Module)` : 'Module';
+                                } else if (schedule.backlogId) {
+                                    const backlog = team.backlogs.find(b => b.id === schedule.backlogId);
+                                    scheduleName = backlog ? (backlog.task || 'Task') : 'Task';
+                                }
+                                
+                                return `
+                                    <div class="schedule-item">
+                                        <div class="schedule-header">${this.escapeHtml(scheduleName)}</div>
+                                        <div class="schedule-details">
+                                            <span>Start: ${startDate.toLocaleDateString()}</span>
+                                            <span>End: ${endDate.toLocaleDateString()}</span>
+                                            <span>Duration: ${duration} day(s)</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : '<p style="color: #64748b;">No schedules created.</p>'}
+                    
+                    ${team.verificationStatus && team.verificationStatus.feedback ? `
+                        <div style="margin-top: 15px; padding: 12px; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981;">
+                            <strong>Verification Feedback:</strong>
+                            <p style="margin: 5px 0 0 0; white-space: pre-wrap;">${this.escapeHtml(team.verificationStatus.feedback)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+        
+        html += `</body></html>`;
+        return html;
+    },
+    
+    generateScheduleMinimalReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Schedule Report - Minimal</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; }
+                    h1 { color: #1e40af; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+                    th { background: #f8f9fa; font-weight: 600; color: #111827; }
+                    .status-verified { color: #065f46; font-weight: 600; }
+                    .status-submitted { color: #92400e; font-weight: 600; }
+                    .status-not-submitted { color: #991b1b; font-weight: 600; }
+                </style>
+            </head>
+            <body>
+                <h1>Schedule Submission Status Report - Summary</h1>
+                <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Team Name</th>
+                            <th>Guide</th>
+                            <th>Schedules</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        teamsStatus.forEach(team => {
+            const statusClass = team.isVerified ? 'status-verified' : (team.isSubmitted ? 'status-submitted' : 'status-not-submitted');
+            const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            
+            html += `
+                <tr>
+                    <td>${this.escapeHtml(team.teamName)}</td>
+                    <td>${this.escapeHtml(team.guideName)}</td>
+                    <td>${team.schedules.length}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                </tr>
+            `;
+        });
+        
+        html += `</tbody></table></body></html>`;
+        return html;
+    },
+    
+    generateScheduleCSVReport(teamsStatus, reportType) {
+        let csv = 'Team Name,Guide,Schedules,Status';
+        if (reportType === 'detailed') {
+            csv += ',Schedule Details\n';
+        } else {
+            csv += '\n';
+        }
+        
+        teamsStatus.forEach(team => {
+            const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            const row = [
+                `"${team.teamName}"`,
+                `"${team.guideName}"`,
+                team.schedules.length,
+                statusText
+            ];
+            
+            if (reportType === 'detailed') {
+                const scheduleDetails = team.schedules.map(s => {
+                    const startDate = s.startDate?.toDate ? s.startDate.toDate() : new Date(s.startDate);
+                    const endDate = s.endDate?.toDate ? s.endDate.toDate() : new Date(s.endDate);
+                    return `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+                }).join('; ');
+                row.push(`"${scheduleDetails}"`);
+            }
+            
+            csv += row.join(',') + '\n';
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schedule-report-${reportType}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+    
+    generateScheduleJSONReport(teamsStatus, reportType) {
+        const data = teamsStatus.map(team => ({
+            teamName: team.teamName,
+            guideName: team.guideName,
+            scheduleCount: team.schedules.length,
+            status: team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted'),
+            schedules: reportType === 'detailed' ? team.schedules.map(s => ({
+                startDate: s.startDate?.toDate ? s.startDate.toDate().toISOString() : s.startDate,
+                endDate: s.endDate?.toDate ? s.endDate.toDate().toISOString() : s.endDate,
+                moduleId: s.moduleId,
+                backlogId: s.backlogId
+            })) : undefined,
+            verificationStatus: team.verificationStatus
+        }));
+        
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schedule-report-${reportType}-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+    
+    async generateSchedulePDFReport(teamsStatus, reportType) {
+        const html = reportType === 'detailed' 
+            ? this.generateScheduleDetailedReportContent(teamsStatus)
+            : this.generateScheduleMinimalReportContent(teamsStatus);
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        document.body.appendChild(tempDiv);
+        
+        const opt = {
+            margin: [10, 10, 10, 10],
+            filename: `schedule-report-${reportType}-${new Date().toISOString().split('T')[0]}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, logging: false },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        
+        await html2pdf().set(opt).from(tempDiv).save();
+        
+        setTimeout(() => {
+            if (tempDiv.parentNode) {
+                document.body.removeChild(tempDiv);
+            }
+        }, 1000);
     },
     
     // ========== CARD SORTING REPORT FUNCTIONS (ADMIN) ==========
@@ -16061,6 +17260,52 @@ const app = {
                 productBacklogs.push(backlog);
             });
             
+            // Get card sorting modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Get card sorting assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Group backlogs by module
+            const backlogsByModule = {};
+            productBacklogs.forEach(backlog => {
+                const moduleId = assignments[backlog.id];
+                if (moduleId) {
+                    if (!backlogsByModule[moduleId]) {
+                        backlogsByModule[moduleId] = [];
+                    }
+                    backlogsByModule[moduleId].push(backlog);
+                }
+            });
+            
+            // Get schedules
+            const schedulesQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', team.id)
+            );
+            const schedulesSnapshot = await getDocs(schedulesQuery);
+            const schedules = [];
+            schedulesSnapshot.forEach(doc => {
+                schedules.push({ id: doc.id, ...doc.data() });
+            });
+            
             // Get guide name
             let guideName = team.guideName || 'Not assigned';
             if (team.guideId) {
@@ -16093,6 +17338,7 @@ const app = {
                                 task: b.task || '',
                                 acceptanceCriteria: b.acceptanceCriteria || '',
                                 priority: b.priority || 'medium',
+                                difficulty: b.difficulty || 'medium',
                                 status: b.approved ? 'Approved' : (b.rejected ? 'Rejected' : 'Pending')
                             }))
                     }));
@@ -16148,7 +17394,31 @@ const app = {
                     acceptanceCriteria: b.acceptanceCriteria || '',
                     priority: b.priority || 'medium',
                     status: b.approved ? 'Approved' : (b.rejected ? 'Rejected' : 'Pending')
-                }))
+                })),
+                cardSortingModules: modules.map(m => ({
+                    id: m.id,
+                    name: m.name || '',
+                    description: m.description || '',
+                    backlogs: (backlogsByModule[m.id] || []).map(b => ({
+                        id: b.id,
+                        task: b.task || '',
+                        priority: b.priority || 'medium',
+                        difficulty: b.difficulty || 'medium',
+                        acceptanceCriteria: b.acceptanceCriteria || ''
+                    }))
+                })),
+                schedules: schedules.map(s => {
+                    const startDate = s.startDate?.toDate ? s.startDate.toDate() : new Date(s.startDate);
+                    const endDate = s.endDate?.toDate ? s.endDate.toDate() : new Date(s.endDate);
+                    return {
+                        id: s.id,
+                        moduleId: s.moduleId || null,
+                        backlogId: s.backlogId || null,
+                        startDate: startDate,
+                        endDate: endDate,
+                        duration: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+                    };
+                })
             };
         } catch (error) {
             console.error('Error collecting project data:', error);
@@ -16168,6 +17438,14 @@ const app = {
             }
             
             const data = await this.collectProjectData();
+            
+            // Debug: Log collected data
+            console.log('Collected data for PPT:', {
+                cardSortingModules: data.cardSortingModules?.length || 0,
+                schedules: data.schedules?.length || 0,
+                cardSortingModulesData: data.cardSortingModules,
+                schedulesData: data.schedules
+            });
             
             // Create new presentation with modern theme
             const pptx = new PptxGenJS();
@@ -16550,68 +17828,24 @@ const app = {
             // Hierarchical structure: Users -> User Stories -> Product Backlogs
             if (data.usersWithStories && data.usersWithStories.length > 0) {
                 data.usersWithStories.forEach((userData, userIndex) => {
-                    // User slide with modern styling
-                    const userSlide = pptx.addSlide();
-                    userSlide.background = { color: colors.light };
-                    userSlide.addShape(pptx.ShapeType.rect, {
-                        x: 0,
-                        y: 0,
-                        w: 10,
-                        h: 0.6,
-                        fill: { color: colors.secondary },
-                        line: { color: colors.secondary, width: 0 }
-                    });
-                    userSlide.addText(`User ${userIndex + 1}: ${userData.name}`, {
+                    // User introduction slide - centered, as a transition
+                    const userIntroSlide = pptx.addSlide();
+                    userIntroSlide.background = { color: colors.primary };
+                    userIntroSlide.addText(userData.name, {
                         x: 0.5,
-                        y: 0.1,
+                        y: 2.5,
                         w: 9,
-                        h: 0.4,
-                        fontSize: 32,
+                        h: 1.5,
+                        fontSize: 48,
                         bold: true,
+                        align: 'center',
+                        valign: 'middle',
                         color: 'FFFFFF',
                         fontFace: 'Arial'
                     });
                     
-                    let userY = 1;
-                    if (userData.description) {
-                        userSlide.addText('Description:', {
-                            x: 0.5,
-                            y: userY,
-                            w: 9,
-                            h: 0.4,
-                            fontSize: 18,
-                            bold: true,
-                            color: colors.text,
-                            fontFace: 'Arial'
-                        });
-                        userY += 0.5;
-                        userSlide.addText(userData.description, {
-                            x: 0.8,
-                            y: userY,
-                            w: 8.5,
-                            h: 0.8,
-                            fontSize: 16,
-                            color: colors.textLight,
-                            fontFace: 'Arial'
-                        });
-                        userY += 1;
-                    }
-                    
                     // User Stories for this user - each story starts on a fresh slide
                     if (userData.userStories && userData.userStories.length > 0) {
-                        // Add header only on first slide
-                        userSlide.addText('User Stories:', {
-                            x: 0.5,
-                            y: userY,
-                            w: 9,
-                            h: 0.4,
-                            fontSize: 20,
-                            bold: true,
-                            color: colors.primary,
-                            fontFace: 'Arial'
-                        });
-                        userY += 0.5;
-                        
                         // Each user story gets its own slide starting at the top
                         userData.userStories.forEach((story, storyIndex) => {
                             // Create a new slide for each user story - always start fresh at top
@@ -16744,8 +17978,15 @@ const app = {
                                 
                                 let currentBacklogSlide = storySlide;
                                 story.backlogs.forEach((backlog, backlogIndex) => {
-                                    // Check before adding each backlog item - if no space, create new slide
-                                    if (storyY > 5.0) {
+                                    // Calculate space needed for this backlog item
+                                    let itemHeight = 0.35; // Base height for task + badges (same line)
+                                    if (backlog.acceptanceCriteria) {
+                                        itemHeight += 0.3; // Additional space for criteria
+                                    }
+                                    itemHeight += 0.15; // Spacing after item
+                                    
+                                    // Check if item will fit - use more of the slide (up to 6.5 instead of 5.0)
+                                    if (storyY + itemHeight > 6.5) {
                                         // Create new slide for backlogs - start from top
                                         currentBacklogSlide = pptx.addSlide();
                                         currentBacklogSlide.background = { color: colors.light };
@@ -16770,30 +18011,81 @@ const app = {
                                         storyY = 1; // Start from top
                                     }
                                     
-                                    // Backlog item with indentation
-                                    currentBacklogSlide.addShape(pptx.ShapeType.roundRect, {
-                                        x: 1.2,
-                                        y: storyY,
-                                        w: 8.3,
-                                        h: 0.7,
-                                        fill: { color: 'F9FAFB' },
-                                        line: { color: colors.textLight, width: 1 },
-                                        rectRadius: 0.05
-                                    });
+                                    // Backlog item without surrounding box - just text with indentation
+                                    // Priority and difficulty badges on same line as task
+                                    const difficultyColors = {
+                                        easy: colors.accent,
+                                        medium: colors.secondary,
+                                        hard: colors.warning,
+                                        'very-hard': colors.danger
+                                    };
                                     
-                                    let backlogY = storyY + 0.1;
+                                    let backlogY = storyY;
+                                    let taskX = 1.2;
+                                    let taskWidth = 5.5; // Reduced width to make room for badges
+                                    
                                     if (backlog.task) {
                                         currentBacklogSlide.addText(`• ${backlog.task}`, {
-                                            x: 1.4,
+                                            x: taskX,
                                             y: backlogY,
-                                            w: 8,
+                                            w: taskWidth,
                                             h: 0.3,
                                             fontSize: 13,
                                             color: colors.text,
                                             fontFace: 'Arial'
                                         });
-                                        backlogY += 0.35;
                                     }
+                                    
+                                    // Place badges on the same line, after the task text
+                                    let badgeX = taskX + taskWidth + 0.2;
+                                    if (backlog.priority) {
+                                        currentBacklogSlide.addShape(pptx.ShapeType.roundRect, {
+                                            x: badgeX,
+                                            y: backlogY,
+                                            w: 1.2,
+                                            h: 0.25,
+                                            fill: { color: priorityColors[backlog.priority] || colors.secondary },
+                                            line: { color: priorityColors[backlog.priority] || colors.secondary, width: 0 },
+                                            rectRadius: 0.05
+                                        });
+                                        currentBacklogSlide.addText(backlog.priority.toUpperCase(), {
+                                            x: badgeX + 0.05,
+                                            y: backlogY + 0.03,
+                                            w: 1.1,
+                                            h: 0.19,
+                                            fontSize: 9,
+                                            bold: true,
+                                            color: 'FFFFFF',
+                                            fontFace: 'Arial'
+                                        });
+                                        badgeX += 1.4;
+                                    }
+                                    
+                                    if (backlog.difficulty) {
+                                        currentBacklogSlide.addShape(pptx.ShapeType.roundRect, {
+                                            x: badgeX,
+                                            y: backlogY,
+                                            w: 1.2,
+                                            h: 0.25,
+                                            fill: { color: difficultyColors[backlog.difficulty] || colors.secondary },
+                                            line: { color: difficultyColors[backlog.difficulty] || colors.secondary, width: 0 },
+                                            rectRadius: 0.05
+                                        });
+                                        const difficultyText = backlog.difficulty.replace('-', ' ').toUpperCase();
+                                        currentBacklogSlide.addText(difficultyText, {
+                                            x: badgeX + 0.05,
+                                            y: backlogY + 0.03,
+                                            w: 1.1,
+                                            h: 0.19,
+                                            fontSize: 9,
+                                            bold: true,
+                                            color: 'FFFFFF',
+                                            fontFace: 'Arial'
+                                        });
+                                    }
+                                    
+                                    backlogY += 0.35;
+                                    
                                     if (backlog.acceptanceCriteria) {
                                         currentBacklogSlide.addText(`  Criteria: ${backlog.acceptanceCriteria}`, {
                                             x: 1.4,
@@ -16808,13 +18100,292 @@ const app = {
                                         backlogY += 0.3;
                                     }
                                     
-                                    storyY += 0.8;
+                                    storyY = backlogY + 0.15; // Reduced spacing between items
                                 });
                             }
                         });
                     }
                 });
             }
+            
+            // Card Sorting section - always show if modules exist
+            if (data.cardSortingModules && data.cardSortingModules.length > 0) {
+                const cardSortingSlide = pptx.addSlide();
+                cardSortingSlide.background = { color: colors.light };
+                cardSortingSlide.addShape(pptx.ShapeType.rect, {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 0.6,
+                    fill: { color: colors.warning },
+                    line: { color: colors.warning, width: 0 }
+                });
+                cardSortingSlide.addText('Card Sorting - Modules', {
+                    x: 0.5,
+                    y: 0.1,
+                    w: 9,
+                    h: 0.4,
+                    fontSize: 32,
+                    bold: true,
+                    color: 'FFFFFF',
+                    fontFace: 'Arial'
+                });
+                
+                let moduleY = 1;
+                let currentModuleSlide = cardSortingSlide;
+                
+                data.cardSortingModules.forEach((module, moduleIndex) => {
+                    if (moduleY > 5.5) {
+                        currentModuleSlide = pptx.addSlide();
+                        currentModuleSlide.background = { color: colors.light };
+                        currentModuleSlide.addShape(pptx.ShapeType.rect, {
+                            x: 0,
+                            y: 0,
+                            w: 10,
+                            h: 0.6,
+                            fill: { color: colors.warning },
+                            line: { color: colors.warning, width: 0 }
+                        });
+                        currentModuleSlide.addText('Card Sorting - Modules (continued)', {
+                            x: 0.5,
+                            y: 0.1,
+                            w: 9,
+                            h: 0.4,
+                            fontSize: 32,
+                            bold: true,
+                            color: 'FFFFFF',
+                            fontFace: 'Arial'
+                        });
+                        moduleY = 1;
+                    }
+                    
+                    // Module header
+                    currentModuleSlide.addShape(pptx.ShapeType.roundRect, {
+                        x: 0.5,
+                        y: moduleY,
+                        w: 9,
+                        h: 0.6,
+                        fill: { color: 'FFFFFF' },
+                        line: { color: colors.warning, width: 2 },
+                        rectRadius: 0.1
+                    });
+                    currentModuleSlide.addText(`${moduleIndex + 1}. ${module.name}`, {
+                        x: 0.6,
+                        y: moduleY + 0.1,
+                        w: 8.8,
+                        h: 0.4,
+                        fontSize: 22,
+                        bold: true,
+                        color: colors.text,
+                        fontFace: 'Arial'
+                    });
+                    moduleY += 0.7;
+                    
+                    if (module.description) {
+                        currentModuleSlide.addText(module.description, {
+                            x: 0.8,
+                            y: moduleY,
+                            w: 8.5,
+                            h: 0.4,
+                            fontSize: 14,
+                            color: colors.textLight,
+                            fontFace: 'Arial'
+                        });
+                        moduleY += 0.5;
+                    }
+                    
+                    // Tasks in module
+                    if (module.backlogs && module.backlogs.length > 0) {
+                        currentModuleSlide.addText(`Tasks (${module.backlogs.length}):`, {
+                            x: 0.8,
+                            y: moduleY,
+                            w: 8.5,
+                            h: 0.3,
+                            fontSize: 14,
+                            bold: true,
+                            color: colors.textLight,
+                            fontFace: 'Arial'
+                        });
+                        moduleY += 0.4;
+                        
+                        module.backlogs.forEach((backlog, backlogIndex) => {
+                            if (moduleY > 5.5) {
+                                currentModuleSlide = pptx.addSlide();
+                                currentModuleSlide.background = { color: colors.light };
+                                currentModuleSlide.addShape(pptx.ShapeType.rect, {
+                                    x: 0,
+                                    y: 0,
+                                    w: 10,
+                                    h: 0.6,
+                                    fill: { color: colors.warning },
+                                    line: { color: colors.warning, width: 0 }
+                                });
+                                currentModuleSlide.addText(`${module.name} - Tasks (continued)`, {
+                                    x: 0.5,
+                                    y: 0.1,
+                                    w: 9,
+                                    h: 0.4,
+                                    fontSize: 28,
+                                    bold: true,
+                                    color: 'FFFFFF',
+                                    fontFace: 'Arial'
+                                });
+                                moduleY = 1;
+                            }
+                            
+                            currentModuleSlide.addShape(pptx.ShapeType.roundRect, {
+                                x: 1.2,
+                                y: moduleY,
+                                w: 8.3,
+                                h: 0.5,
+                                fill: { color: 'F9FAFB' },
+                                line: { color: colors.textLight, width: 1 },
+                                rectRadius: 0.05
+                            });
+                            currentModuleSlide.addText(`• ${backlog.task}`, {
+                                x: 1.4,
+                                y: moduleY + 0.1,
+                                w: 8,
+                                h: 0.3,
+                                fontSize: 12,
+                                color: colors.text,
+                                fontFace: 'Arial'
+                            });
+                            moduleY += 0.6;
+                        });
+                    }
+                    
+                    moduleY += 0.3;
+                });
+            }
+            
+            // Schedule section
+            if (data.schedules && data.schedules.length > 0) {
+                const scheduleSlide = pptx.addSlide();
+                scheduleSlide.background = { color: colors.light };
+                scheduleSlide.addShape(pptx.ShapeType.rect, {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 0.6,
+                    fill: { color: colors.accent },
+                    line: { color: colors.accent, width: 0 }
+                });
+                scheduleSlide.addText('Project Schedule', {
+                    x: 0.5,
+                    y: 0.1,
+                    w: 9,
+                    h: 0.4,
+                    fontSize: 32,
+                    bold: true,
+                    color: 'FFFFFF',
+                    fontFace: 'Arial'
+                });
+                
+                let scheduleY = 1;
+                let currentScheduleSlide = scheduleSlide;
+                
+                data.schedules.forEach((schedule, scheduleIndex) => {
+                    if (scheduleY > 5.5) {
+                        currentScheduleSlide = pptx.addSlide();
+                        currentScheduleSlide.background = { color: colors.light };
+                        currentScheduleSlide.addShape(pptx.ShapeType.rect, {
+                            x: 0,
+                            y: 0,
+                            w: 10,
+                            h: 0.6,
+                            fill: { color: colors.accent },
+                            line: { color: colors.accent, width: 0 }
+                        });
+                        currentScheduleSlide.addText('Project Schedule (continued)', {
+                            x: 0.5,
+                            y: 0.1,
+                            w: 9,
+                            h: 0.4,
+                            fontSize: 32,
+                            bold: true,
+                            color: 'FFFFFF',
+                            fontFace: 'Arial'
+                        });
+                        scheduleY = 1;
+                    }
+                    
+                    // Find module or backlog name
+                    let scheduleName = '';
+                    if (schedule.moduleId) {
+                        const module = data.cardSortingModules.find(m => m.id === schedule.moduleId);
+                        scheduleName = module ? `${module.name} (Module)` : 'Module';
+                    } else if (schedule.backlogId) {
+                        const backlog = data.productBacklogs.find(b => b.id === schedule.backlogId);
+                        scheduleName = backlog ? backlog.task : 'Task';
+                    }
+                    
+                    currentScheduleSlide.addShape(pptx.ShapeType.roundRect, {
+                        x: 0.5,
+                        y: scheduleY,
+                        w: 9,
+                        h: 0.8,
+                        fill: { color: 'FFFFFF' },
+                        line: { color: colors.accent, width: 2 },
+                        rectRadius: 0.1
+                    });
+                    
+                    currentScheduleSlide.addText(scheduleName, {
+                        x: 0.6,
+                        y: scheduleY + 0.1,
+                        w: 8.8,
+                        h: 0.3,
+                        fontSize: 18,
+                        bold: true,
+                        color: colors.text,
+                        fontFace: 'Arial'
+                    });
+                    
+                    const startDateStr = schedule.startDate && typeof schedule.startDate.toLocaleDateString === 'function' 
+                        ? schedule.startDate.toLocaleDateString() 
+                        : (schedule.startDate ? new Date(schedule.startDate).toLocaleDateString() : 'N/A');
+                    const endDateStr = schedule.endDate && typeof schedule.endDate.toLocaleDateString === 'function' 
+                        ? schedule.endDate.toLocaleDateString() 
+                        : (schedule.endDate ? new Date(schedule.endDate).toLocaleDateString() : 'N/A');
+                    const scheduleDetails = `Start: ${startDateStr} | End: ${endDateStr} | Duration: ${schedule.duration || 0} day(s)`;
+                    currentScheduleSlide.addText(scheduleDetails, {
+                        x: 0.6,
+                        y: scheduleY + 0.45,
+                        w: 8.8,
+                        h: 0.25,
+                        fontSize: 14,
+                        color: colors.textLight,
+                        fontFace: 'Arial'
+                    });
+                    
+                    scheduleY += 1;
+                });
+            }
+            
+            // Thank you slide
+            const thankYouSlide = pptx.addSlide();
+            thankYouSlide.background = { color: colors.primary };
+            thankYouSlide.addText('Thank You', {
+                x: 0.5,
+                y: 2.5,
+                w: 9,
+                h: 1,
+                fontSize: 56,
+                bold: true,
+                align: 'center',
+                color: 'FFFFFF',
+                fontFace: 'Arial'
+            });
+            thankYouSlide.addText('For Your Attention', {
+                x: 0.5,
+                y: 3.8,
+                w: 9,
+                h: 0.6,
+                fontSize: 28,
+                align: 'center',
+                color: 'E5E7EB',
+                fontFace: 'Arial'
+            });
             
             // Save presentation
             const fileName = `${data.team.name.replace(/[^a-z0-9]/gi, '_')}_Project_Documentation_${new Date().toISOString().split('T')[0]}.pptx`;

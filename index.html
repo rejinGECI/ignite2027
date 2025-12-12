@@ -770,6 +770,38 @@ Bob Johnson,GHI789</pre>
                             </button>
                         </div>
                     </div>
+                    
+                    <div class="admin-card">
+                        <h3><i class="fas fa-calendar-check"></i> Important Dates for Schedule</h3>
+                        <p>Configure important dates that will be displayed to students in the schedule view. These dates help students track key milestones and deadlines.</p>
+                        
+                        <div id="important-dates-list" style="margin-bottom: 1.5rem;">
+                            <!-- Important dates will be dynamically added here -->
+                        </div>
+                        
+                        <div style="padding: 1rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h4 style="margin: 0 0 1rem 0; font-size: 1rem;">Add New Important Date</h4>
+                            
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="new-important-date-name">Date Name *</label>
+                                <input type="text" id="new-important-date-name" class="form-input" placeholder="e.g., Mid-term Review, Final Submission, Project Demo">
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="new-important-date">Date *</label>
+                                <input type="date" id="new-important-date" class="form-input" required>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="new-important-date-description">Description (Optional)</label>
+                                <textarea id="new-important-date-description" class="form-input" rows="2" placeholder="Additional details about this date..."></textarea>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" onclick="app.addImportantDate()">
+                                <i class="fas fa-plus"></i> Add Important Date
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -1268,8 +1300,16 @@ Bob Johnson,GHI789</pre>
                         <!-- Schedule Tab -->
                         <div id="schedule-tab" class="admin-tab-content">
                             <div class="project-planning-section">
+                                <div id="schedule-submission-status" style="margin-bottom: 1rem;"></div>
+                                
                                 <div id="schedule-content">
                                     <p class="empty-state">Loading schedule...</p>
+                                </div>
+                                
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                    <button type="button" class="btn btn-success" id="submit-schedule-btn" onclick="app.submitScheduleForVerification()" style="display: none;">
+                                        <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1452,9 +1492,14 @@ Bob Johnson,GHI789</pre>
                     <!-- Schedule Tab -->
                     <div id="schedule-tab" class="admin-tab-content">
                         <div class="project-planning-section">
-                            <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
+                                <button type="button" class="btn btn-primary" onclick="app.showScheduleReportOptions()" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-file-download"></i> Schedule Report
+                                </button>
+                            </div>
                             <div id="schedule-content">
-                                <p class="empty-state">Schedule management coming soon...</p>
+                                <p class="empty-state">Loading schedule status...</p>
                             </div>
                         </div>
                     </div>
@@ -2347,6 +2392,69 @@ Bob Johnson,GHI789</pre>
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Schedule Verification Modal (Guide) -->
+    <div id="approve-schedule-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeApproveScheduleModal()">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh;">
+            <div class="modal-header">
+                <h2><i class="fas fa-calendar-check"></i> Review Schedule</h2>
+                <button type="button" class="modal-close" onclick="app.closeApproveScheduleModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="approve-schedule-content">
+                    <!-- Content will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="app.closeApproveScheduleModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="verify-schedule-btn" onclick="app.verifySchedule()">
+                    <i class="fas fa-check-double"></i> Verify Schedule
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Schedule Report Modal (Admin) -->
+    <div id="schedule-report-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeScheduleReportModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-calendar-alt"></i> Generate Schedule Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeScheduleReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="schedule-report-type">Select Report Type *</label>
+                    <select id="schedule-report-type" class="form-input" required>
+                        <option value="detailed">Detailed - Includes all schedule details</option>
+                        <option value="minimal">Minimal - Summary only, no schedule details</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="schedule-report-format">Select Report Format *</label>
+                    <select id="schedule-report-format" class="form-input" required>
+                        <option value="pdf">PDF - Recommended</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                        <option value="csv">CSV (Spreadsheet)</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                        <em>This will generate a report with schedule submission status and guide verification status for all teams.</em>
+                    </p>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeScheduleReportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateScheduleReportFromModal()">
+                        <i class="fas fa-file-download"></i> Generate Report
+                    </button>
+                </div>
             </div>
         </div>
     </div>
