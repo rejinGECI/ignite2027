@@ -13009,33 +13009,52 @@ const app = {
                 <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
             `;
             
-            // Unassigned module (if there are unassigned backlogs) - show first
-            if (unassignedBacklogs.length > 0) {
-                html += `
-                    <div class="module-column" data-module-id="unassigned" style="background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
-                            <h4 style="margin: 0; color: #6c757d; font-size: 1rem; font-weight: 600;">
-                                <i class="fas fa-inbox"></i> Unassigned
-                            </h4>
-                            <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
-                        </div>
-                        <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
-                `;
-                
-                unassignedBacklogs.forEach(backlog => {
-                    html += this.generateBacklogCard(backlog);
-                });
-                
-                html += `
-                        </div>
-                    </div>
-                `;
-            }
-            
             // Module columns - newest modules appear first in grid
             modules.forEach(module => {
                 const moduleBacklogs = backlogsByModule[module.id] || [];
                 const moduleColor = module.color || '#3b82f6';
+                
+                // Calculate priority score
+                const priorityScores = {
+                    critical: 4,
+                    high: 3,
+                    medium: 2,
+                    low: 1
+                };
+                
+                let totalPriorityScore = 0;
+                let priorityCount = 0;
+                moduleBacklogs.forEach(backlog => {
+                    const priority = (backlog.priority || 'medium').toLowerCase();
+                    if (priorityScores[priority]) {
+                        totalPriorityScore += priorityScores[priority];
+                        priorityCount++;
+                    }
+                });
+                const avgPriorityScore = priorityCount > 0 ? (totalPriorityScore / priorityCount).toFixed(1) : '0.0';
+                
+                // Calculate difficulty score
+                const difficultyScores = {
+                    'very-hard': 5,
+                    hard: 4,
+                    medium: 3,
+                    easy: 2
+                };
+                
+                let totalDifficultyScore = 0;
+                let difficultyCount = 0;
+                moduleBacklogs.forEach(backlog => {
+                    const difficulty = (backlog.difficulty || 'medium').toLowerCase();
+                    if (difficultyScores[difficulty]) {
+                        totalDifficultyScore += difficultyScores[difficulty];
+                        difficultyCount++;
+                    } else {
+                        // Default to medium if not found
+                        totalDifficultyScore += 3;
+                        difficultyCount++;
+                    }
+                });
+                const avgDifficultyScore = difficultyCount > 0 ? (totalDifficultyScore / difficultyCount).toFixed(1) : '0.0';
                 
                 html += `
                     <div class="module-column" data-module-id="${module.id}" style="background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
@@ -13056,6 +13075,19 @@ const app = {
                                 </button>
                             </div>
                         </div>
+                        ${moduleBacklogs.length > 0 ? `
+                        <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px; flex-shrink: 0;">
+                            <div style="flex: 1; text-align: center;">
+                                <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Priority Score</div>
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">${avgPriorityScore}</div>
+                            </div>
+                            <div style="width: 1px; background: #e5e7eb;"></div>
+                            <div style="flex: 1; text-align: center;">
+                                <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Difficulty Score</div>
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #8b5cf6;">${avgDifficultyScore}</div>
+                            </div>
+                        </div>
+                        ` : ''}
                         <div class="module-cards" data-module-id="${module.id}" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
                 `;
                 
