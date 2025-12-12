@@ -994,10 +994,6 @@ const app = {
             page.classList.add('active');
                 // Show loading animation
                 this.showPageLoader(pageId, true);
-                // Scroll to top of page
-                setTimeout(() => {
-                    window.scrollTo({ top: 0, behavior: 'instant' });
-                }, 0);
         }
         
         
@@ -1028,8 +1024,6 @@ const app = {
                 } else if (pageId === 'admin-settings') {
                     await this.loadAdminSettings();
                 } else if (pageId === 'admin-miniproject') {
-                    // Scroll to top
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
                     await this.loadGuidesList();
                     await this.loadProjectTeams();
                     await this.loadEvaluationStagesDropdown();
@@ -1069,14 +1063,6 @@ const app = {
                 // Hide loading animation after data is loaded (with small delay for smooth transition)
                 setTimeout(() => {
                     this.showPageLoader(pageId, false);
-                    // Ensure page is visible and scroll to top
-                    const activePage = document.getElementById(pageId);
-                    if (activePage && activePage.classList.contains('active')) {
-                        window.scrollTo({ top: 0, behavior: 'instant' });
-                        // Force layout recalculation
-                        activePage.style.display = 'block';
-                        activePage.offsetHeight; // Trigger reflow
-                    }
                 }, 100);
             } catch (error) {
                 console.error(`Error loading data for page ${pageId}:`, error);
@@ -3730,134 +3716,6 @@ const app = {
         
         // Load important dates
         await this.loadImportantDates();
-    },
-    
-    async loadImportantDates() {
-        try {
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const importantDates = settingsDoc.exists() ? (settingsDoc.data().importantDates || []) : [];
-            
-            const container = document.getElementById('important-dates-list');
-            if (!container) return;
-            
-            if (importantDates.length === 0) {
-                container.innerHTML = '<p style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 1rem;">No important dates added yet.</p>';
-                return;
-            }
-            
-            let html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
-            
-            importantDates.forEach((dateObj, index) => {
-                const date = dateObj.date?.toDate ? dateObj.date.toDate() : new Date(dateObj.date);
-                const dateStr = date.toISOString().split('T')[0];
-                const title = dateObj.title || 'Important Date';
-                
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #fef2f2; border: 2px solid #ef4444; border-radius: 6px;">
-                        <div>
-                            <div style="font-weight: 600; color: #ef4444; margin-bottom: 0.25rem;">
-                                <i class="fas fa-star"></i> ${this.escapeHtml(title)}
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                                ${date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            </div>
-                        </div>
-                        <button type="button" class="btn btn-sm" onclick="app.deleteImportantDate(${index})" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                `;
-            });
-            
-            html += '</div>';
-            container.innerHTML = html;
-        } catch (error) {
-            console.error('Error loading important dates:', error);
-        }
-    },
-    
-    async addImportantDate() {
-        const dateInput = document.getElementById('new-important-date');
-        const titleInput = document.getElementById('new-important-date-title');
-        
-        if (!dateInput || !titleInput) return;
-        
-        const dateValue = dateInput.value;
-        const title = titleInput.value.trim();
-        
-        if (!dateValue) {
-            alert('Please select a date.');
-            return;
-        }
-        
-        if (!title) {
-            alert('Please enter a title for the important date.');
-            return;
-        }
-        
-        try {
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const currentData = settingsDoc.exists() ? settingsDoc.data() : {};
-            const importantDates = currentData.importantDates || [];
-            
-            // Check if date already exists
-            const dateExists = importantDates.some(d => {
-                const existingDate = d.date?.toDate ? d.date.toDate().toISOString().split('T')[0] : d.date.split('T')[0];
-                return existingDate === dateValue;
-            });
-            
-            if (dateExists) {
-                alert('This date is already marked as important.');
-                return;
-            }
-            
-            // Convert date string to Timestamp
-            const dateObj = new Date(dateValue + 'T00:00:00');
-            const timestamp = dateObj;
-            
-            importantDates.push({
-                date: timestamp,
-                title: title
-            });
-            
-            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
-                ...currentData,
-                importantDates: importantDates
-            }, { merge: true });
-            
-            dateInput.value = '';
-            titleInput.value = '';
-            
-            await this.loadImportantDates();
-            alert('Important date added successfully!');
-        } catch (error) {
-            console.error('Error adding important date:', error);
-            alert('Error adding important date. Please try again.');
-        }
-    },
-    
-    async deleteImportantDate(index) {
-        if (!confirm('Are you sure you want to delete this important date?')) {
-            return;
-        }
-        
-        try {
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const currentData = settingsDoc.exists() ? settingsDoc.data() : {};
-            const importantDates = currentData.importantDates || [];
-            
-            importantDates.splice(index, 1);
-            
-            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
-                ...currentData,
-                importantDates: importantDates
-            }, { merge: true });
-            
-            await this.loadImportantDates();
-        } catch (error) {
-            console.error('Error deleting important date:', error);
-            alert('Error deleting important date. Please try again.');
-        }
     },
     
     async loadTeamOrderSettings() {
@@ -13676,20 +13534,13 @@ const app = {
             const schedules = {};
             schedulesSnapshot.forEach(doc => {
                 const schedule = doc.data();
-                // Handle both Timestamp and string date formats
-                let dateKey;
-                if (schedule.scheduledDate?.toDate) {
-                    dateKey = schedule.scheduledDate.toDate().toISOString().split('T')[0];
-                } else if (schedule.scheduledDate) {
-                    // If it's already a string, use it directly
-                    dateKey = schedule.scheduledDate.split('T')[0];
-                } else {
-                    return; // Skip invalid dates
+                const dateKey = schedule.scheduledDate || (schedule.scheduledDate?.toDate ? schedule.scheduledDate.toDate().toISOString().split('T')[0] : null);
+                if (dateKey) {
+                    if (!schedules[dateKey]) {
+                        schedules[dateKey] = [];
+                    }
+                    schedules[dateKey].push({ id: doc.id, ...schedule });
                 }
-                if (!schedules[dateKey]) {
-                    schedules[dateKey] = [];
-                }
-                schedules[dateKey].push({ id: doc.id, ...schedule });
             });
             
             // Load important dates from settings
@@ -13723,48 +13574,48 @@ const app = {
         const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
         const todayDate = isCurrentMonth ? today.getDate() : null;
         
-            // Convert important dates to a map for quick lookup
-            const importantDatesMap = {};
-            importantDates.forEach(dateObj => {
-                if (dateObj.date) {
-                    let date;
-                    if (dateObj.date.toDate) {
-                        date = dateObj.date.toDate();
-                    } else if (dateObj.date instanceof Date) {
-                        date = dateObj.date;
-                    } else {
-                        date = new Date(dateObj.date);
-                    }
-                    const dateKey = date.toISOString().split('T')[0];
-                    importantDatesMap[dateKey] = dateObj;
+        // Convert important dates to a map for quick lookup
+        const importantDatesMap = {};
+        importantDates.forEach(dateObj => {
+            if (dateObj.date) {
+                let date;
+                if (dateObj.date.toDate) {
+                    date = dateObj.date.toDate();
+                } else if (dateObj.date instanceof Date) {
+                    date = dateObj.date;
+                } else {
+                    date = new Date(dateObj.date);
                 }
-            });
+                const dateKey = date.toISOString().split('T')[0];
+                importantDatesMap[dateKey] = dateObj;
+            }
+        });
         
         let html = `
-            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden;">
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                 <div style="text-align: center; margin-bottom: 2rem;">
                     <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem;">
                         ${monthNames[month]} ${year}
                     </h2>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; margin-bottom: 1rem;">
         `;
         
         // Day headers
         dayNames.forEach(day => {
             html += `
-                <div style="text-align: center; padding: 0.75rem; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem; min-width: 0;">
+                <div style="text-align: center; padding: 0.75rem; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem;">
                     ${day}
                 </div>
             `;
         });
         
-        html += '</div><div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; width: 100%; max-width: 100%; box-sizing: border-box;">';
+        html += '</div><div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem;">';
         
         // Empty cells for days before month starts
         for (let i = 0; i < firstDay; i++) {
-            html += '<div style="min-height: 100px; min-width: 0;"></div>';
+            html += '<div style="min-height: 100px;"></div>';
         }
         
         // Calendar days
@@ -13779,7 +13630,7 @@ const app = {
                 <div class="calendar-day" data-date="${dateKey}" 
                      style="min-height: 100px; border: 2px solid ${isToday ? '#3b82f6' : (isImportantDate ? '#ef4444' : '#e5e7eb')}; 
                             border-radius: 8px; padding: 0.5rem; background: ${isToday ? '#eff6ff' : (isImportantDate ? '#fef2f2' : 'white')}; 
-                            cursor: pointer; transition: all 0.2s; position: relative; min-width: 0; overflow: hidden; word-wrap: break-word;"
+                            cursor: pointer; transition: all 0.2s; position: relative;"
                      onclick="app.openScheduleModal('${dateKey}')"
                      onmouseenter="this.style.backgroundColor='${isToday ? '#dbeafe' : (isImportantDate ? '#fee2e2' : '#f8f9fa')}'"
                      onmouseleave="this.style.backgroundColor='${isToday ? '#eff6ff' : (isImportantDate ? '#fef2f2' : 'white')}'">
@@ -13795,18 +13646,7 @@ const app = {
                     </div>
                     ${daySchedules.length > 0 ? `
                         <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                            <i class="fas fa-tasks"></i> ${daySchedules.length} task${daySchedules.length > 1 ? 's' : ''}
-                        </div>
-                        <div style="margin-top: 0.25rem; display: flex; flex-direction: column; gap: 0.25rem;">
-                            ${daySchedules.slice(0, 2).map(schedule => {
-                                const backlogIds = schedule.backlogIds || [];
-                                return `
-                                    <div style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${backlogIds.length} task${backlogIds.length > 1 ? 's' : ''} scheduled">
-                                        ${backlogIds.length} task${backlogIds.length > 1 ? 's' : ''}
-                                    </div>
-                                `;
-                            }).join('')}
-                            ${daySchedules.length > 2 ? `<div style="font-size: 0.65rem; color: var(--text-secondary);">+${daySchedules.length - 2} more</div>` : ''}
+                            <i class="fas fa-tasks"></i> ${daySchedules.reduce((sum, s) => sum + (s.backlogIds?.length || 0), 0)} task${daySchedules.reduce((sum, s) => sum + (s.backlogIds?.length || 0), 0) > 1 ? 's' : ''}
                         </div>
                     ` : `
                         <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 0.5rem; font-style: italic;">
@@ -13818,83 +13658,6 @@ const app = {
         }
         
         html += '</div></div>';
-        
-        // Add modules and backlogs selection panel
-        html += `
-            <div style="margin-top: 2rem; background: #f8f9fa; border-radius: 12px; padding: 1.5rem; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <h4 style="margin: 0 0 1rem 0; color: var(--text-primary);">
-                    <i class="fas fa-list"></i> Available Product Backlogs by Module
-                </h4>
-                <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
-        `;
-        
-        modules.forEach(module => {
-            const moduleBacklogs = backlogsByModule[module.id] || [];
-            if (moduleBacklogs.length === 0) return;
-            
-            const moduleColor = module.color || '#3b82f6';
-            
-            html += `
-                <div style="background: white; border-radius: 8px; padding: 1rem; border: 2px solid ${moduleColor};">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                        <h5 style="margin: 0; color: ${moduleColor}; font-size: 0.95rem; font-weight: 600;">
-                            <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
-                        </h5>
-                        <span style="background: ${moduleColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${moduleBacklogs.length}</span>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 200px; overflow-y: auto;">
-            `;
-            
-            moduleBacklogs.forEach(backlog => {
-                const priorityColors = {
-                    low: '#6b7280',
-                    medium: '#3b82f6',
-                    high: '#f59e0b',
-                    critical: '#ef4444'
-                };
-                const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
-                
-                // Check if already scheduled
-                let isScheduled = false;
-                let scheduledDate = null;
-                Object.keys(schedules).forEach(dateKey => {
-                    schedules[dateKey].forEach(schedule => {
-                        if (schedule.backlogIds && schedule.backlogIds.includes(backlog.id)) {
-                            isScheduled = true;
-                            scheduledDate = dateKey;
-                        }
-                    });
-                });
-                
-                html += `
-                    <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: ${isScheduled ? '#f0fdf4' : '#f8f9fa'}; border-radius: 6px; cursor: pointer; border: 1px solid ${isScheduled ? '#10b981' : 'transparent'};">
-                        <input type="checkbox" class="schedule-backlog-checkbox" data-backlog-id="${backlog.id}" data-module-id="${module.id}" 
-                               ${isScheduled ? 'checked disabled' : ''} 
-                               onchange="app.toggleBacklogSelection('${backlog.id}')">
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                                <span style="background: ${priorityColor}15; color: ${priorityColor}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">${(backlog.priority || 'medium').toUpperCase()}</span>
-                                ${isScheduled ? `<span style="color: #10b981; font-size: 0.7rem;"><i class="fas fa-calendar-check"></i> Scheduled: ${scheduledDate}</span>` : ''}
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 500;">${this.escapeHtml(backlog.task || 'No task')}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                <i class="fas fa-user"></i> ${this.escapeHtml(backlog.userName || 'Unknown')}
-                            </div>
-                        </div>
-                    </label>
-                `;
-            });
-            
-            html += `
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += `
-                </div>
-            </div>
-        `;
         
         container.innerHTML = html;
     },
@@ -14022,13 +13785,7 @@ const app = {
             const scheduledBacklogIds = new Set();
             schedulesSnapshot.forEach(doc => {
                 const schedule = doc.data();
-                // Check if this schedule is for the selected date
-                let dateKey;
-                if (schedule.scheduledDate?.toDate) {
-                    dateKey = schedule.scheduledDate.toDate().toISOString().split('T')[0];
-                } else if (schedule.scheduledDate) {
-                    dateKey = schedule.scheduledDate.split('T')[0];
-                }
+                const dateKey = schedule.scheduledDate || (schedule.scheduledDate?.toDate ? schedule.scheduledDate.toDate().toISOString().split('T')[0] : null);
                 
                 if (dateKey === this.selectedScheduleDate && schedule.backlogIds) {
                     schedule.backlogIds.forEach(id => scheduledBacklogIds.add(id));
@@ -14170,12 +13927,7 @@ const app = {
             let existingDoc = null;
             existingSnapshot.forEach(doc => {
                 const schedule = doc.data();
-                let dateKey;
-                if (schedule.scheduledDate?.toDate) {
-                    dateKey = schedule.scheduledDate.toDate().toISOString().split('T')[0];
-                } else if (schedule.scheduledDate) {
-                    dateKey = schedule.scheduledDate.split('T')[0];
-                }
+                const dateKey = schedule.scheduledDate || (schedule.scheduledDate?.toDate ? schedule.scheduledDate.toDate().toISOString().split('T')[0] : null);
                 
                 if (dateKey === scheduledDate) {
                     existingDoc = doc;
@@ -14196,10 +13948,10 @@ const app = {
                     updatedBy: this.currentUser.uid
                 });
             } else {
-                // Create new schedule - store as string for easier querying
+                // Create new schedule
                 await setDoc(doc(collection(window.firebaseDb, 'productBacklogSchedules')), {
                     teamId: team.id,
-                    scheduledDate: scheduledDate, // Store as string (YYYY-MM-DD format)
+                    scheduledDate: scheduledDate,
                     backlogIds: this.selectedBacklogsForSchedule,
                     createdAt: serverTimestamp(),
                     createdBy: this.currentUser.uid
@@ -14212,6 +13964,148 @@ const app = {
         } catch (error) {
             console.error('Error saving schedule:', error);
             alert('Error saving schedule. Please try again.');
+        }
+    },
+    
+    // Important Dates Management (Admin)
+    async loadImportantDates() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const importantDates = settingsDoc.exists() ? (settingsDoc.data().importantDates || []) : [];
+            
+            const container = document.getElementById('important-dates-list');
+            if (!container) return;
+            
+            if (importantDates.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 1rem;">No important dates added yet.</p>';
+                return;
+            }
+            
+            let html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+            
+            importantDates.forEach((dateObj, index) => {
+                let date;
+                if (dateObj.date?.toDate) {
+                    date = dateObj.date.toDate();
+                } else if (dateObj.date instanceof Date) {
+                    date = dateObj.date;
+                } else {
+                    date = new Date(dateObj.date);
+                }
+                const dateStr = date.toISOString().split('T')[0];
+                const title = dateObj.title || 'Important Date';
+                
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #fef2f2; border: 2px solid #ef4444; border-radius: 6px;">
+                        <div>
+                            <div style="font-weight: 600; color: #ef4444; margin-bottom: 0.25rem;">
+                                <i class="fas fa-star"></i> ${this.escapeHtml(title)}
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                ${date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm" onclick="app.deleteImportantDate(${index})" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading important dates:', error);
+        }
+    },
+    
+    async addImportantDate() {
+        const dateInput = document.getElementById('new-important-date');
+        const titleInput = document.getElementById('new-important-date-title');
+        
+        if (!dateInput || !titleInput) return;
+        
+        const dateValue = dateInput.value;
+        const title = titleInput.value.trim();
+        
+        if (!dateValue) {
+            alert('Please select a date.');
+            return;
+        }
+        
+        if (!title) {
+            alert('Please enter a title for the important date.');
+            return;
+        }
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const currentData = settingsDoc.exists() ? settingsDoc.data() : {};
+            const importantDates = currentData.importantDates || [];
+            
+            // Check if date already exists
+            const dateExists = importantDates.some(d => {
+                let existingDate;
+                if (d.date?.toDate) {
+                    existingDate = d.date.toDate().toISOString().split('T')[0];
+                } else if (d.date instanceof Date) {
+                    existingDate = d.date.toISOString().split('T')[0];
+                } else {
+                    existingDate = new Date(d.date).toISOString().split('T')[0];
+                }
+                return existingDate === dateValue;
+            });
+            
+            if (dateExists) {
+                alert('This date is already marked as important.');
+                return;
+            }
+            
+            // Convert date string to Timestamp
+            const dateObj = new Date(dateValue + 'T00:00:00');
+            
+            importantDates.push({
+                date: dateObj,
+                title: title
+            });
+            
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                ...currentData,
+                importantDates: importantDates
+            }, { merge: true });
+            
+            dateInput.value = '';
+            titleInput.value = '';
+            
+            await this.loadImportantDates();
+            alert('Important date added successfully!');
+        } catch (error) {
+            console.error('Error adding important date:', error);
+            alert('Error adding important date. Please try again.');
+        }
+    },
+    
+    async deleteImportantDate(index) {
+        if (!confirm('Are you sure you want to delete this important date?')) {
+            return;
+        }
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const currentData = settingsDoc.exists() ? settingsDoc.data() : {};
+            const importantDates = currentData.importantDates || [];
+            
+            importantDates.splice(index, 1);
+            
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                ...currentData,
+                importantDates: importantDates
+            }, { merge: true });
+            
+            await this.loadImportantDates();
+        } catch (error) {
+            console.error('Error deleting important date:', error);
+            alert('Error deleting important date. Please try again.');
         }
     },
     
