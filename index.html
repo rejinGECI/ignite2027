@@ -1181,9 +1181,47 @@ Bob Johnson,GHI789</pre>
                         <!-- Card Sorting Tab -->
                         <div id="card-sorting-tab" class="admin-tab-content">
                             <div class="project-planning-section">
-                                <h3><i class="fas fa-sort"></i> Card Sorting</h3>
-                                <div id="card-sorting-content">
-                                    <p class="empty-state">Card sorting management coming soon...</p>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                                    <h3 style="margin: 0;"><i class="fas fa-sort"></i> Card Sorting</h3>
+                                    <button type="button" class="btn btn-primary" onclick="app.showAddModuleModal()">
+                                        <i class="fas fa-plus"></i> Add Module
+                                    </button>
+                                </div>
+                                
+                                <div id="card-sorting-content" style="min-height: 400px;">
+                                    <p class="empty-state">Loading card sorting board...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Add/Edit Module Modal -->
+                        <div id="add-module-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeAddModuleModal()">
+                            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+                                <div class="modal-header">
+                                    <h2 id="add-module-modal-title"><i class="fas fa-layer-group"></i> Add Module</h2>
+                                    <button type="button" class="modal-close" onclick="app.closeAddModuleModal()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label for="module-name">Module Name:</label>
+                                        <input type="text" id="module-name" placeholder="e.g., Authentication, Dashboard, API Integration" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="module-description">Description (optional):</label>
+                                        <textarea id="module-description" placeholder="Brief description of this module..." rows="3"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="module-color">Color:</label>
+                                        <input type="color" id="module-color" value="#3b82f6" style="width: 100%; height: 40px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer;">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="app.closeAddModuleModal()">Cancel</button>
+                                    <button type="button" class="btn btn-primary" onclick="app.saveModule()">
+                                        <i class="fas fa-save"></i> Save Module
+                                    </button>
                                 </div>
                             </div>
                         </div>

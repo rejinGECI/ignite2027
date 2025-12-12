@@ -3002,19 +3002,19 @@ const app = {
                 return !teamNameLower.includes('test');
             });
             
-            // Sort by team name
-            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            // Sort by team order settings
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(filteredTeamsStatus);
             
-            if (filteredTeamsStatus.length === 0) {
+            if (sortedTeamsStatus.length === 0) {
                 container.innerHTML = '<p class="empty-state">No teams found.</p>';
                 return;
             }
             
             // Calculate summary statistics
-            const totalTeams = filteredTeamsStatus.length;
-            const teamsWithStories = filteredTeamsStatus.filter(t => t.storiesCount > 0).length;
-            const teamsSubmitted = filteredTeamsStatus.filter(t => t.isSubmitted).length;
-            const teamsVerified = filteredTeamsStatus.filter(t => t.isVerified).length;
+            const totalTeams = sortedTeamsStatus.length;
+            const teamsWithStories = sortedTeamsStatus.filter(t => t.storiesCount > 0).length;
+            const teamsSubmitted = sortedTeamsStatus.filter(t => t.isSubmitted).length;
+            const teamsVerified = sortedTeamsStatus.filter(t => t.isVerified).length;
             
             container.innerHTML = `
                 <div style="margin-bottom: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
@@ -3048,7 +3048,7 @@ const app = {
                             </tr>
                         </thead>
                         <tbody>
-                            ${filteredTeamsStatus.map((team, index) => {
+                            ${sortedTeamsStatus.map((team, index) => {
                                 let submissionBadge = '';
                                 let verificationBadge = '';
                                 
@@ -3961,6 +3961,54 @@ const app = {
         return teams.sort((a, b) => {
             const nameA = (a.groupName || 'Unnamed Team').trim().toLowerCase();
             const nameB = (b.groupName || 'Unnamed Team').trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    },
+    
+    // Apply team order to report-style teams (with teamId and teamName)
+    async applyTeamOrderToReports(teamsStatus) {
+        const orderSettings = await this.getTeamOrderSettings();
+        
+        if (orderSettings.orderType === 'alphabetical') {
+            // Sort alphabetically by team name
+            return teamsStatus.sort((a, b) => {
+                const nameA = (a.teamName || 'Unnamed Team').trim().toLowerCase();
+                const nameB = (b.teamName || 'Unnamed Team').trim().toLowerCase();
+                if (nameA < nameB) return -1;
+                if (nameA > nameB) return 1;
+                return 0;
+            });
+        } else if (orderSettings.orderType === 'custom' && orderSettings.customOrder.length > 0) {
+            // Apply custom order
+            const orderedTeams = [];
+            const teamMap = new Map(teamsStatus.map(t => [t.teamId, t]));
+            const addedIds = new Set();
+            
+            // First add teams in saved custom order
+            orderSettings.customOrder.forEach(teamId => {
+                if (teamMap.has(teamId)) {
+                    orderedTeams.push(teamMap.get(teamId));
+                    addedIds.add(teamId);
+                }
+            });
+            
+            // Then add remaining teams alphabetically
+            const remainingTeams = teamsStatus
+                .filter(t => !addedIds.has(t.teamId))
+                .sort((a, b) => {
+                    const nameA = (a.teamName || 'Unnamed Team').trim().toLowerCase();
+                    const nameB = (b.teamName || 'Unnamed Team').trim().toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+            orderedTeams.push(...remainingTeams);
+            
+            return orderedTeams;
+        }
+        
+        // Default: alphabetical
+        return teamsStatus.sort((a, b) => {
+            const nameA = (a.teamName || 'Unnamed Team').trim().toLowerCase();
+            const nameB = (b.teamName || 'Unnamed Team').trim().toLowerCase();
             return nameA.localeCompare(nameB);
         });
     },
@@ -6493,19 +6541,19 @@ const app = {
                 return !teamNameLower.includes('test');
             });
             
-            // Sort by team name
-            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            // Sort by team order settings
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(filteredTeamsStatus);
             
             // Generate based on format
             if (format === 'csv') {
-                this.generateUserStoriesCSVReport(filteredTeamsStatus, reportType);
+                this.generateUserStoriesCSVReport(sortedTeamsStatus, reportType);
             } else if (format === 'json') {
-                this.generateUserStoriesJSONReport(filteredTeamsStatus, reportType);
+                this.generateUserStoriesJSONReport(sortedTeamsStatus, reportType);
             } else {
                 // For PDF/HTML/DOCX, generate HTML report
                 const reportContent = reportType === 'minimal' 
-                    ? this.generateUserStoriesMinimalReportContent(filteredTeamsStatus)
-                    : this.generateUserStoriesReportContent(filteredTeamsStatus);
+                    ? this.generateUserStoriesMinimalReportContent(sortedTeamsStatus)
+                    : this.generateUserStoriesReportContent(sortedTeamsStatus);
                 
                 const reportName = reportType === 'minimal' 
                     ? 'User Stories Status Report (Minimal)'
@@ -9644,6 +9692,8 @@ const app = {
         // Load data for the selected tab
         if (tabName === 'product-backlog') {
             await this.loadProductBacklog();
+        } else if (tabName === 'card-sorting') {
+            await this.loadCardSorting();
         }
     },
     
@@ -10729,9 +10779,9 @@ const app = {
                                     </button>
                                 ` : ''}
                                 ${pbVerified ? `
-                                    <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
-                                        <i class="fas fa-check-circle"></i> Backlog Verified
-                                    </span>
+                                    <button type="button" class="btn btn-success" onclick="app.showApproveProductBacklogModal('${team.id}')">
+                                        <i class="fas fa-redo"></i> Re-verify Backlog
+                                    </button>
                                 ` : pbSubmitted ? `
                                     <button type="button" class="btn btn-success" onclick="app.showApproveProductBacklogModal('${team.id}')">
                                         <i class="fas fa-clipboard-check"></i> Review Backlog
@@ -12465,11 +12515,49 @@ const app = {
             const planningData = planningDoc.exists() ? planningDoc.data() : null;
             const isVerified = planningData && planningData.productBacklogVerified === true;
             
-            // Show verify button when all items are reviewed (approved or rejected) and not yet verified
-            if (allReviewed && !isVerified) {
+            // Show verify button when all items are reviewed (approved or rejected)
+            // If verified, show as reverify button
+            if (allReviewed) {
                 verifyBtn.style.display = 'inline-flex';
+                if (isVerified) {
+                    verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify All Product Backlog';
+                    verifyBtn.className = 'btn btn-success';
+                } else {
+                    verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify All Product Backlog';
+                    verifyBtn.className = 'btn btn-primary';
+                }
             } else {
                 verifyBtn.style.display = 'none';
+            }
+            
+            // Add reverify message section if verified
+            if (isVerified && allReviewed) {
+                const verificationStatus = planningData.productBacklogVerificationStatus || {};
+                const verificationFeedback = verificationStatus.feedback || '';
+                
+                // Add reverify section at the end of content
+                const reverifySection = `
+                    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--border-color);">
+                        <div style="padding: 1rem; background: #d1fae5; border-radius: 6px; border-left: 4px solid #10b981; margin-bottom: 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Product Backlog Verified</strong>
+                            </div>
+                            <p style="margin: 0; color: #047857; font-size: 0.9rem;">
+                                All reviewed product backlog items have been verified. You can revoke approval of any item or approve/reject new items, then verify again.
+                            </p>
+                            ${verificationFeedback ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #a7f3d0;">
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: #065f46; margin-bottom: 0.25rem;">
+                                        Previous Verification Feedback:
+                                    </div>
+                                    <div style="font-size: 0.85rem; color: #047857; white-space: pre-wrap;">${this.escapeHtml(verificationFeedback)}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                content.innerHTML += reverifySection;
             }
             
             // Store teamId for approve/reject all functions
@@ -12780,6 +12868,454 @@ const app = {
         }
     },
     
+    // ========== CARD SORTING FUNCTIONS ==========
+    
+    async loadCardSorting() {
+        const container = document.getElementById('card-sorting-content');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<p class="empty-state">Loading card sorting board...</p>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort modules by order
+            modules.sort((a, b) => (a.order || 0) - (b.order || 0));
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            // Load users and stories for tags
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                stories.push(story);
+            });
+            
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = { id: doc.id, ...doc.data() };
+                const story = stories.find(s => s.id === backlog.userStoryId);
+                const user = users.find(u => u.id === backlog.userId);
+                backlog.story = story;
+                backlog.userName = user ? user.name : 'Unknown';
+                backlog.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                backlogs.push(backlog);
+            });
+            
+            // Load module assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Group backlogs by module
+            const backlogsByModule = {};
+            const unassignedBacklogs = [];
+            
+            backlogs.forEach(backlog => {
+                const moduleId = assignments[backlog.id];
+                if (moduleId) {
+                    if (!backlogsByModule[moduleId]) {
+                        backlogsByModule[moduleId] = [];
+                    }
+                    backlogsByModule[moduleId].push(backlog);
+                } else {
+                    unassignedBacklogs.push(backlog);
+                }
+            });
+            
+            // Build HTML
+            let html = '<div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; min-height: 500px;">';
+            
+            // Unassigned column
+            html += `
+                <div class="module-column" data-module-id="unassigned" style="min-width: 300px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h4 style="margin: 0; color: #6c757d; font-size: 1rem;">
+                            <i class="fas fa-inbox"></i> Unassigned
+                        </h4>
+                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
+                    </div>
+                    <div class="module-cards" data-module-id="unassigned" style="min-height: 400px;">
+            `;
+            
+            unassignedBacklogs.forEach(backlog => {
+                html += this.generateBacklogCard(backlog);
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            // Module columns
+            modules.forEach(module => {
+                const moduleBacklogs = backlogsByModule[module.id] || [];
+                const moduleColor = module.color || '#3b82f6';
+                
+                html += `
+                    <div class="module-column" data-module-id="${module.id}" style="min-width: 300px; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
+                                    <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
+                                </h4>
+                                ${module.description ? `<p style="margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.85rem;">${this.escapeHtml(module.description)}</p>` : ''}
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span style="background: ${moduleColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${moduleBacklogs.length}</span>
+                                <button type="button" class="btn btn-sm" onclick="app.editModule('${module.id}')" style="padding: 4px 8px; background: ${moduleColor}15; color: ${moduleColor}; border: none; border-radius: 4px; cursor: pointer;" title="Edit Module">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm" onclick="app.deleteModule('${module.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;" title="Delete Module">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="module-cards" data-module-id="${module.id}" style="min-height: 400px;">
+                `;
+                
+                moduleBacklogs.forEach(backlog => {
+                    html += this.generateBacklogCard(backlog);
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            
+            container.innerHTML = html;
+            
+            // Initialize drag and drop
+            this.initializeCardSortingDragDrop();
+            
+        } catch (error) {
+            console.error('Error loading card sorting:', error);
+            container.innerHTML = '<p class="error-message">Error loading card sorting board. Please try again.</p>';
+        }
+    },
+    
+    generateBacklogCard(backlog) {
+        const priorityColors = {
+            low: '#6b7280',
+            medium: '#3b82f6',
+            high: '#f59e0b',
+            critical: '#ef4444'
+        };
+        
+        const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
+        const storyText = backlog.storyText || 'Unknown Story';
+        const userName = backlog.userName || 'Unknown';
+        
+        return `
+            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: move; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-weight: 600; color: #111827; font-size: 0.9rem; line-height: 1.4;">${this.escapeHtml(backlog.task || 'No task')}</p>
+                    </div>
+                    <span style="background: ${priorityColor}15; color: ${priorityColor}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; margin-left: 0.5rem;">${(backlog.priority || 'medium').toUpperCase()}</span>
+                </div>
+                
+                ${backlog.acceptanceCriteria ? `
+                    <p style="margin: 0.5rem 0; color: #6b7280; font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(backlog.acceptanceCriteria)}</p>
+                ` : ''}
+                
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #f3f4f6;">
+                    <span style="background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 500;">
+                        <i class="fas fa-user"></i> ${this.escapeHtml(userName)}
+                    </span>
+                    <span style="background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.escapeHtml(storyText)}">
+                        <i class="fas fa-list-ul"></i> ${this.escapeHtml(storyText.length > 50 ? storyText.substring(0, 50) + '...' : storyText)}
+                    </span>
+                </div>
+            </div>
+        `;
+    },
+    
+    initializeCardSortingDragDrop() {
+        const cards = document.querySelectorAll('.backlog-card');
+        const columns = document.querySelectorAll('.module-cards');
+        
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', card.dataset.backlogId);
+                e.dataTransfer.effectAllowed = 'move';
+                card.style.opacity = '0.5';
+                card.style.transform = 'rotate(2deg)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+            });
+            
+            card.addEventListener('dragend', (e) => {
+                card.style.opacity = '1';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+            });
+            
+            // Add hover effect
+            card.addEventListener('mouseenter', () => {
+                if (!card.style.opacity || card.style.opacity === '1') {
+                    card.style.transform = 'translateY(-2px)';
+                    card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                if (!card.style.opacity || card.style.opacity === '1') {
+                    card.style.transform = '';
+                    card.style.boxShadow = '';
+                }
+            });
+        });
+        
+        columns.forEach(column => {
+            column.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                column.style.backgroundColor = '#f0f9ff';
+                column.style.borderTop = '3px solid #3b82f6';
+            });
+            
+            column.addEventListener('dragleave', (e) => {
+                // Only remove highlight if we're actually leaving the column
+                const rect = column.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    column.style.backgroundColor = '';
+                    column.style.borderTop = '';
+                }
+            });
+            
+            column.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                column.style.backgroundColor = '';
+                column.style.borderTop = '';
+                
+                const backlogId = e.dataTransfer.getData('text/plain');
+                const moduleId = column.dataset.moduleId === 'unassigned' ? null : column.dataset.moduleId;
+                
+                await this.assignBacklogToModule(backlogId, moduleId);
+            });
+        });
+    },
+    
+    async assignBacklogToModule(backlogId, moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Remove existing assignment
+            const existingQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('backlogId', '==', backlogId)
+            );
+            const existingSnapshot = await getDocs(existingQuery);
+            
+            const deletePromises = existingSnapshot.docs.map(doc => deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+            
+            // Create new assignment if moduleId is provided
+            if (moduleId) {
+                await setDoc(doc(collection(window.firebaseDb, 'cardSortingAssignments')), {
+                    teamId: team.id,
+                    backlogId: backlogId,
+                    moduleId: moduleId,
+                    assignedAt: serverTimestamp(),
+                    assignedBy: this.currentUser.uid
+                });
+            }
+            
+            // Reload the card sorting board
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error assigning backlog to module:', error);
+            alert('Error assigning card to module. Please try again.');
+        }
+    },
+    
+    showAddModuleModal(moduleId = null) {
+        const modal = document.getElementById('add-module-modal');
+        const title = document.getElementById('add-module-modal-title');
+        const nameInput = document.getElementById('module-name');
+        const descInput = document.getElementById('module-description');
+        const colorInput = document.getElementById('module-color');
+        
+        if (!modal) return;
+        
+        if (moduleId) {
+            // Edit mode - load module data
+            title.innerHTML = '<i class="fas fa-edit"></i> Edit Module';
+            this.currentEditingModuleId = moduleId;
+            
+            // Load module data
+            getDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId)).then(doc => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    nameInput.value = data.name || '';
+                    descInput.value = data.description || '';
+                    colorInput.value = data.color || '#3b82f6';
+                }
+            });
+        } else {
+            // Add mode
+            title.innerHTML = '<i class="fas fa-layer-group"></i> Add Module';
+            this.currentEditingModuleId = null;
+            nameInput.value = '';
+            descInput.value = '';
+            colorInput.value = '#3b82f6';
+        }
+        
+        modal.style.display = 'flex';
+    },
+    
+    closeAddModuleModal() {
+        const modal = document.getElementById('add-module-modal');
+        if (modal) modal.style.display = 'none';
+        this.currentEditingModuleId = null;
+    },
+    
+    async saveModule() {
+        const nameInput = document.getElementById('module-name');
+        const descInput = document.getElementById('module-description');
+        const colorInput = document.getElementById('module-color');
+        
+        if (!nameInput || !descInput || !colorInput) return;
+        
+        const name = nameInput.value.trim();
+        if (!name) {
+            alert('Please enter a module name.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            if (this.currentEditingModuleId) {
+                // Update existing module
+                await updateDoc(doc(window.firebaseDb, 'cardSortingModules', this.currentEditingModuleId), {
+                    name: name,
+                    description: descInput.value.trim(),
+                    color: colorInput.value,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                // Create new module
+                // Get max order
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', team.id)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                let maxOrder = 0;
+                modulesSnapshot.forEach(doc => {
+                    const order = doc.data().order || 0;
+                    if (order > maxOrder) maxOrder = order;
+                });
+                
+                await setDoc(doc(collection(window.firebaseDb, 'cardSortingModules')), {
+                    teamId: team.id,
+                    name: name,
+                    description: descInput.value.trim(),
+                    color: colorInput.value,
+                    order: maxOrder + 1,
+                    createdAt: serverTimestamp(),
+                    createdBy: this.currentUser.uid
+                });
+            }
+            
+            this.closeAddModuleModal();
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error saving module:', error);
+            alert('Error saving module. Please try again.');
+        }
+    },
+    
+    async editModule(moduleId) {
+        this.showAddModuleModal(moduleId);
+    },
+    
+    async deleteModule(moduleId) {
+        if (!confirm('Are you sure you want to delete this module? Cards in this module will be moved to Unassigned.')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Delete module
+            await deleteDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId));
+            
+            // Remove assignments for this module (cards will appear in unassigned)
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            
+            const deletePromises = assignmentsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+            
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error deleting module:', error);
+            alert('Error deleting module. Please try again.');
+        }
+    },
+    
     // ========== PRODUCT BACKLOG REPORT FUNCTIONS ==========
     
     showProductBacklogReportOptions() {
@@ -12946,19 +13482,19 @@ const app = {
                 return !teamNameLower.includes('test');
             });
             
-            // Sort by team name
-            filteredTeamsStatus.sort((a, b) => a.teamName.localeCompare(b.teamName));
+            // Sort by team order settings
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(filteredTeamsStatus);
             
             // Generate based on format
             if (format === 'csv') {
-                this.generateProductBacklogCSVReport(filteredTeamsStatus, reportType);
+                this.generateProductBacklogCSVReport(sortedTeamsStatus, reportType);
             } else if (format === 'json') {
-                this.generateProductBacklogJSONReport(filteredTeamsStatus, reportType);
+                this.generateProductBacklogJSONReport(sortedTeamsStatus, reportType);
             } else {
                 // For PDF/HTML/DOCX, generate HTML report
                 const reportContent = reportType === 'minimal' 
-                    ? this.generateProductBacklogMinimalReportContent(filteredTeamsStatus)
-                    : this.generateProductBacklogReportContent(filteredTeamsStatus);
+                    ? this.generateProductBacklogMinimalReportContent(sortedTeamsStatus)
+                    : this.generateProductBacklogReportContent(sortedTeamsStatus);
                 
                 const reportName = reportType === 'minimal' 
                     ? 'Product Backlog Status Report (Minimal)'
