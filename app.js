@@ -10644,7 +10644,7 @@ const app = {
                         // Match by guide name or email
                         matchesGuide = team.guideName === userName || 
                                       team.guideName === userEmail ||
-                                      team.guideName === guideEmail ||
+                                   team.guideName === guideEmail ||
                                       (team.guideEmail && (team.guideEmail === userEmail || team.guideEmail === guideEmail));
                     } else {
                         // Fallback: match by email if user doc doesn't exist
@@ -10701,10 +10701,22 @@ const app = {
                     backlogs.push({ id: doc.id, ...doc.data() });
                 });
                 
+                // Load card sorting modules
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', team.id)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                const modules = [];
+                modulesSnapshot.forEach(doc => {
+                    modules.push({ id: doc.id, ...doc.data() });
+                });
+                
                 team.planningData = planningData;
                 team.users = users;
                 team.stories = stories;
                 team.backlogs = backlogs;
+                team.modules = modules;
                 teams.push(team);
             }
             
@@ -10718,9 +10730,15 @@ const app = {
                 const isVerified = team.planningData && team.planningData.userStoriesVerified === true;
                 const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
                 const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
+                const csSubmitted = team.planningData && team.planningData.cardSortingSubmitted === true;
+                const csVerified = team.planningData && team.planningData.cardSortingVerified === true;
                 
-                // Show team if they have submitted user stories OR product backlog
-                if (!isSubmitted && !pbSubmitted) {
+                // Debug: Log modules for troubleshooting
+                // console.log(`Team ${team.groupName}: modules count = ${team.modules ? team.modules.length : 0}, csSubmitted = ${csSubmitted}, csVerified = ${csVerified}`);
+                
+                // Show team if they have submitted user stories OR product backlog OR card sorting
+                // OR if they have created modules (card sorting in progress)
+                if (!isSubmitted && !pbSubmitted && !csSubmitted && (!team.modules || team.modules.length === 0)) {
                     return `
                         <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
                             <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
@@ -10768,6 +10786,17 @@ const app = {
                                         ${pbRejectedCount > 0 ? `<span style="color: #ef4444;"><i class="fas fa-times-circle"></i> ${pbRejectedCount} PB Rejected</span>` : ''}
                                         ${pbPendingCount > 0 ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> ${pbPendingCount} PB Pending</span>` : ''}
                                     ` : ''}
+                                    ${csSubmitted || csVerified ? `
+                                        <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                            <i class="fas fa-sort"></i> Card Sorting
+                                        </span>
+                                        ${csVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
+                                        ${csSubmitted && !csVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
+                                    ` : (team.modules && Array.isArray(team.modules) && team.modules.length > 0) ? `
+                                        <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                            <i class="fas fa-sort"></i> Card Sorting (${team.modules.length} modules)
+                                        </span>
+                                    ` : ''}
                                 </div>
                             </div>
                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -10788,9 +10817,22 @@ const app = {
                                     <button type="button" class="btn btn-success" onclick="app.showApproveProductBacklogModal('${team.id}')">
                                         <i class="fas fa-clipboard-check"></i> Review Backlog
                                     </button>
-                                ` : team.backlogs && team.backlogs.length > 0 ? `
+                                ` : (team.backlogs && Array.isArray(team.backlogs) && team.backlogs.length > 0) ? `
                                     <span style="padding: 6px 12px; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
                                         <i class="fas fa-clock"></i> Backlog Not Submitted
+                                    </span>
+                                ` : ''}
+                                ${csVerified ? `
+                                    <button type="button" class="btn btn-info" onclick="app.showApproveCardSortingModal('${team.id}')">
+                                        <i class="fas fa-redo"></i> Re-verify Card Sorting
+                                    </button>
+                                ` : csSubmitted ? `
+                                    <button type="button" class="btn btn-info" onclick="app.showApproveCardSortingModal('${team.id}')">
+                                        <i class="fas fa-sort"></i> Review Card Sorting
+                                    </button>
+                                ` : (team.modules && Array.isArray(team.modules) && team.modules.length > 0) ? `
+                                    <span style="padding: 6px 12px; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
+                                        <i class="fas fa-clock"></i> Card Sorting Not Submitted
                                     </span>
                                 ` : ''}
                             </div>
@@ -11459,9 +11501,9 @@ const app = {
                                 Some items are still pending review. You can add more items or wait for guide review.
                             </p>
                         ` : `
-                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
-                                You can add more product backlog items. New items will need guide approval and re-verification.
-                            </p>
+                        <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
+                            You can add more product backlog items. New items will need guide approval and re-verification.
+                        </p>
                         `}
                     </div>
                 `;
@@ -12306,6 +12348,75 @@ const app = {
         }
     },
     
+    // Submit card sorting for verification
+    async submitCardSortingForVerification() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if button is disabled (should not happen if UI is correct, but double-check)
+            const submitBtn = document.getElementById('submit-card-sorting-btn');
+            if (submitBtn && submitBtn.disabled) {
+                alert('Please sort all cards before submitting. Some cards are still uncategorised.');
+                return;
+            }
+            
+            // Check if there are any modules with cards
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            
+            if (modulesSnapshot.empty) {
+                alert('Please create modules and assign cards before submitting.');
+                return;
+            }
+            
+            // Check if modules have assigned cards
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            
+            if (assignmentsSnapshot.empty) {
+                alert('Please assign cards to modules before submitting.');
+                return;
+            }
+            
+            // Check if all cards are sorted (no unassigned cards)
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const totalBacklogs = backlogSnapshot.size;
+            
+            if (assignmentsSnapshot.size < totalBacklogs) {
+                const unassignedCount = totalBacklogs - assignmentsSnapshot.size;
+                alert(`Please sort all cards before submitting. ${unassignedCount} card(s) are still uncategorised.`);
+                return;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                teamId: team.id,
+                cardSortingSubmitted: true,
+                cardSortingSubmittedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Card sorting submitted for verification successfully!');
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error submitting card sorting:', error);
+            alert('Error submitting card sorting. Please try again.');
+        }
+    },
+    
     // Show approve product backlog modal (guide)
     async showApproveProductBacklogModal(teamId) {
         const modal = document.getElementById('approve-product-backlog-modal');
@@ -12874,6 +12985,9 @@ const app = {
     
     async loadCardSorting() {
         const container = document.getElementById('card-sorting-content');
+        const statusContainer = document.getElementById('card-sorting-submission-status');
+        const submitBtn = document.getElementById('submit-card-sorting-btn');
+        
         if (!container) return;
         
         try {
@@ -12884,6 +12998,13 @@ const app = {
                 container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
                 return;
             }
+            
+            // Load submission status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.cardSortingSubmitted === true;
+            const isVerified = planningData && planningData.cardSortingVerified === true;
+            const verificationStatus = planningData ? planningData.cardSortingVerificationStatus : null;
             
             // Load modules
             const modulesQuery = query(
@@ -13123,6 +13244,69 @@ const app = {
             
             // Initialize drag and drop
             this.initializeCardSortingDragDrop();
+            
+            // Display submission status
+            if (statusContainer) {
+                if (isVerified) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Card Sorting Verified</strong>
+                            </div>
+                            ${verificationStatus && verificationStatus.feedback ? `
+                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                            ` : ''}
+                            ${verificationStatus && verificationStatus.verifiedAt ? `
+                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                    Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                            ` : ''}
+                        </div>
+                    `;
+                } else if (isSubmitted) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                <i class="fas fa-clock"></i>
+                                <strong>Card Sorting Submitted for Verification</strong>
+                            </div>
+                            <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.9rem;">Waiting for guide approval...</p>
+                        </div>
+                    `;
+                } else {
+                    statusContainer.innerHTML = '';
+                }
+            }
+            
+            // Show/hide and enable/disable submit button
+            if (submitBtn) {
+                // Always show the button
+                submitBtn.style.display = 'inline-flex';
+                
+                // Check if all cards are sorted (no unassigned cards)
+                const allCardsSorted = unassignedBacklogs.length === 0 && backlogs.length > 0;
+                
+                // Disable button if not all cards are sorted or if already submitted/verified
+                if (!allCardsSorted || isSubmitted || isVerified) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.6';
+                    submitBtn.style.cursor = 'not-allowed';
+                    
+                    if (isSubmitted || isVerified) {
+                        submitBtn.title = 'Card sorting has already been submitted/verified';
+                    } else if (unassignedBacklogs.length > 0) {
+                        submitBtn.title = `Please sort all cards. ${unassignedBacklogs.length} card(s) remaining in uncategorised.`;
+                    } else {
+                        submitBtn.title = 'No cards to submit';
+                    }
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                    submitBtn.title = '';
+                }
+            }
             
         } catch (error) {
             console.error('Error loading card sorting:', error);
@@ -14182,6 +14366,848 @@ const app = {
             console.error('Error deleting schedule:', error);
             alert('Error deleting schedule. Please try again.');
         }
+    },
+    
+    // ========== CARD SORTING VERIFICATION FUNCTIONS (GUIDE) ==========
+    
+    async showApproveCardSortingModal(teamId) {
+        const modal = document.getElementById('approve-card-sorting-modal');
+        const content = document.getElementById('approve-card-sorting-content');
+        const verifyBtn = document.getElementById('verify-card-sorting-btn');
+        
+        if (!modal || !content) return;
+        
+        try {
+            // Load team
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const team = { id: teamDoc.id, ...teamDoc.data() };
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', teamId)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load module assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', teamId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = data.moduleId;
+            });
+            
+            // Group backlogs by module
+            const backlogsByModule = {};
+            const unassignedBacklogs = [];
+            backlogs.forEach(backlog => {
+                const moduleId = assignments[backlog.id];
+                if (moduleId) {
+                    if (!backlogsByModule[moduleId]) {
+                        backlogsByModule[moduleId] = [];
+                    }
+                    backlogsByModule[moduleId].push(backlog);
+                } else {
+                    unassignedBacklogs.push(backlog);
+                }
+            });
+            
+            // Load planning data
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isVerified = planningData && planningData.cardSortingVerified === true;
+            const verificationStatus = planningData ? planningData.cardSortingVerificationStatus : null;
+            
+            let html = `
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                            <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
+                        </h3>
+                        <div style="display: flex; gap: 1rem; font-size: 0.9rem; color: var(--text-secondary); flex-wrap: wrap;">
+                            <span><i class="fas fa-layer-group"></i> ${modules.length} Modules</span>
+                            <span><i class="fas fa-clipboard-list"></i> ${backlogs.length} Total Tasks</span>
+                            <span><i class="fas fa-inbox"></i> ${unassignedBacklogs.length} Unassigned</span>
+                        </div>
+                    </div>
+            `;
+            
+            if (modules.length === 0) {
+                html += '<p class="empty-state">No modules created yet.</p>';
+            } else {
+                modules.forEach(module => {
+                    const moduleBacklogs = backlogsByModule[module.id] || [];
+                    const moduleColor = module.color || '#3b82f6';
+                    
+                    // Calculate scores
+                    const priorityScores = { low: 1, medium: 2, high: 3, critical: 4 };
+                    const difficultyScores = { 'very-hard': 5, 'hard': 4, medium: 3, easy: 2 };
+                    
+                    let totalPriority = 0, totalDifficulty = 0;
+                    moduleBacklogs.forEach(backlog => {
+                        totalPriority += priorityScores[backlog.priority] || 2;
+                        totalDifficulty += difficultyScores[backlog.difficulty] || 3;
+                    });
+                    const avgPriority = moduleBacklogs.length > 0 ? (totalPriority / moduleBacklogs.length).toFixed(1) : '0.0';
+                    const avgDifficulty = moduleBacklogs.length > 0 ? (totalDifficulty / moduleBacklogs.length).toFixed(1) : '0.0';
+                    
+                    html += `
+                        <div style="padding: 1rem; background: white; border-radius: 8px; border: 2px solid ${moduleColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                                <div style="flex: 1;">
+                                    <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
+                                        <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
+                                    </h4>
+                                    ${module.description ? `<p style="margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.85rem;">${this.escapeHtml(module.description)}</p>` : ''}
+                                </div>
+                                <span style="background: ${moduleColor}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">${moduleBacklogs.length} tasks</span>
+                            </div>
+                            
+                            ${moduleBacklogs.length > 0 ? `
+                                <div style="display: flex; gap: 1rem; margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+                                    <div style="flex: 1; text-align: center;">
+                                        <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Priority Score</div>
+                                        <div style="font-size: 1.1rem; font-weight: 700; color: #f59e0b;">${avgPriority}/4.0</div>
+                                    </div>
+                                    <div style="width: 1px; background: #e5e7eb;"></div>
+                                    <div style="flex: 1; text-align: center;">
+                                        <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Difficulty Score</div>
+                                        <div style="font-size: 1.1rem; font-weight: 700; color: #8b5cf6;">${avgDifficulty}/5.0</div>
+                                    </div>
+                                </div>
+                                
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.25rem;">Tasks in this module:</div>
+                            ` : '<p style="color: var(--text-secondary); font-size: 0.9rem;">No tasks assigned to this module.</p>'}
+                            
+                            ${moduleBacklogs.map(backlog => {
+                                const priorityColors = {
+                                    low: '#6b7280',
+                                    medium: '#3b82f6',
+                                    high: '#f59e0b',
+                                    critical: '#ef4444'
+                                };
+                                const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
+                                
+                                return `
+                                    <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px; border-left: 3px solid ${priorityColor};">
+                                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                                            <div style="flex: 1;">
+                                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.25rem;">
+                                                    <span style="background: ${priorityColor}15; color: ${priorityColor}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">${(backlog.priority || 'medium').toUpperCase()}</span>
+                                                </div>
+                                                <p style="margin: 0; color: var(--text-primary); font-size: 0.9rem; font-weight: 500;">${this.escapeHtml(backlog.task || 'No task')}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                            
+                            ${moduleBacklogs.length > 0 ? '</div>' : ''}
+                        </div>
+                    `;
+                });
+            }
+            
+            if (unassignedBacklogs.length > 0) {
+                html += `
+                    <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border: 2px dashed #f59e0b;">
+                        <h4 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1rem; font-weight: 600;">
+                            <i class="fas fa-inbox"></i> Unassigned Tasks (${unassignedBacklogs.length})
+                        </h4>
+                        <p style="margin: 0; color: #78350f; font-size: 0.9rem;">These tasks are not assigned to any module.</p>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            
+            content.innerHTML = html;
+            
+            // Show verify button
+            verifyBtn.style.display = 'inline-flex';
+            if (isVerified) {
+                verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Card Sorting';
+                verifyBtn.className = 'btn btn-success';
+                
+                // Add verification status message
+                if (verificationStatus) {
+                    html += `
+                        <div style="margin-top: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Card Sorting Verified</strong>
+                            </div>
+                            ${verificationStatus.feedback ? `
+                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                            ` : ''}
+                            ${verificationStatus.verifiedAt ? `
+                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                    Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                            ` : ''}
+                        </div>
+                    `;
+                    content.innerHTML = html;
+                }
+            } else {
+                verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify Card Sorting';
+                verifyBtn.className = 'btn btn-primary';
+            }
+            
+            // Store teamId for verify function
+            modal.dataset.teamId = teamId;
+            
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading card sorting for approval:', error);
+            alert('Error loading card sorting. Please try again.');
+        }
+    },
+    
+    closeApproveCardSortingModal() {
+        const modal = document.getElementById('approve-card-sorting-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    async verifyCardSorting() {
+        const modal = document.getElementById('approve-card-sorting-modal');
+        const teamId = modal ? modal.dataset.teamId : null;
+        if (!teamId) {
+            alert('Team ID not found. Please try again.');
+            return;
+        }
+        
+        const feedback = prompt('Enter verification feedback (optional):');
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                teamId: teamId,
+                cardSortingVerified: true,
+                cardSortingVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: feedback || ''
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Card sorting verified successfully!');
+            await this.loadGuideProjectPlanning();
+            this.closeApproveCardSortingModal();
+        } catch (error) {
+            console.error('Error verifying card sorting:', error);
+            alert('Error verifying card sorting. Please try again.');
+        }
+    },
+    
+    // ========== CARD SORTING REPORT FUNCTIONS (ADMIN) ==========
+    
+    showCardSortingReportOptions() {
+        const modal = document.getElementById('card-sorting-report-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Set default format to PDF
+            const formatSelect = document.getElementById('card-sorting-report-format');
+            if (formatSelect) formatSelect.value = 'pdf';
+        }
+    },
+    
+    closeCardSortingReportModal() {
+        const modal = document.getElementById('card-sorting-report-modal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    async generateCardSortingReportFromModal() {
+        const formatSelect = document.getElementById('card-sorting-report-format');
+        const typeSelect = document.getElementById('card-sorting-report-type');
+        if (!formatSelect || !typeSelect) return;
+        
+        const format = formatSelect.value;
+        const reportType = typeSelect.value; // 'detailed' or 'minimal'
+        this.closeCardSortingReportModal();
+        
+        try {
+            await this.generateCardSortingReport(format, reportType);
+        } catch (error) {
+            console.error('Error generating card sorting report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
+    async generateCardSortingReport(format, reportType = 'detailed') {
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teamsStatus = [];
+            
+            for (const teamDoc of teamsSnapshot.docs) {
+                const teamData = teamDoc.data();
+                const teamId = teamDoc.id;
+                
+                // Load modules
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', teamId)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                const modules = [];
+                modulesSnapshot.forEach(doc => {
+                    modules.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load product backlogs
+                const backlogQuery = query(
+                    collection(window.firebaseDb, 'productBacklog'),
+                    where('teamId', '==', teamId)
+                );
+                const backlogSnapshot = await getDocs(backlogQuery);
+                const backlogs = [];
+                backlogSnapshot.forEach(doc => {
+                    backlogs.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load module assignments
+                const assignmentsQuery = query(
+                    collection(window.firebaseDb, 'cardSortingAssignments'),
+                    where('teamId', '==', teamId)
+                );
+                const assignmentsSnapshot = await getDocs(assignmentsQuery);
+                const assignments = {};
+                assignmentsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    assignments[data.backlogId] = data.moduleId;
+                });
+                
+                // Group backlogs by module
+                const backlogsByModule = {};
+                const unassignedBacklogs = [];
+                backlogs.forEach(backlog => {
+                    const moduleId = assignments[backlog.id];
+                    if (moduleId) {
+                        if (!backlogsByModule[moduleId]) {
+                            backlogsByModule[moduleId] = [];
+                        }
+                        backlogsByModule[moduleId].push(backlog);
+                    } else {
+                        unassignedBacklogs.push(backlog);
+                    }
+                });
+                
+                // Load planning data
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                
+                const isSubmitted = planningData && planningData.cardSortingSubmitted === true;
+                const isVerified = planningData && planningData.cardSortingVerified === true;
+                const verificationStatus = planningData ? planningData.cardSortingVerificationStatus : null;
+                
+                // Get guide name if available
+                let guideName = 'N/A';
+                if (teamData.guideId) {
+                    try {
+                        const guideDoc = await getDoc(doc(window.firebaseDb, 'users', teamData.guideId));
+                        if (guideDoc.exists()) {
+                            guideName = guideDoc.data().name || 'Unknown Guide';
+                        }
+                    } catch (e) {
+                        console.warn('Error loading guide name:', e);
+                    }
+                }
+                
+                teamsStatus.push({
+                    teamId: teamId,
+                    teamName: teamData.groupName || 'Unknown Team',
+                    guideName: guideName,
+                    modules: modules,
+                    modulesCount: modules.length,
+                    totalTasks: backlogs.length,
+                    assignedTasks: backlogs.length - unassignedBacklogs.length,
+                    unassignedTasks: unassignedBacklogs.length,
+                    backlogsByModule: reportType === 'detailed' ? backlogsByModule : {},
+                    unassignedBacklogs: reportType === 'detailed' ? unassignedBacklogs : [],
+                    isSubmitted: isSubmitted,
+                    isVerified: isVerified,
+                    verificationStatus: verificationStatus
+                });
+            }
+            
+            // Filter out test teams (case-insensitive)
+            const filteredTeamsStatus = teamsStatus.filter(team => {
+                const teamNameLower = (team.teamName || '').toLowerCase();
+                return !teamNameLower.includes('test');
+            });
+            
+            // Sort by team order settings
+            const sortedTeamsStatus = await this.applyTeamOrderToReports(filteredTeamsStatus);
+            
+            // Generate based on format
+            if (format === 'csv') {
+                this.generateCardSortingCSVReport(sortedTeamsStatus, reportType);
+            } else if (format === 'json') {
+                this.generateCardSortingJSONReport(sortedTeamsStatus, reportType);
+            } else {
+                // For PDF/HTML/DOCX, generate HTML report
+                const reportContent = reportType === 'minimal' 
+                    ? this.generateCardSortingMinimalReportContent(sortedTeamsStatus)
+                    : this.generateCardSortingReportContent(sortedTeamsStatus);
+                
+                const reportName = reportType === 'minimal' 
+                    ? 'Card Sorting Status Report (Minimal)'
+                    : 'Card Sorting Submission Status Report';
+                
+                if (format === 'pdf') {
+                    await this.generatePDFReport(reportContent, { groupName: 'Card Sorting Status' }, { name: reportName });
+                } else if (format === 'html') {
+                    this.generateHTMLReport(reportContent, { groupName: 'Card Sorting Status' }, { name: reportName });
+                } else if (format === 'docx') {
+                    await this.generateDOCXReport(reportContent, { groupName: 'Card Sorting Status' }, { name: reportName });
+                }
+            }
+        } catch (error) {
+            console.error('Error generating card sorting report:', error);
+            throw error;
+        }
+    },
+    
+    generateCardSortingReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Card Sorting Submission Status Report</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.6;
+                        max-width: 1200px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background: #f7fafc;
+                    }
+                    h1 {
+                        color: #2c3e50;
+                        border-bottom: 3px solid #3498db;
+                        padding-bottom: 10px;
+                        margin-top: 30px;
+                        font-family: 'Montserrat', sans-serif;
+                    }
+                    .team-section {
+                        background: white;
+                        margin: 20px 0;
+                        padding: 20px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }
+                    .team-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 15px;
+                        padding-bottom: 15px;
+                        border-bottom: 2px solid #e2e8f0;
+                    }
+                    .team-name {
+                        font-size: 1.3em;
+                        font-weight: 700;
+                        color: #2c3e50;
+                        font-family: 'Montserrat', sans-serif;
+                    }
+                    .status-badge {
+                        padding: 6px 12px;
+                        border-radius: 20px;
+                        font-size: 0.85em;
+                        font-weight: 600;
+                    }
+                    .status-submitted {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .status-verified {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .status-not-submitted {
+                        background: #fee2e2;
+                        color: #991b1b;
+                    }
+                    .module-card {
+                        background: #f8f9fa;
+                        border-left: 4px solid #3b82f6;
+                        padding: 15px;
+                        margin: 15px 0;
+                        border-radius: 6px;
+                    }
+                    .module-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 10px;
+                    }
+                    .module-name {
+                        font-weight: 600;
+                        color: #1e40af;
+                        font-size: 1.1em;
+                    }
+                    .task-item {
+                        background: white;
+                        padding: 10px;
+                        margin: 8px 0;
+                        border-radius: 4px;
+                        border-left: 3px solid #6b7280;
+                    }
+                    .task-priority {
+                        display: inline-block;
+                        padding: 3px 8px;
+                        border-radius: 4px;
+                        font-size: 0.75em;
+                        font-weight: 600;
+                        margin-right: 8px;
+                    }
+                    .priority-low { background: #e5e7eb; color: #374151; }
+                    .priority-medium { background: #dbeafe; color: #1e40af; }
+                    .priority-high { background: #fef3c7; color: #92400e; }
+                    .priority-critical { background: #fee2e2; color: #991b1b; }
+                    .summary-stats {
+                        display: flex;
+                        gap: 20px;
+                        margin: 15px 0;
+                        flex-wrap: wrap;
+                    }
+                    .stat-item {
+                        padding: 10px 15px;
+                        background: #f1f5f9;
+                        border-radius: 6px;
+                        flex: 1;
+                        min-width: 150px;
+                    }
+                    .stat-label {
+                        font-size: 0.85em;
+                        color: #64748b;
+                        margin-bottom: 5px;
+                    }
+                    .stat-value {
+                        font-size: 1.3em;
+                        font-weight: 700;
+                        color: #1e293b;
+                    }
+                    .verification-feedback {
+                        background: #d1fae5;
+                        padding: 12px;
+                        border-radius: 6px;
+                        margin-top: 15px;
+                        border-left: 4px solid #10b981;
+                    }
+                    .unassigned-section {
+                        background: #fef3c7;
+                        padding: 15px;
+                        border-radius: 6px;
+                        border: 2px dashed #f59e0b;
+                        margin-top: 15px;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Card Sorting Submission Status Report</h1>
+                <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+        `;
+        
+        teamsStatus.forEach(team => {
+            const statusClass = team.isVerified ? 'status-verified' : (team.isSubmitted ? 'status-submitted' : 'status-not-submitted');
+            const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            
+            html += `
+                <div class="team-section">
+                    <div class="team-header">
+                        <div>
+                            <div class="team-name">${this.escapeHtml(team.teamName)}</div>
+                            <div style="color: #64748b; font-size: 0.9em; margin-top: 5px;">Guide: ${this.escapeHtml(team.guideName)}</div>
+                        </div>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    
+                    <div class="summary-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Total Modules</div>
+                            <div class="stat-value">${team.modulesCount}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Total Tasks</div>
+                            <div class="stat-value">${team.totalTasks}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Assigned Tasks</div>
+                            <div class="stat-value">${team.assignedTasks}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Unassigned Tasks</div>
+                            <div class="stat-value">${team.unassignedTasks}</div>
+                        </div>
+                    </div>
+            `;
+            
+            if (team.modulesCount > 0) {
+                team.modules.forEach(module => {
+                    const moduleBacklogs = team.backlogsByModule[module.id] || [];
+                    const moduleColor = module.color || '#3b82f6';
+                    
+                    html += `
+                        <div class="module-card" style="border-left-color: ${moduleColor};">
+                            <div class="module-header">
+                                <div class="module-name" style="color: ${moduleColor};">
+                                    <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
+                                </div>
+                                <span style="background: ${moduleColor}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; font-weight: 600;">
+                                    ${moduleBacklogs.length} tasks
+                                </span>
+                            </div>
+                            ${module.description ? `<p style="color: #64748b; font-size: 0.9em; margin: 8px 0;">${this.escapeHtml(module.description)}</p>` : ''}
+                    `;
+                    
+                    if (moduleBacklogs.length > 0) {
+                        moduleBacklogs.forEach(backlog => {
+                            const priorityClass = `priority-${backlog.priority || 'medium'}`;
+                            html += `
+                                <div class="task-item">
+                                    <span class="task-priority ${priorityClass}">${(backlog.priority || 'medium').toUpperCase()}</span>
+                                    <span>${this.escapeHtml(backlog.task || 'No task')}</span>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += '<p style="color: #94a3b8; font-style: italic;">No tasks assigned to this module.</p>';
+                    }
+                    
+                    html += '</div>';
+                });
+            }
+            
+            if (team.unassignedTasks > 0 && team.unassignedBacklogs.length > 0) {
+                html += `
+                    <div class="unassigned-section">
+                        <h4 style="margin: 0 0 10px 0; color: #92400e;">
+                            <i class="fas fa-inbox"></i> Unassigned Tasks (${team.unassignedTasks})
+                        </h4>
+                `;
+                team.unassignedBacklogs.forEach(backlog => {
+                    const priorityClass = `priority-${backlog.priority || 'medium'}`;
+                    html += `
+                        <div class="task-item">
+                            <span class="task-priority ${priorityClass}">${(backlog.priority || 'medium').toUpperCase()}</span>
+                            <span>${this.escapeHtml(backlog.task || 'No task')}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            if (team.isVerified && team.verificationStatus) {
+                html += `
+                    <div class="verification-feedback">
+                        <strong>Verification Feedback:</strong>
+                        <p style="margin: 8px 0 0 0;">${this.escapeHtml(team.verificationStatus.feedback || 'No feedback provided.')}</p>
+                        ${team.verificationStatus.verifiedAt ? `
+                            <p style="margin: 8px 0 0 0; font-size: 0.85em; color: #047857;">
+                                Verified on: ${team.verificationStatus.verifiedAt.toDate ? team.verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+        });
+        
+        html += `
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateCardSortingMinimalReportContent(teamsStatus) {
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Card Sorting Status Report (Minimal)</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {
+                        font-family: 'Lato', sans-serif;
+                        color: #2d3748;
+                        line-height: 1.6;
+                        max-width: 1200px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background: #f7fafc;
+                    }
+                    h1 {
+                        color: #2c3e50;
+                        border-bottom: 3px solid #3498db;
+                        padding-bottom: 10px;
+                        margin-top: 30px;
+                        font-family: 'Montserrat', sans-serif;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        background: white;
+                        margin: 20px 0;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }
+                    th, td {
+                        padding: 12px;
+                        text-align: left;
+                        border-bottom: 1px solid #e2e8f0;
+                    }
+                    th {
+                        background: #3498db;
+                        color: white;
+                        font-weight: 600;
+                        font-family: 'Montserrat', sans-serif;
+                    }
+                    tr:hover {
+                        background: #f8f9fa;
+                    }
+                    .status-badge {
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        font-size: 0.85em;
+                        font-weight: 600;
+                    }
+                    .status-verified {
+                        background: #d1fae5;
+                        color: #065f46;
+                    }
+                    .status-submitted {
+                        background: #fef3c7;
+                        color: #92400e;
+                    }
+                    .status-not-submitted {
+                        background: #fee2e2;
+                        color: #991b1b;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Card Sorting Status Report (Minimal)</h1>
+                <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Team Name</th>
+                            <th>Guide</th>
+                            <th>Modules</th>
+                            <th>Total Tasks</th>
+                            <th>Assigned</th>
+                            <th>Unassigned</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        teamsStatus.forEach(team => {
+            const statusClass = team.isVerified ? 'status-verified' : (team.isSubmitted ? 'status-submitted' : 'status-not-submitted');
+            const statusText = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            
+            html += `
+                <tr>
+                    <td>${this.escapeHtml(team.teamName)}</td>
+                    <td>${this.escapeHtml(team.guideName)}</td>
+                    <td>${team.modulesCount}</td>
+                    <td>${team.totalTasks}</td>
+                    <td>${team.assignedTasks}</td>
+                    <td>${team.unassignedTasks}</td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+        
+        return html;
+    },
+    
+    generateCardSortingCSVReport(teamsStatus, reportType) {
+        let csv = 'Team Name,Guide,Modules,Total Tasks,Assigned Tasks,Unassigned Tasks,Status,Verification Feedback\n';
+        
+        teamsStatus.forEach(team => {
+            const status = team.isVerified ? 'Verified' : (team.isSubmitted ? 'Submitted' : 'Not Submitted');
+            const feedback = team.verificationStatus && team.verificationStatus.feedback ? 
+                `"${team.verificationStatus.feedback.replace(/"/g, '""')}"` : '';
+            
+            csv += `"${team.teamName.replace(/"/g, '""')}","${team.guideName.replace(/"/g, '""')}",${team.modulesCount},${team.totalTasks},${team.assignedTasks},${team.unassignedTasks},${status},${feedback}\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `card-sorting-report-${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    },
+    
+    generateCardSortingJSONReport(teamsStatus, reportType) {
+        const reportData = {
+            generatedAt: new Date().toISOString(),
+            reportType: reportType,
+            teams: teamsStatus.map(team => ({
+                teamId: team.teamId,
+                teamName: team.teamName,
+                guideName: team.guideName,
+                modulesCount: team.modulesCount,
+                totalTasks: team.totalTasks,
+                assignedTasks: team.assignedTasks,
+                unassignedTasks: team.unassignedTasks,
+                isSubmitted: team.isSubmitted,
+                isVerified: team.isVerified,
+                verificationStatus: team.verificationStatus
+            }))
+        };
+        
+        const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `card-sorting-report-${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
     },
     
     // ========== PRODUCT BACKLOG REPORT FUNCTIONS ==========

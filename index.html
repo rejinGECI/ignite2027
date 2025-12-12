@@ -935,6 +935,9 @@ Bob Johnson,GHI789</pre>
                                 <button type="button" class="btn btn-primary" onclick="app.showProductBacklogReportOptions()" style="margin-left: 0.5rem;">
                                     <i class="fas fa-file-download"></i> Product Backlog Report
                                 </button>
+                                <button type="button" class="btn btn-primary" onclick="app.showCardSortingReportOptions()" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-file-download"></i> Card Sorting Report
+                                </button>
                             </div>
                             
                             <div id="admin-project-planning-teams-list-tab" class="admin-teams-list">
@@ -1188,8 +1191,16 @@ Bob Johnson,GHI789</pre>
                                     </button>
                                 </div>
                                 
+                                <div id="card-sorting-submission-status" style="margin-bottom: 1rem;"></div>
+                                
                                 <div id="card-sorting-content" style="min-height: 400px; width: 100%;">
                                     <p class="empty-state">Loading card sorting board...</p>
+                                </div>
+                                
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                    <button type="button" class="btn btn-success" id="submit-card-sorting-btn" onclick="app.submitCardSortingForVerification()" style="display: none;">
+                                        <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1407,9 +1418,23 @@ Bob Johnson,GHI789</pre>
                     <!-- Card Sorting Tab -->
                     <div id="card-sorting-tab" class="admin-tab-content">
                         <div class="project-planning-section">
-                            <h3><i class="fas fa-sort"></i> Card Sorting</h3>
-                            <div id="card-sorting-content">
-                                <p class="empty-state">Card sorting management coming soon...</p>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                                <h3 style="margin: 0;"><i class="fas fa-sort"></i> Card Sorting</h3>
+                                <button type="button" class="btn btn-primary" onclick="app.showAddModuleModal()">
+                                    <i class="fas fa-plus"></i> Add Module
+                                </button>
+                            </div>
+                            
+                            <div id="card-sorting-submission-status" style="margin-bottom: 1rem;"></div>
+                            
+                            <div id="card-sorting-content" style="min-height: 400px; width: 100%;">
+                                <p class="empty-state">Loading card sorting board...</p>
+                            </div>
+                            
+                            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" id="submit-card-sorting-btn" onclick="app.submitCardSortingForVerification()" style="display: none;">
+                                    <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -2208,6 +2233,46 @@ Bob Johnson,GHI789</pre>
                 <div class="modal-actions" style="margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" onclick="app.closeProductBacklogReportModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="app.generateProductBacklogReportFromModal()">
+                        <i class="fas fa-file-download"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Card Sorting Report Modal -->
+    <div id="card-sorting-report-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeCardSortingReportModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2><i class="fas fa-sort"></i> Generate Card Sorting Report</h2>
+                <button type="button" class="modal-close" onclick="app.closeCardSortingReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="card-sorting-report-type">Select Report Type *</label>
+                    <select id="card-sorting-report-type" class="form-input" required>
+                        <option value="detailed">Detailed - Includes all module and task details</option>
+                        <option value="minimal">Minimal - Summary only, no task details</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="card-sorting-report-format">Select Report Format *</label>
+                    <select id="card-sorting-report-format" class="form-input" required>
+                        <option value="pdf">PDF - Recommended</option>
+                        <option value="html">HTML</option>
+                        <option value="docx">DOCX (Download as Word)</option>
+                        <option value="csv">CSV (Spreadsheet)</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                        <em>This will generate a report with card sorting submission status and guide verification status for all teams.</em>
+                    </p>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="app.closeCardSortingReportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="app.generateCardSortingReportFromModal()">
                         <i class="fas fa-file-download"></i> Generate Report
                     </button>
                 </div>
