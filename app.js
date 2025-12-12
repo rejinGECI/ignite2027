@@ -12967,30 +12967,30 @@ const app = {
                 }
             });
             
-            // Build HTML - modules stacked vertically
-            let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 1rem; max-width: 100%;">';
+            // Build HTML - Two column layout: Left = All Product Backlogs, Right = Modules Grid
+            let html = '<div style="display: flex; gap: 1.5rem; padding-bottom: 1rem; align-items: flex-start;">';
             
-            // Unassigned column
+            // Left side: All Product Backlogs
             html += `
-                <div class="module-column" data-module-id="unassigned" style="width: 100%; max-width: 100%; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
-                        <h4 style="margin: 0; color: #6c757d; font-size: 1rem;">
-                            <i class="fas fa-inbox"></i> Unassigned
+                <div style="flex: 0 0 350px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; max-height: calc(100vh - 200px); overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; position: sticky; top: 0; background: #f8f9fa; padding-bottom: 0.5rem; z-index: 10;">
+                        <h4 style="margin: 0; color: #6c757d; font-size: 1rem; font-weight: 600;">
+                            <i class="fas fa-clipboard-list"></i> All Product Backlogs
                         </h4>
-                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
+                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${backlogs.length}</span>
                     </div>
                     <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             `;
             
-            if (unassignedBacklogs.length === 0) {
+            if (backlogs.length === 0) {
                 html += `
                     <div style="padding: 2rem 1rem; text-align: center; color: #9ca3af; font-size: 0.85rem;">
-                        <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
-                        <p style="margin: 0;">No cards</p>
+                        <i class="fas fa-clipboard-list" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                        <p style="margin: 0;">No product backlogs</p>
                     </div>
                 `;
             } else {
-                unassignedBacklogs.forEach(backlog => {
+                backlogs.forEach(backlog => {
                     html += this.generateBacklogCard(backlog);
                 });
             }
@@ -13000,13 +13000,41 @@ const app = {
                 </div>
             `;
             
+            // Right side: Modules Grid
+            html += `
+                <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
+            `;
+            
+            // Unassigned module (if there are unassigned backlogs)
+            if (unassignedBacklogs.length > 0) {
+                html += `
+                    <div class="module-column" data-module-id="unassigned" style="background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
+                            <h4 style="margin: 0; color: #6c757d; font-size: 1rem; font-weight: 600;">
+                                <i class="fas fa-inbox"></i> Unassigned
+                            </h4>
+                            <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
+                        </div>
+                        <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
+                `;
+                
+                unassignedBacklogs.forEach(backlog => {
+                    html += this.generateBacklogCard(backlog);
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+            
             // Module columns
             modules.forEach(module => {
                 const moduleBacklogs = backlogsByModule[module.id] || [];
                 const moduleColor = module.color || '#3b82f6';
                 
                 html += `
-                    <div class="module-column" data-module-id="${module.id}" style="width: 100%; max-width: 100%; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
+                    <div class="module-column" data-module-id="${module.id}" style="background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                             <div style="flex: 1;">
                                 <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
@@ -13046,7 +13074,10 @@ const app = {
                 `;
             });
             
-            html += '</div>';
+            html += `
+                </div>
+            </div>
+            `;
             
             container.innerHTML = html;
             
