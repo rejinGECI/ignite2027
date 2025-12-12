@@ -12894,8 +12894,12 @@ const app = {
                 modules.push({ id: doc.id, ...doc.data() });
             });
             
-            // Sort modules by order
-            modules.sort((a, b) => (a.order || 0) - (b.order || 0));
+            // Sort modules by creation date (newest first) for better UX - new modules appear at top
+            modules.sort((a, b) => {
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA; // Newest first
+            });
             
             // Load product backlogs
             const backlogQuery = query(
@@ -13005,7 +13009,7 @@ const app = {
                 <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
             `;
             
-            // Unassigned module (if there are unassigned backlogs)
+            // Unassigned module (if there are unassigned backlogs) - show first
             if (unassignedBacklogs.length > 0) {
                 html += `
                     <div class="module-column" data-module-id="unassigned" style="background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
@@ -13028,7 +13032,7 @@ const app = {
                 `;
             }
             
-            // Module columns
+            // Module columns - newest modules appear first in grid
             modules.forEach(module => {
                 const moduleBacklogs = backlogsByModule[module.id] || [];
                 const moduleColor = module.color || '#3b82f6';
@@ -13312,7 +13316,8 @@ const app = {
                     if (order > maxOrder) maxOrder = order;
                 });
                 
-                await setDoc(doc(collection(window.firebaseDb, 'cardSortingModules')), {
+                const newModuleRef = doc(collection(window.firebaseDb, 'cardSortingModules'));
+                await setDoc(newModuleRef, {
                     teamId: team.id,
                     name: name,
                     description: descInput.value.trim(),
@@ -13321,10 +13326,29 @@ const app = {
                     createdAt: serverTimestamp(),
                     createdBy: this.currentUser.uid
                 });
+                
+                // Store new module ID to scroll to it
+                this.newlyCreatedModuleId = newModuleRef.id;
             }
             
             this.closeAddModuleModal();
             await this.loadCardSorting();
+            
+            // Scroll to newly created module if it exists
+            if (this.newlyCreatedModuleId) {
+                setTimeout(() => {
+                    const newModuleElement = document.querySelector(`[data-module-id="${this.newlyCreatedModuleId}"]`);
+                    if (newModuleElement) {
+                        newModuleElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        // Highlight the new module briefly
+                        newModuleElement.style.animation = 'pulse 2s ease-in-out';
+                        setTimeout(() => {
+                            newModuleElement.style.animation = '';
+                        }, 2000);
+                    }
+                    this.newlyCreatedModuleId = null;
+                }, 100);
+            }
         } catch (error) {
             console.error('Error saving module:', error);
             alert('Error saving module. Please try again.');
