@@ -12968,18 +12968,18 @@ const app = {
             });
             
             // Build HTML
-            let html = '<div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; align-items: flex-start;">';
+            let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 1rem;">';
             
             // Unassigned column
             html += `
-                <div class="module-column" data-module-id="unassigned" style="min-width: 300px; max-width: 300px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
+                <div class="module-column" data-module-id="unassigned" style="width: 100%; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                         <h4 style="margin: 0; color: #6c757d; font-size: 1rem;">
                             <i class="fas fa-inbox"></i> Unassigned
                         </h4>
                         <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
-                    <div class="module-cards" data-module-id="unassigned" style="flex: 1; min-height: 0;">
+                    <div class="module-cards" data-module-id="unassigned" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;">
             `;
             
             if (unassignedBacklogs.length === 0) {
@@ -13006,7 +13006,7 @@ const app = {
                 const moduleColor = module.color || '#3b82f6';
                 
                 html += `
-                    <div class="module-column" data-module-id="${module.id}" style="min-width: 300px; max-width: 300px; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
+                    <div class="module-column" data-module-id="${module.id}" style="width: 100%; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                             <div style="flex: 1;">
                                 <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
@@ -13024,7 +13024,7 @@ const app = {
                                 </button>
                             </div>
                         </div>
-                        <div class="module-cards" data-module-id="${module.id}" style="flex: 1; min-height: 0;">
+                        <div class="module-cards" data-module-id="${module.id}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;">
                 `;
                 
                 if (moduleBacklogs.length === 0) {
