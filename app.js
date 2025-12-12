@@ -12974,27 +12974,27 @@ const app = {
             // Build HTML - Two column layout: Left = All Product Backlogs, Right = Modules Grid
             let html = '<div style="display: flex; gap: 1.5rem; padding-bottom: 1rem; align-items: flex-start;">';
             
-            // Left side: All Product Backlogs
+            // Left side: Uncategorised Product Backlogs
             html += `
                 <div style="flex: 0 0 350px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; max-height: calc(100vh - 200px); overflow-y: auto;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; position: sticky; top: 0; background: #f8f9fa; padding-bottom: 0.5rem; z-index: 10;">
                         <h4 style="margin: 0; color: #6c757d; font-size: 1rem; font-weight: 600;">
-                            <i class="fas fa-clipboard-list"></i> All Product Backlogs
+                            <i class="fas fa-inbox"></i> Uncategorised Product Backlogs
                         </h4>
-                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${backlogs.length}</span>
+                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
                     <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             `;
             
-            if (backlogs.length === 0) {
+            if (unassignedBacklogs.length === 0) {
                 html += `
                     <div style="padding: 2rem 1rem; text-align: center; color: #9ca3af; font-size: 0.85rem;">
-                        <i class="fas fa-clipboard-list" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
-                        <p style="margin: 0;">No product backlogs</p>
+                        <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5; color: #10b981;"></i>
+                        <p style="margin: 0;">All cards categorised</p>
                     </div>
                 `;
             } else {
-                backlogs.forEach(backlog => {
+                unassignedBacklogs.forEach(backlog => {
                     html += this.generateBacklogCard(backlog);
                 });
             }
