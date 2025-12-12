@@ -11357,6 +11357,10 @@ const app = {
                 return backlogCreatedAt > verifiedAt;
             });
             
+            // Check if all backlogs have been reviewed (approved or rejected)
+            const allReviewed = backlogs.length > 0 && backlogs.every(b => b.approved === true || b.rejected === true);
+            const hasPending = backlogs.some(b => !b.approved && !b.rejected);
+            
             // Update status display
             if (isVerified && !hasNewBacklogs) {
                 statusContainer.innerHTML = `
@@ -11368,12 +11372,24 @@ const app = {
                         ${verificationStatus && verificationStatus.feedback ? `
                             <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.9rem;">${this.escapeHtml(verificationStatus.feedback)}</p>
                         ` : ''}
-                        <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
-                            You can add more product backlog items. New items will need guide approval and re-verification.
-                        </p>
+                        ${allReviewed ? `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                All items have been reviewed by your guide. You can make changes and resubmit if needed.
+                            </p>
+                        ` : hasPending ? `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                Some items are still pending review. You can add more items or wait for guide review.
+                            </p>
+                        ` : `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
+                                You can add more product backlog items. New items will need guide approval and re-verification.
+                            </p>
+                        `}
                     </div>
                 `;
-                submitBtn.style.display = 'none';
+                // Show submit button after verification so students can resubmit if needed
+                submitBtn.style.display = backlogs.length > 0 ? 'inline-flex' : 'none';
+                submitBtn.textContent = 'Resubmit for Verification';
             } else if (isVerified && hasNewBacklogs) {
                 statusContainer.innerHTML = `
                     <div style="padding: 1rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
@@ -14123,8 +14139,9 @@ const app = {
                         userY += 1;
                     }
                     
-                    // User Stories for this user
+                    // User Stories for this user - each story starts on a fresh slide
                     if (userData.userStories && userData.userStories.length > 0) {
+                        // Add header only on first slide
                         userSlide.addText('User Stories:', {
                             x: 0.5,
                             y: userY,
@@ -14137,47 +14154,43 @@ const app = {
                         });
                         userY += 0.5;
                         
-                        let currentUserSlide = userSlide;
-                        let isFirstStoryOnSlide = true;
+                        // Each user story gets its own slide starting at the top
                         userData.userStories.forEach((story, storyIndex) => {
-                            // Check if we need a new slide BEFORE adding the story
-                            // Ensure stories always start at the top
-                            if (userY > 5.0 || (!isFirstStoryOnSlide && userY > 4.5)) {
-                                // Create new slide for this user - start fresh at top
-                                currentUserSlide = pptx.addSlide();
-                                currentUserSlide.background = { color: colors.light };
-                                currentUserSlide.addShape(pptx.ShapeType.rect, {
-                                    x: 0,
-                                    y: 0,
-                                    w: 10,
-                                    h: 0.6,
-                                    fill: { color: colors.secondary },
-                                    line: { color: colors.secondary, width: 0 }
-                                });
-                                currentUserSlide.addText(`${userData.name} - Continued`, {
-                                    x: 0.5,
-                                    y: 0.1,
-                                    w: 9,
-                                    h: 0.4,
-                                    fontSize: 28,
-                                    bold: true,
-                                    color: 'FFFFFF',
-                                    fontFace: 'Arial'
-                                });
-                                // Add "User Stories:" header on continuation slide
-                                currentUserSlide.addText('User Stories:', {
-                                    x: 0.5,
-                                    y: 1,
-                                    w: 9,
-                                    h: 0.4,
-                                    fontSize: 20,
-                                    bold: true,
-                                    color: colors.primary,
-                                    fontFace: 'Arial'
-                                });
-                                userY = 1.5; // Start stories right after header
-                                isFirstStoryOnSlide = true;
-                            }
+                            // Create a new slide for each user story - always start fresh at top
+                            const storySlide = pptx.addSlide();
+                            storySlide.background = { color: colors.light };
+                            storySlide.addShape(pptx.ShapeType.rect, {
+                                x: 0,
+                                y: 0,
+                                w: 10,
+                                h: 0.6,
+                                fill: { color: colors.secondary },
+                                line: { color: colors.secondary, width: 0 }
+                            });
+                            storySlide.addText(`User ${userIndex + 1}: ${userData.name}`, {
+                                x: 0.5,
+                                y: 0.1,
+                                w: 9,
+                                h: 0.4,
+                                fontSize: 28,
+                                bold: true,
+                                color: 'FFFFFF',
+                                fontFace: 'Arial'
+                            });
+                            // Add "User Stories:" header
+                            storySlide.addText('User Stories:', {
+                                x: 0.5,
+                                y: 1,
+                                w: 9,
+                                h: 0.4,
+                                fontSize: 20,
+                                bold: true,
+                                color: colors.primary,
+                                fontFace: 'Arial'
+                            });
+                            
+                            // Start story at top of slide (after header)
+                            let storyY = 1.5;
                             
                             const storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
                             
@@ -14195,40 +14208,39 @@ const app = {
                             };
                             
                             // Story text with background
-                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                            storySlide.addShape(pptx.ShapeType.roundRect, {
                                 x: 0.5,
-                                y: userY,
+                                y: storyY,
                                 w: 9,
                                 h: 0.9,
                                 fill: { color: 'FFFFFF' },
                                 line: { color: priorityColors[story.priority] || colors.secondary, width: 2 },
                                 rectRadius: 0.1
                             });
-                            currentUserSlide.addText(`${storyIndex + 1}. ${storyText}`, {
+                            storySlide.addText(`${storyIndex + 1}. ${storyText}`, {
                                 x: 0.6,
-                                y: userY + 0.1,
+                                y: storyY + 0.1,
                                 w: 8.8,
                                 h: 0.7,
                                 fontSize: 14,
                                 color: colors.text,
                                 fontFace: 'Arial'
                             });
-                            userY += 1;
-                            isFirstStoryOnSlide = false;
+                            storyY += 1;
                             
                             // Priority and status badges
-                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                            storySlide.addShape(pptx.ShapeType.roundRect, {
                                 x: 0.8,
-                                y: userY,
+                                y: storyY,
                                 w: 1.5,
                                 h: 0.3,
                                 fill: { color: priorityColors[story.priority] || colors.secondary },
                                 line: { color: priorityColors[story.priority] || colors.secondary, width: 0 },
                                 rectRadius: 0.05
                             });
-                            currentUserSlide.addText(story.priority.toUpperCase(), {
+                            storySlide.addText(story.priority.toUpperCase(), {
                                 x: 0.85,
-                                y: userY + 0.05,
+                                y: storyY + 0.05,
                                 w: 1.4,
                                 h: 0.2,
                                 fontSize: 11,
@@ -14237,18 +14249,18 @@ const app = {
                                 fontFace: 'Arial'
                             });
                             
-                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                            storySlide.addShape(pptx.ShapeType.roundRect, {
                                 x: 2.5,
-                                y: userY,
+                                y: storyY,
                                 w: 1.5,
                                 h: 0.3,
                                 fill: { color: statusColors[story.status.toLowerCase()] || colors.warning },
                                 line: { color: statusColors[story.status.toLowerCase()] || colors.warning, width: 0 },
                                 rectRadius: 0.05
                             });
-                            currentUserSlide.addText(story.status, {
+                            storySlide.addText(story.status, {
                                 x: 2.55,
-                                y: userY + 0.05,
+                                y: storyY + 0.05,
                                 w: 1.4,
                                 h: 0.2,
                                 fontSize: 11,
@@ -14256,108 +14268,13 @@ const app = {
                                 color: 'FFFFFF',
                                 fontFace: 'Arial'
                             });
-                            userY += 0.5;
+                            storyY += 0.5;
                             
                             // Product Backlogs for this story
                             if (story.backlogs && story.backlogs.length > 0) {
-                                // Check if we need a new slide before adding backlog header
-                                if (userY > 4.8) {
-                                    currentUserSlide = pptx.addSlide();
-                                    currentUserSlide.background = { color: colors.light };
-                                    currentUserSlide.addShape(pptx.ShapeType.rect, {
-                                        x: 0,
-                                        y: 0,
-                                        w: 10,
-                                        h: 0.6,
-                                        fill: { color: colors.secondary },
-                                        line: { color: colors.secondary, width: 0 }
-                                    });
-                                    currentUserSlide.addText(`${userData.name} - Continued`, {
-                                        x: 0.5,
-                                        y: 0.1,
-                                        w: 9,
-                                        h: 0.4,
-                                        fontSize: 28,
-                                        bold: true,
-                                        color: 'FFFFFF',
-                                        fontFace: 'Arial'
-                                    });
-                                    currentUserSlide.addText('User Stories:', {
-                                        x: 0.5,
-                                        y: 1,
-                                        w: 9,
-                                        h: 0.4,
-                                        fontSize: 20,
-                                        bold: true,
-                                        color: colors.primary,
-                                        fontFace: 'Arial'
-                                    });
-                                    // Re-add the current story on the new slide
-                                    const storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
-                                    currentUserSlide.addShape(pptx.ShapeType.roundRect, {
-                                        x: 0.5,
-                                        y: 1.5,
-                                        w: 9,
-                                        h: 0.9,
-                                        fill: { color: 'FFFFFF' },
-                                        line: { color: priorityColors[story.priority] || colors.secondary, width: 2 },
-                                        rectRadius: 0.1
-                                    });
-                                    currentUserSlide.addText(`${storyIndex + 1}. ${storyText}`, {
-                                        x: 0.6,
-                                        y: 1.6,
-                                        w: 8.8,
-                                        h: 0.7,
-                                        fontSize: 14,
-                                        color: colors.text,
-                                        fontFace: 'Arial'
-                                    });
-                                    userY = 2.5;
-                                    // Re-add badges
-                                    currentUserSlide.addShape(pptx.ShapeType.roundRect, {
-                                        x: 0.8,
-                                        y: userY,
-                                        w: 1.5,
-                                        h: 0.3,
-                                        fill: { color: priorityColors[story.priority] || colors.secondary },
-                                        line: { color: priorityColors[story.priority] || colors.secondary, width: 0 },
-                                        rectRadius: 0.05
-                                    });
-                                    currentUserSlide.addText(story.priority.toUpperCase(), {
-                                        x: 0.85,
-                                        y: userY + 0.05,
-                                        w: 1.4,
-                                        h: 0.2,
-                                        fontSize: 11,
-                                        bold: true,
-                                        color: 'FFFFFF',
-                                        fontFace: 'Arial'
-                                    });
-                                    currentUserSlide.addShape(pptx.ShapeType.roundRect, {
-                                        x: 2.5,
-                                        y: userY,
-                                        w: 1.5,
-                                        h: 0.3,
-                                        fill: { color: statusColors[story.status.toLowerCase()] || colors.warning },
-                                        line: { color: statusColors[story.status.toLowerCase()] || colors.warning, width: 0 },
-                                        rectRadius: 0.05
-                                    });
-                                    currentUserSlide.addText(story.status, {
-                                        x: 2.55,
-                                        y: userY + 0.05,
-                                        w: 1.4,
-                                        h: 0.2,
-                                        fontSize: 11,
-                                        bold: true,
-                                        color: 'FFFFFF',
-                                        fontFace: 'Arial'
-                                    });
-                                    userY += 0.5;
-                                }
-                                
-                                currentUserSlide.addText('Product Backlog Items:', {
+                                storySlide.addText('Product Backlog Items:', {
                                     x: 0.8,
-                                    y: userY,
+                                    y: storyY,
                                     w: 8.5,
                                     h: 0.3,
                                     fontSize: 14,
@@ -14365,15 +14282,16 @@ const app = {
                                     color: colors.textLight,
                                     fontFace: 'Arial'
                                 });
-                                userY += 0.4;
+                                storyY += 0.4;
                                 
+                                let currentBacklogSlide = storySlide;
                                 story.backlogs.forEach((backlog, backlogIndex) => {
-                                    // Check before adding each backlog item
-                                    if (userY > 5.0) {
-                                        // Create new slide - start from top
-                                        currentUserSlide = pptx.addSlide();
-                                        currentUserSlide.background = { color: colors.light };
-                                        currentUserSlide.addShape(pptx.ShapeType.rect, {
+                                    // Check before adding each backlog item - if no space, create new slide
+                                    if (storyY > 5.0) {
+                                        // Create new slide for backlogs - start from top
+                                        currentBacklogSlide = pptx.addSlide();
+                                        currentBacklogSlide.background = { color: colors.light };
+                                        currentBacklogSlide.addShape(pptx.ShapeType.rect, {
                                             x: 0,
                                             y: 0,
                                             w: 10,
@@ -14381,7 +14299,7 @@ const app = {
                                             fill: { color: colors.secondary },
                                             line: { color: colors.secondary, width: 0 }
                                         });
-                                        currentUserSlide.addText(`${userData.name} - Backlog Items`, {
+                                        currentBacklogSlide.addText(`${userData.name} - Backlog Items (${storyIndex + 1})`, {
                                             x: 0.5,
                                             y: 0.1,
                                             w: 9,
@@ -14391,13 +14309,13 @@ const app = {
                                             color: 'FFFFFF',
                                             fontFace: 'Arial'
                                         });
-                                        userY = 1; // Start from top
+                                        storyY = 1; // Start from top
                                     }
                                     
                                     // Backlog item with indentation
-                                    currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                                    currentBacklogSlide.addShape(pptx.ShapeType.roundRect, {
                                         x: 1.2,
-                                        y: userY,
+                                        y: storyY,
                                         w: 8.3,
                                         h: 0.7,
                                         fill: { color: 'F9FAFB' },
@@ -14405,9 +14323,9 @@ const app = {
                                         rectRadius: 0.05
                                     });
                                     
-                                    let backlogY = userY + 0.1;
+                                    let backlogY = storyY + 0.1;
                                     if (backlog.task) {
-                                        currentUserSlide.addText(`• ${backlog.task}`, {
+                                        currentBacklogSlide.addText(`• ${backlog.task}`, {
                                             x: 1.4,
                                             y: backlogY,
                                             w: 8,
@@ -14419,7 +14337,7 @@ const app = {
                                         backlogY += 0.35;
                                     }
                                     if (backlog.acceptanceCriteria) {
-                                        currentUserSlide.addText(`  Criteria: ${backlog.acceptanceCriteria}`, {
+                                        currentBacklogSlide.addText(`  Criteria: ${backlog.acceptanceCriteria}`, {
                                             x: 1.4,
                                             y: backlogY,
                                             w: 8,
@@ -14432,9 +14350,8 @@ const app = {
                                         backlogY += 0.3;
                                     }
                                     
-                                    userY += 0.8;
+                                    storyY += 0.8;
                                 });
-                                userY += 0.2;
                             }
                         });
                     }
