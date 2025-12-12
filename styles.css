@@ -149,11 +149,19 @@ body.mobile-menu-open {
     gap: 0.5rem;
     margin-bottom: 2rem;
     border-bottom: 2px solid var(--border-color);
+    flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .admin-tabs .tab-btn {
     padding: 0.875rem 1.5rem;
     font-size: 1rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 
 .admin-tab-content {
@@ -162,6 +170,22 @@ body.mobile-menu-open {
 
 .admin-tab-content.active {
     display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.project-planning-section {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.project-planning-container {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 /* Evaluation Form */
@@ -729,6 +753,10 @@ body.mobile-menu-open {
 /* Admin Section */
 .admin-section {
     margin-bottom: 2rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .admin-card {
@@ -1085,9 +1113,12 @@ body.mobile-menu-open {
     margin-left: 250px;
     padding: 2rem;
     max-width: 1200px;
+    width: calc(100% - 250px);
     position: relative;
     z-index: 1;
     pointer-events: auto;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .page {
@@ -1096,11 +1127,18 @@ body.mobile-menu-open {
     position: relative;
     min-height: 100%;
     pointer-events: auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .page.active {
     display: block;
     pointer-events: auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Ensure inputs in active pages are always interactive */
@@ -4848,6 +4886,10 @@ body.mobile-menu-open {
 /* Project Planning Styles */
 .project-planning-container {
     padding: 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .project-planning-section {
@@ -4855,6 +4897,10 @@ body.mobile-menu-open {
     padding: 1.5rem;
     border-radius: 8px;
     border: 1px solid var(--border-color);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .users-list {
