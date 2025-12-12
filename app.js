@@ -13582,6 +13582,8 @@ const app = {
                 const backlog = { id: doc.id, ...doc.data() };
                 const story = userStories.find(s => s.id === backlog.userStoryId);
                 backlog.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                backlog.userStoryId = backlog.userStoryId || '';
+                backlog.userId = story ? story.userId : '';
                 productBacklogs.push(backlog);
             });
             
@@ -13597,6 +13599,37 @@ const app = {
                     console.warn('Error loading guide name:', error);
                 }
             }
+            
+            // Organize data by users -> user stories -> backlogs
+            const usersWithStories = users.map(user => {
+                const userStoriesForUser = userStories
+                    .filter(s => s.userId === user.id)
+                    .map(s => ({
+                        id: s.id,
+                        userName: s.userName || 'Unknown',
+                        feature: s.feature || '',
+                        benefit: s.benefit || '',
+                        priority: s.priority || 'medium',
+                        status: s.approved ? 'Approved' : (s.rejected ? 'Rejected' : 'Pending'),
+                        backlogs: productBacklogs
+                            .filter(b => b.userStoryId === s.id)
+                            .map(b => ({
+                                id: b.id,
+                                storyText: b.storyText || '',
+                                task: b.task || '',
+                                acceptanceCriteria: b.acceptanceCriteria || '',
+                                priority: b.priority || 'medium',
+                                status: b.approved ? 'Approved' : (b.rejected ? 'Rejected' : 'Pending')
+                            }))
+                    }));
+                
+                return {
+                    id: user.id,
+                    name: user.name || '',
+                    description: user.description || '',
+                    userStories: userStoriesForUser
+                };
+            });
             
             return {
                 team: {
@@ -13617,11 +13650,16 @@ const app = {
                     area: problemStatement.area || '',
                     solution: problemStatement.solution || ''
                 } : null,
+                usersWithStories: usersWithStories,
+                // Keep flat lists for backward compatibility if needed
                 users: users.map(u => ({
+                    id: u.id,
                     name: u.name || '',
                     description: u.description || ''
                 })),
                 userStories: userStories.map(s => ({
+                    id: s.id,
+                    userId: s.userId,
                     userName: s.userName || 'Unknown',
                     feature: s.feature || '',
                     benefit: s.benefit || '',
@@ -13629,6 +13667,8 @@ const app = {
                     status: s.approved ? 'Approved' : (s.rejected ? 'Rejected' : 'Pending')
                 })),
                 productBacklogs: productBacklogs.map(b => ({
+                    id: b.id,
+                    userStoryId: b.userStoryId,
                     storyText: b.storyText || '',
                     task: b.task || '',
                     acceptanceCriteria: b.acceptanceCriteria || '',
@@ -13655,102 +13695,164 @@ const app = {
             
             const data = await this.collectProjectData();
             
-            // Create new presentation
+            // Create new presentation with modern theme
             const pptx = new PptxGenJS();
             pptx.layout = 'LAYOUT_WIDE';
             
-            // Title slide
+            // Define modern color scheme
+            const colors = {
+                primary: '1E3A8A',      // Deep blue
+                secondary: '3B82F6',    // Bright blue
+                accent: '10B981',       // Green
+                warning: 'F59E0B',       // Orange
+                danger: 'EF4444',        // Red
+                dark: '1F2937',         // Dark gray
+                light: 'F3F4F6',        // Light gray
+                text: '111827',         // Almost black
+                textLight: '6B7280'     // Gray
+            };
+            
+            // Title slide with gradient background effect
             const titleSlide = pptx.addSlide();
+            titleSlide.background = { color: colors.primary };
             titleSlide.addText(data.team.name, {
                 x: 0.5,
-                y: 1.5,
+                y: 2,
                 w: 9,
-                h: 1,
-                fontSize: 44,
+                h: 1.2,
+                fontSize: 48,
                 bold: true,
                 align: 'center',
-                color: '363636'
+                color: 'FFFFFF',
+                fontFace: 'Arial'
             });
             titleSlide.addText('Project Documentation', {
                 x: 0.5,
-                y: 2.8,
+                y: 3.5,
                 w: 9,
                 h: 0.8,
-                fontSize: 32,
+                fontSize: 28,
                 align: 'center',
-                color: '666666'
+                color: 'E5E7EB',
+                fontFace: 'Arial'
             });
             titleSlide.addText(`Generated on ${new Date().toLocaleDateString()}`, {
                 x: 0.5,
-                y: 4.5,
+                y: 4.8,
                 w: 9,
                 h: 0.5,
-                fontSize: 18,
+                fontSize: 16,
                 align: 'center',
-                color: '999999'
+                color: 'D1D5DB',
+                fontFace: 'Arial'
             });
             
-            // Project Topic slide
+            // Project Topic slide with modern styling
             const topicSlide = pptx.addSlide();
+            topicSlide.background = { color: colors.light };
+            topicSlide.addShape(pptx.ShapeType.rect, {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 0.5,
+                fill: { color: colors.primary },
+                line: { color: colors.primary, width: 0 }
+            });
             topicSlide.addText('Project Topic', {
                 x: 0.5,
-                y: 0.3,
+                y: 0.7,
                 w: 9,
                 h: 0.6,
-                fontSize: 36,
+                fontSize: 32,
                 bold: true,
-                color: '363636'
+                color: colors.primary,
+                fontFace: 'Arial'
             });
             topicSlide.addText(data.team.topic, {
                 x: 0.5,
-                y: 1.2,
+                y: 1.6,
                 w: 9,
-                h: 1,
-                fontSize: 24,
-                color: '363636'
+                h: 1.2,
+                fontSize: 28,
+                bold: true,
+                color: colors.text,
+                fontFace: 'Arial'
             });
             if (data.team.area && data.team.area !== 'Not specified') {
-                topicSlide.addText(`Area/Technology: ${data.team.area}`, {
+                topicSlide.addShape(pptx.ShapeType.roundRect, {
                     x: 0.5,
-                    y: 2.5,
-                    w: 9,
+                    y: 3.2,
+                    w: 4,
                     h: 0.6,
-                    fontSize: 20,
-                    color: '666666'
+                    fill: { color: colors.secondary },
+                    line: { color: colors.secondary, width: 0 },
+                    rectRadius: 0.1
+                });
+                topicSlide.addText(`Area/Technology: ${data.team.area}`, {
+                    x: 0.6,
+                    y: 3.3,
+                    w: 3.8,
+                    h: 0.4,
+                    fontSize: 18,
+                    bold: true,
+                    color: 'FFFFFF',
+                    fontFace: 'Arial'
                 });
             }
             
-            // Team Details slide
+            // Team Details slide with modern styling
             const teamSlide = pptx.addSlide();
+            teamSlide.background = { color: colors.light };
+            teamSlide.addShape(pptx.ShapeType.rect, {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 0.5,
+                fill: { color: colors.primary },
+                line: { color: colors.primary, width: 0 }
+            });
             teamSlide.addText('Team Details', {
                 x: 0.5,
-                y: 0.3,
+                y: 0.7,
                 w: 9,
                 h: 0.6,
-                fontSize: 36,
+                fontSize: 32,
                 bold: true,
-                color: '363636'
+                color: colors.primary,
+                fontFace: 'Arial'
             });
             
-            let teamY = 1.2;
-            teamSlide.addText(`Team Name: ${data.team.name}`, {
+            let teamY = 1.6;
+            teamSlide.addShape(pptx.ShapeType.roundRect, {
                 x: 0.5,
                 y: teamY,
                 w: 9,
-                h: 0.5,
-                fontSize: 20,
-                color: '363636'
+                h: 0.6,
+                fill: { color: 'FFFFFF' },
+                line: { color: colors.secondary, width: 2 },
+                rectRadius: 0.1
             });
-            teamY += 0.7;
+            teamSlide.addText(`Team Name: ${data.team.name}`, {
+                x: 0.6,
+                y: teamY + 0.1,
+                w: 8.8,
+                h: 0.4,
+                fontSize: 22,
+                bold: true,
+                color: colors.text,
+                fontFace: 'Arial'
+            });
+            teamY += 0.9;
             
             teamSlide.addText('Team Members:', {
                 x: 0.5,
                 y: teamY,
                 w: 9,
                 h: 0.5,
-                fontSize: 22,
+                fontSize: 20,
                 bold: true,
-                color: '363636'
+                color: colors.primary,
+                fontFace: 'Arial'
             });
             teamY += 0.6;
             
@@ -13759,36 +13861,67 @@ const app = {
                 if (teamY > 5.5) {
                     // Create new slide if needed
                     currentTeamSlide = pptx.addSlide();
+                    currentTeamSlide.background = { color: colors.light };
+                    currentTeamSlide.addShape(pptx.ShapeType.rect, {
+                        x: 0,
+                        y: 0,
+                        w: 10,
+                        h: 0.5,
+                        fill: { color: colors.primary },
+                        line: { color: colors.primary, width: 0 }
+                    });
                     currentTeamSlide.addText('Team Members (continued)', {
                         x: 0.5,
-                        y: 0.3,
+                        y: 0.7,
                         w: 9,
                         h: 0.6,
-                        fontSize: 36,
+                        fontSize: 32,
                         bold: true,
-                        color: '363636'
+                        color: colors.primary,
+                        fontFace: 'Arial'
                     });
-                    teamY = 1.2;
+                    teamY = 1.6;
                 }
-                currentTeamSlide.addText(`${index + 1}. ${member.name}${member.ktuid ? ` (${member.ktuid})` : ''}`, {
+                currentTeamSlide.addShape(pptx.ShapeType.roundRect, {
                     x: 0.8,
                     y: teamY,
                     w: 8.5,
-                    h: 0.4,
-                    fontSize: 18,
-                    color: '363636'
+                    h: 0.5,
+                    fill: { color: 'FFFFFF' },
+                    line: { color: colors.textLight, width: 1 },
+                    rectRadius: 0.05
                 });
-                teamY += 0.5;
+                currentTeamSlide.addText(`${index + 1}. ${member.name}${member.ktuid ? ` (${member.ktuid})` : ''}`, {
+                    x: 0.9,
+                    y: teamY + 0.1,
+                    w: 8.3,
+                    h: 0.3,
+                    fontSize: 18,
+                    color: colors.text,
+                    fontFace: 'Arial'
+                });
+                teamY += 0.6;
             });
             
             if (data.team.guideName && data.team.guideName !== 'Not assigned') {
-                currentTeamSlide.addText(`Guide: ${data.team.guideName}`, {
+                currentTeamSlide.addShape(pptx.ShapeType.roundRect, {
                     x: 0.5,
                     y: teamY + 0.3,
-                    w: 9,
+                    w: 4,
                     h: 0.5,
-                    fontSize: 20,
-                    color: '666666'
+                    fill: { color: colors.accent },
+                    line: { color: colors.accent, width: 0 },
+                    rectRadius: 0.1
+                });
+                currentTeamSlide.addText(`Guide: ${data.team.guideName}`, {
+                    x: 0.6,
+                    y: teamY + 0.4,
+                    w: 3.8,
+                    h: 0.3,
+                    fontSize: 18,
+                    bold: true,
+                    color: 'FFFFFF',
+                    fontFace: 'Arial'
                 });
             }
             
@@ -13940,190 +14073,259 @@ const app = {
                 }
             }
             
-            // Users slide
-            if (data.users.length > 0) {
-                const usersSlide = pptx.addSlide();
-                usersSlide.addText('Users', {
-                    x: 0.5,
-                    y: 0.3,
-                    w: 9,
-                    h: 0.6,
-                    fontSize: 36,
-                    bold: true,
-                    color: '363636'
-                });
-                
-                let usersY = 1.2;
-                let currentUsersSlide = usersSlide;
-                data.users.forEach((user, index) => {
-                    if (usersY > 5.5) {
-                        currentUsersSlide = pptx.addSlide();
-                        currentUsersSlide.addText('Users (continued)', {
-                            x: 0.5,
-                            y: 0.3,
-                            w: 9,
-                            h: 0.6,
-                            fontSize: 36,
-                            bold: true,
-                            color: '363636'
-                        });
-                        usersY = 1.2;
-                    }
-                    
-                    currentUsersSlide.addText(`${index + 1}. ${user.name}`, {
+            // Hierarchical structure: Users -> User Stories -> Product Backlogs
+            if (data.usersWithStories && data.usersWithStories.length > 0) {
+                data.usersWithStories.forEach((userData, userIndex) => {
+                    // User slide with modern styling
+                    const userSlide = pptx.addSlide();
+                    userSlide.background = { color: colors.light };
+                    userSlide.addShape(pptx.ShapeType.rect, {
+                        x: 0,
+                        y: 0,
+                        w: 10,
+                        h: 0.6,
+                        fill: { color: colors.secondary },
+                        line: { color: colors.secondary, width: 0 }
+                    });
+                    userSlide.addText(`User ${userIndex + 1}: ${userData.name}`, {
                         x: 0.5,
-                        y: usersY,
+                        y: 0.1,
                         w: 9,
                         h: 0.4,
-                        fontSize: 20,
+                        fontSize: 32,
                         bold: true,
-                        color: '363636'
+                        color: 'FFFFFF',
+                        fontFace: 'Arial'
                     });
-                    usersY += 0.5;
                     
-                    if (user.description) {
-                        currentUsersSlide.addText(user.description, {
-                            x: 0.8,
-                            y: usersY,
-                            w: 8.5,
-                            h: 0.6,
-                            fontSize: 16,
-                            color: '666666'
-                        });
-                        usersY += 0.7;
-                    } else {
-                        usersY += 0.3;
-                    }
-                });
-            }
-            
-            // User Stories slide
-            if (data.userStories.length > 0) {
-                const storiesSlide = pptx.addSlide();
-                storiesSlide.addText('User Stories', {
-                    x: 0.5,
-                    y: 0.3,
-                    w: 9,
-                    h: 0.6,
-                    fontSize: 36,
-                    bold: true,
-                    color: '363636'
-                });
-                
-                let storiesY = 1.2;
-                let currentStoriesSlide = storiesSlide;
-                data.userStories.forEach((story, index) => {
-                    if (storiesY > 5.5) {
-                        currentStoriesSlide = pptx.addSlide();
-                        currentStoriesSlide.addText('User Stories (continued)', {
+                    let userY = 1;
+                    if (userData.description) {
+                        userSlide.addText('Description:', {
                             x: 0.5,
-                            y: 0.3,
+                            y: userY,
                             w: 9,
-                            h: 0.6,
-                            fontSize: 36,
-                            bold: true,
-                            color: '363636'
-                        });
-                        storiesY = 1.2;
-                    }
-                    
-                    const storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
-                    currentStoriesSlide.addText(`${index + 1}. ${storyText}`, {
-                        x: 0.5,
-                        y: storiesY,
-                        w: 9,
-                        h: 0.8,
-                        fontSize: 16,
-                        color: '363636'
-                    });
-                    storiesY += 1;
-                    
-                    currentStoriesSlide.addText(`Priority: ${story.priority.toUpperCase()} | Status: ${story.status}`, {
-                        x: 0.8,
-                        y: storiesY,
-                        w: 8.5,
-                        h: 0.3,
-                        fontSize: 14,
-                        color: '666666'
-                    });
-                    storiesY += 0.4;
-                });
-            }
-            
-            // Product Backlog slide
-            if (data.productBacklogs.length > 0) {
-                const backlogSlide = pptx.addSlide();
-                backlogSlide.addText('Product Backlog', {
-                    x: 0.5,
-                    y: 0.3,
-                    w: 9,
-                    h: 0.6,
-                    fontSize: 36,
-                    bold: true,
-                    color: '363636'
-                });
-                
-                let backlogY = 1.2;
-                let currentBacklogSlide = backlogSlide;
-                data.productBacklogs.forEach((backlog, index) => {
-                    if (backlogY > 5.5) {
-                        currentBacklogSlide = pptx.addSlide();
-                        currentBacklogSlide.addText('Product Backlog (continued)', {
-                            x: 0.5,
-                            y: 0.3,
-                            w: 9,
-                            h: 0.6,
-                            fontSize: 36,
-                            bold: true,
-                            color: '363636'
-                        });
-                        backlogY = 1.2;
-                    }
-                    
-                    currentBacklogSlide.addText(`${index + 1}. ${backlog.storyText}`, {
-                        x: 0.5,
-                        y: backlogY,
-                        w: 9,
-                        h: 0.5,
-                        fontSize: 16,
-                        color: '363636',
-                        italic: true
-                    });
-                    backlogY += 0.6;
-                    
-                    if (backlog.task) {
-                        currentBacklogSlide.addText(`Task: ${backlog.task}`, {
-                            x: 0.8,
-                            y: backlogY,
-                            w: 8.5,
                             h: 0.4,
-                            fontSize: 16,
-                            color: '363636'
+                            fontSize: 18,
+                            bold: true,
+                            color: colors.text,
+                            fontFace: 'Arial'
                         });
-                        backlogY += 0.5;
-                    }
-                    
-                    if (backlog.acceptanceCriteria) {
-                        currentBacklogSlide.addText(`Acceptance Criteria: ${backlog.acceptanceCriteria}`, {
+                        userY += 0.5;
+                        userSlide.addText(userData.description, {
                             x: 0.8,
-                            y: backlogY,
+                            y: userY,
                             w: 8.5,
-                            h: 0.5,
-                            fontSize: 14,
-                            color: '666666'
+                            h: 0.8,
+                            fontSize: 16,
+                            color: colors.textLight,
+                            fontFace: 'Arial'
                         });
-                        backlogY += 0.6;
+                        userY += 1;
                     }
                     
-                    currentBacklogSlide.addText(`Priority: ${backlog.priority.toUpperCase()} | Status: ${backlog.status}`, {
-                        x: 0.8,
-                        y: backlogY,
-                        w: 8.5,
-                        h: 0.3,
-                        fontSize: 14,
-                        color: '666666'
-                    });
-                    backlogY += 0.5;
+                    // User Stories for this user
+                    if (userData.userStories && userData.userStories.length > 0) {
+                        userSlide.addText('User Stories:', {
+                            x: 0.5,
+                            y: userY,
+                            w: 9,
+                            h: 0.4,
+                            fontSize: 20,
+                            bold: true,
+                            color: colors.primary,
+                            fontFace: 'Arial'
+                        });
+                        userY += 0.5;
+                        
+                        let currentUserSlide = userSlide;
+                        userData.userStories.forEach((story, storyIndex) => {
+                            if (userY > 5.2) {
+                                // Create new slide for this user
+                                currentUserSlide = pptx.addSlide();
+                                currentUserSlide.background = { color: colors.light };
+                                currentUserSlide.addShape(pptx.ShapeType.rect, {
+                                    x: 0,
+                                    y: 0,
+                                    w: 10,
+                                    h: 0.6,
+                                    fill: { color: colors.secondary },
+                                    line: { color: colors.secondary, width: 0 }
+                                });
+                                currentUserSlide.addText(`${userData.name} - Continued`, {
+                                    x: 0.5,
+                                    y: 0.1,
+                                    w: 9,
+                                    h: 0.4,
+                                    fontSize: 28,
+                                    bold: true,
+                                    color: 'FFFFFF',
+                                    fontFace: 'Arial'
+                                });
+                                userY = 1;
+                            }
+                            
+                            const storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
+                            
+                            // Priority color
+                            const priorityColors = {
+                                low: '95A5A6',
+                                medium: colors.secondary,
+                                high: colors.warning,
+                                critical: colors.danger
+                            };
+                            const statusColors = {
+                                approved: colors.accent,
+                                rejected: colors.danger,
+                                pending: colors.warning
+                            };
+                            
+                            // Story text with background
+                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                                x: 0.5,
+                                y: userY,
+                                w: 9,
+                                h: 0.9,
+                                fill: { color: 'FFFFFF' },
+                                line: { color: priorityColors[story.priority] || colors.secondary, width: 2 },
+                                rectRadius: 0.1
+                            });
+                            currentUserSlide.addText(`${storyIndex + 1}. ${storyText}`, {
+                                x: 0.6,
+                                y: userY + 0.1,
+                                w: 8.8,
+                                h: 0.7,
+                                fontSize: 14,
+                                color: colors.text,
+                                fontFace: 'Arial'
+                            });
+                            userY += 1;
+                            
+                            // Priority and status badges
+                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                                x: 0.8,
+                                y: userY,
+                                w: 1.5,
+                                h: 0.3,
+                                fill: { color: priorityColors[story.priority] || colors.secondary },
+                                line: { color: priorityColors[story.priority] || colors.secondary, width: 0 },
+                                rectRadius: 0.05
+                            });
+                            currentUserSlide.addText(story.priority.toUpperCase(), {
+                                x: 0.85,
+                                y: userY + 0.05,
+                                w: 1.4,
+                                h: 0.2,
+                                fontSize: 11,
+                                bold: true,
+                                color: 'FFFFFF',
+                                fontFace: 'Arial'
+                            });
+                            
+                            currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                                x: 2.5,
+                                y: userY,
+                                w: 1.5,
+                                h: 0.3,
+                                fill: { color: statusColors[story.status.toLowerCase()] || colors.warning },
+                                line: { color: statusColors[story.status.toLowerCase()] || colors.warning, width: 0 },
+                                rectRadius: 0.05
+                            });
+                            currentUserSlide.addText(story.status, {
+                                x: 2.55,
+                                y: userY + 0.05,
+                                w: 1.4,
+                                h: 0.2,
+                                fontSize: 11,
+                                bold: true,
+                                color: 'FFFFFF',
+                                fontFace: 'Arial'
+                            });
+                            userY += 0.5;
+                            
+                            // Product Backlogs for this story
+                            if (story.backlogs && story.backlogs.length > 0) {
+                                currentUserSlide.addText('Product Backlog Items:', {
+                                    x: 0.8,
+                                    y: userY,
+                                    w: 8.5,
+                                    h: 0.3,
+                                    fontSize: 14,
+                                    bold: true,
+                                    color: colors.textLight,
+                                    fontFace: 'Arial'
+                                });
+                                userY += 0.4;
+                                
+                                story.backlogs.forEach((backlog, backlogIndex) => {
+                                    if (userY > 5.2) {
+                                        // Create new slide
+                                        currentUserSlide = pptx.addSlide();
+                                        currentUserSlide.background = { color: colors.light };
+                                        currentUserSlide.addShape(pptx.ShapeType.rect, {
+                                            x: 0,
+                                            y: 0,
+                                            w: 10,
+                                            h: 0.6,
+                                            fill: { color: colors.secondary },
+                                            line: { color: colors.secondary, width: 0 }
+                                        });
+                                        currentUserSlide.addText(`${userData.name} - Backlog Items`, {
+                                            x: 0.5,
+                                            y: 0.1,
+                                            w: 9,
+                                            h: 0.4,
+                                            fontSize: 28,
+                                            bold: true,
+                                            color: 'FFFFFF',
+                                            fontFace: 'Arial'
+                                        });
+                                        userY = 1;
+                                    }
+                                    
+                                    // Backlog item with indentation
+                                    currentUserSlide.addShape(pptx.ShapeType.roundRect, {
+                                        x: 1.2,
+                                        y: userY,
+                                        w: 8.3,
+                                        h: 0.7,
+                                        fill: { color: 'F9FAFB' },
+                                        line: { color: colors.textLight, width: 1 },
+                                        rectRadius: 0.05
+                                    });
+                                    
+                                    let backlogY = userY + 0.1;
+                                    if (backlog.task) {
+                                        currentUserSlide.addText(`• ${backlog.task}`, {
+                                            x: 1.4,
+                                            y: backlogY,
+                                            w: 8,
+                                            h: 0.3,
+                                            fontSize: 13,
+                                            color: colors.text,
+                                            fontFace: 'Arial'
+                                        });
+                                        backlogY += 0.35;
+                                    }
+                                    if (backlog.acceptanceCriteria) {
+                                        currentUserSlide.addText(`  Criteria: ${backlog.acceptanceCriteria}`, {
+                                            x: 1.4,
+                                            y: backlogY,
+                                            w: 8,
+                                            h: 0.25,
+                                            fontSize: 11,
+                                            color: colors.textLight,
+                                            fontFace: 'Arial',
+                                            italic: true
+                                        });
+                                        backlogY += 0.3;
+                                    }
+                                    
+                                    userY += 0.8;
+                                });
+                                userY += 0.2;
+                            }
+                        });
+                    }
                 });
             }
             
@@ -14287,81 +14489,100 @@ const app = {
                     </div>
                     ` : ''}
                     
-                    ${data.users.length > 0 ? `
+                    ${data.usersWithStories && data.usersWithStories.length > 0 ? `
                     <div class="section">
-                        <h1>Users</h1>
-                        <div class="user-list">
-                            ${data.users.map((user, index) => `
-                                <div class="user-item">
-                                    <h3>${index + 1}. ${this.escapeHtml(user.name)}</h3>
-                                    ${user.description ? `<p>${this.escapeHtml(user.description)}</p>` : ''}
+                        <h1>Users, User Stories & Product Backlogs</h1>
+                        ${data.usersWithStories.map((userData, userIndex) => `
+                            <div class="user-section" style="margin-bottom: 40px; page-break-inside: avoid;">
+                                <div style="background: linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                                    <h2 style="color: white; margin: 0; font-size: 24px;">User ${userIndex + 1}: ${this.escapeHtml(userData.name)}</h2>
                                 </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-                    
-                    ${data.userStories.length > 0 ? `
-                    <div class="section">
-                        <h1>User Stories</h1>
-                        <div class="story-list">
-                            ${data.userStories.map((story, index) => `
-                                <div class="story-item">
-                                    <h3>${index + 1}. As a <span style="color: #3498db;">${this.escapeHtml(story.userName)}</span>, 
-                                    I want ${this.escapeHtml(story.feature)}, 
-                                    so that ${this.escapeHtml(story.benefit)}.</h3>
-                                    <p>
-                                        <span class="priority priority-${story.priority}">${story.priority.toUpperCase()}</span>
-                                        <span class="status status-${story.status.toLowerCase()}">${story.status}</span>
-                                    </p>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-                    
-                    ${data.productBacklogs.length > 0 ? `
-                    <div class="section">
-                        <h1>Product Backlog</h1>
-                        <div class="backlog-list">
-                            ${data.productBacklogs.map((backlog, index) => `
-                                <div class="backlog-item">
-                                    <h3>${index + 1}. ${this.escapeHtml(backlog.storyText)}</h3>
-                                    ${backlog.task ? `<p><strong>Task:</strong> ${this.escapeHtml(backlog.task)}</p>` : ''}
-                                    ${backlog.acceptanceCriteria ? `<p><strong>Acceptance Criteria:</strong> ${this.escapeHtml(backlog.acceptanceCriteria)}</p>` : ''}
-                                    <p>
-                                        <span class="priority priority-${backlog.priority}">${backlog.priority.toUpperCase()}</span>
-                                        <span class="status status-${backlog.status.toLowerCase()}">${backlog.status}</span>
-                                    </p>
-                                </div>
-                            `).join('')}
-                        </div>
+                                ${userData.description ? `
+                                    <div style="background: #F3F4F6; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #3B82F6;">
+                                        <strong>Description:</strong> ${this.escapeHtml(userData.description)}
+                                    </div>
+                                ` : ''}
+                                
+                                ${userData.userStories && userData.userStories.length > 0 ? `
+                                    <h3 style="color: #1E3A8A; margin-top: 20px; margin-bottom: 15px; font-size: 20px;">User Stories:</h3>
+                                    ${userData.userStories.map((story, storyIndex) => `
+                                        <div class="story-item" style="margin-bottom: 25px; padding: 15px; background: #FFFFFF; border: 2px solid #E5E7EB; border-left: 5px solid #3B82F6; border-radius: 6px;">
+                                            <h4 style="margin: 0 0 10px 0; color: #111827; font-size: 16px;">
+                                                ${storyIndex + 1}. As a <span style="color: #3B82F6; font-weight: bold;">${this.escapeHtml(story.userName)}</span>, 
+                                                I want ${this.escapeHtml(story.feature)}, 
+                                                so that ${this.escapeHtml(story.benefit)}.
+                                            </h4>
+                                            <p style="margin: 8px 0;">
+                                                <span class="priority priority-${story.priority}">${story.priority.toUpperCase()}</span>
+                                                <span class="status status-${story.status.toLowerCase()}">${story.status}</span>
+                                            </p>
+                                            
+                                            ${story.backlogs && story.backlogs.length > 0 ? `
+                                                <div style="margin-top: 15px; padding-left: 20px; border-left: 3px solid #D1D5DB;">
+                                                    <strong style="color: #6B7280; font-size: 14px;">Product Backlog Items:</strong>
+                                                    ${story.backlogs.map((backlog, backlogIndex) => `
+                                                        <div style="margin-top: 10px; padding: 10px; background: #F9FAFB; border-radius: 4px; border-left: 3px solid #10B981;">
+                                                            ${backlog.task ? `<p style="margin: 5px 0; color: #111827;"><strong>Task:</strong> ${this.escapeHtml(backlog.task)}</p>` : ''}
+                                                            ${backlog.acceptanceCriteria ? `<p style="margin: 5px 0; color: #6B7280; font-style: italic; font-size: 13px;"><strong>Acceptance Criteria:</strong> ${this.escapeHtml(backlog.acceptanceCriteria)}</p>` : ''}
+                                                            <p style="margin: 8px 0 0 0;">
+                                                                <span class="priority priority-${backlog.priority}">${backlog.priority.toUpperCase()}</span>
+                                                                <span class="status status-${backlog.status.toLowerCase()}">${backlog.status}</span>
+                                                            </p>
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `).join('')}
+                                ` : '<p style="color: #6B7280; font-style: italic;">No user stories defined for this user.</p>'}
+                            </div>
+                        `).join('')}
                     </div>
                     ` : ''}
                 </body>
                 </html>
             `;
             
-            // Create a temporary container for PDF generation
+            // Create a temporary container for PDF generation - make it visible but off-screen
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px';
+            tempDiv.style.position = 'fixed';
+            tempDiv.style.top = '0';
+            tempDiv.style.left = '0';
+            tempDiv.style.width = '210mm'; // A4 width
+            tempDiv.style.padding = '20mm';
+            tempDiv.style.backgroundColor = '#FFFFFF';
+            tempDiv.style.zIndex = '9999';
+            tempDiv.style.opacity = '0';
+            tempDiv.style.pointerEvents = 'none';
             document.body.appendChild(tempDiv);
+            
+            // Wait a bit for rendering
+            await new Promise(resolve => setTimeout(resolve, 100));
             
             // Generate PDF
             const opt = {
                 margin: [10, 10, 10, 10],
                 filename: `${data.team.name.replace(/[^a-z0-9]/gi, '_')}_Project_Documentation_${new Date().toISOString().split('T')[0]}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    logging: false,
+                    windowWidth: 794, // A4 width in pixels at 96 DPI
+                    windowHeight: 1123 // A4 height in pixels at 96 DPI
+                },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             
             await html2pdf().set(opt).from(tempDiv).save();
             
             // Clean up
-            document.body.removeChild(tempDiv);
+            setTimeout(() => {
+                if (tempDiv.parentNode) {
+                    document.body.removeChild(tempDiv);
+                }
+            }, 1000);
             
             if (btn) {
                 btn.disabled = false;
