@@ -12974,27 +12974,27 @@ const app = {
             // Build HTML - Two column layout: Left = All Product Backlogs, Right = Modules Grid
             let html = '<div style="display: flex; gap: 1.5rem; padding-bottom: 1rem; align-items: flex-start;">';
             
-            // Left side: All Product Backlogs
+            // Left side: Uncategorised Product Backlogs Only
             html += `
                 <div style="flex: 0 0 350px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; max-height: calc(100vh - 200px); overflow-y: auto;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; position: sticky; top: 0; background: #f8f9fa; padding-bottom: 0.5rem; z-index: 10;">
                         <h4 style="margin: 0; color: #6c757d; font-size: 1rem; font-weight: 600;">
-                            <i class="fas fa-clipboard-list"></i> All Product Backlogs
+                            <i class="fas fa-inbox"></i> Uncategorised Cards
                         </h4>
-                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${backlogs.length}</span>
+                        <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
                     <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             `;
             
-            if (backlogs.length === 0) {
+            if (unassignedBacklogs.length === 0) {
                 html += `
                     <div style="padding: 2rem 1rem; text-align: center; color: #9ca3af; font-size: 0.85rem;">
-                        <i class="fas fa-clipboard-list" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
-                        <p style="margin: 0;">No product backlogs</p>
+                        <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5; color: #10b981;"></i>
+                        <p style="margin: 0;">All cards categorised</p>
                     </div>
                 `;
             } else {
-                backlogs.forEach(backlog => {
+                unassignedBacklogs.forEach(backlog => {
                     html += this.generateBacklogCard(backlog);
                 });
             }
@@ -13032,6 +13032,7 @@ const app = {
                     }
                 });
                 const avgPriorityScore = priorityCount > 0 ? (totalPriorityScore / priorityCount).toFixed(1) : '0.0';
+                const maxPriorityScore = 4.0; // Maximum possible priority score (critical)
                 
                 // Calculate difficulty score
                 const difficultyScores = {
@@ -13055,6 +13056,7 @@ const app = {
                     }
                 });
                 const avgDifficultyScore = difficultyCount > 0 ? (totalDifficultyScore / difficultyCount).toFixed(1) : '0.0';
+                const maxDifficultyScore = 5.0; // Maximum possible difficulty score (very-hard)
                 
                 html += `
                     <div class="module-column" data-module-id="${module.id}" style="background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
@@ -13079,12 +13081,12 @@ const app = {
                         <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px; flex-shrink: 0;">
                             <div style="flex: 1; text-align: center;">
                                 <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Priority Score</div>
-                                <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">${avgPriorityScore}</div>
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">${avgPriorityScore}<span style="font-size: 0.85rem; color: #9ca3af; font-weight: 500;">/${maxPriorityScore}</span></div>
                             </div>
                             <div style="width: 1px; background: #e5e7eb;"></div>
                             <div style="flex: 1; text-align: center;">
                                 <div style="font-size: 0.7rem; color: #6c757d; margin-bottom: 0.25rem; font-weight: 600;">Difficulty Score</div>
-                                <div style="font-size: 1.25rem; font-weight: 700; color: #8b5cf6;">${avgDifficultyScore}</div>
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #8b5cf6;">${avgDifficultyScore}<span style="font-size: 0.85rem; color: #9ca3af; font-weight: 500;">/${maxDifficultyScore}</span></div>
                             </div>
                         </div>
                         ` : ''}
