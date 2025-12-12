@@ -13514,6 +13514,870 @@ const app = {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    },
+    
+    // ========== PROJECT DOCUMENTATION GENERATION (PPT/PDF) ==========
+    
+    // Collect all project data for documentation
+    async collectProjectData() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                throw new Error('You are not assigned to a team.');
+            }
+            
+            // Get approved problem statement
+            let problemStatement = null;
+            try {
+                const problemStatementsQuery = query(
+                    collection(window.firebaseDb, 'problemStatements'),
+                    where('teamId', '==', team.id),
+                    where('approved', '==', true)
+                );
+                const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
+                if (!problemStatementsSnapshot.empty) {
+                    const psDoc = problemStatementsSnapshot.docs[0];
+                    problemStatement = {
+                        id: psDoc.id,
+                        ...psDoc.data()
+                    };
+                }
+            } catch (error) {
+                console.warn('Error loading problem statement:', error);
+            }
+            
+            // Get users
+            const usersQuery = query(
+                collection(window.firebaseDb, 'projectUsers'),
+                where('teamId', '==', team.id)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            const users = [];
+            usersSnapshot.forEach(doc => {
+                users.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Get user stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const userStories = [];
+            storiesSnapshot.forEach(doc => {
+                const story = { id: doc.id, ...doc.data() };
+                const user = users.find(u => u.id === story.userId);
+                story.userName = user ? user.name : 'Unknown';
+                userStories.push(story);
+            });
+            
+            // Get product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const productBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                const backlog = { id: doc.id, ...doc.data() };
+                const story = userStories.find(s => s.id === backlog.userStoryId);
+                backlog.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                productBacklogs.push(backlog);
+            });
+            
+            // Get guide name
+            let guideName = team.guideName || 'Not assigned';
+            if (team.guideId) {
+                try {
+                    const guideDoc = await getDoc(doc(window.firebaseDb, 'users', team.guideId));
+                    if (guideDoc.exists()) {
+                        guideName = guideDoc.data().name || guideName;
+                    }
+                } catch (error) {
+                    console.warn('Error loading guide name:', error);
+                }
+            }
+            
+            return {
+                team: {
+                    id: team.id,
+                    name: team.groupName || 'Unknown Team',
+                    topic: team.topic || problemStatement?.title || 'Not assigned',
+                    area: team.area || problemStatement?.area || 'Not specified',
+                    subArea: team.subArea || '',
+                    members: (team.members || []).map(m => ({
+                        name: m.name || m.ktuid || m,
+                        ktuid: m.ktuid || (typeof m === 'string' ? m : '')
+                    })),
+                    guideName: guideName
+                },
+                problemStatement: problemStatement ? {
+                    title: problemStatement.title || '',
+                    problemStatement: problemStatement.problemStatement || '',
+                    area: problemStatement.area || '',
+                    solution: problemStatement.solution || ''
+                } : null,
+                users: users.map(u => ({
+                    name: u.name || '',
+                    description: u.description || ''
+                })),
+                userStories: userStories.map(s => ({
+                    userName: s.userName || 'Unknown',
+                    feature: s.feature || '',
+                    benefit: s.benefit || '',
+                    priority: s.priority || 'medium',
+                    status: s.approved ? 'Approved' : (s.rejected ? 'Rejected' : 'Pending')
+                })),
+                productBacklogs: productBacklogs.map(b => ({
+                    storyText: b.storyText || '',
+                    task: b.task || '',
+                    acceptanceCriteria: b.acceptanceCriteria || '',
+                    priority: b.priority || 'medium',
+                    status: b.approved ? 'Approved' : (b.rejected ? 'Rejected' : 'Pending')
+                }))
+            };
+        } catch (error) {
+            console.error('Error collecting project data:', error);
+            throw error;
+        }
+    },
+    
+    // Generate PPT
+    async generateProjectPPT() {
+        const btn = document.getElementById('generate-ppt-btn');
+        const originalText = btn ? btn.innerHTML : '';
+        
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            }
+            
+            const data = await this.collectProjectData();
+            
+            // Create new presentation
+            const pptx = new PptxGenJS();
+            pptx.layout = 'LAYOUT_WIDE';
+            
+            // Title slide
+            const titleSlide = pptx.addSlide();
+            titleSlide.addText(data.team.name, {
+                x: 0.5,
+                y: 1.5,
+                w: 9,
+                h: 1,
+                fontSize: 44,
+                bold: true,
+                align: 'center',
+                color: '363636'
+            });
+            titleSlide.addText('Project Documentation', {
+                x: 0.5,
+                y: 2.8,
+                w: 9,
+                h: 0.8,
+                fontSize: 32,
+                align: 'center',
+                color: '666666'
+            });
+            titleSlide.addText(`Generated on ${new Date().toLocaleDateString()}`, {
+                x: 0.5,
+                y: 4.5,
+                w: 9,
+                h: 0.5,
+                fontSize: 18,
+                align: 'center',
+                color: '999999'
+            });
+            
+            // Project Topic slide
+            const topicSlide = pptx.addSlide();
+            topicSlide.addText('Project Topic', {
+                x: 0.5,
+                y: 0.3,
+                w: 9,
+                h: 0.6,
+                fontSize: 36,
+                bold: true,
+                color: '363636'
+            });
+            topicSlide.addText(data.team.topic, {
+                x: 0.5,
+                y: 1.2,
+                w: 9,
+                h: 1,
+                fontSize: 24,
+                color: '363636'
+            });
+            if (data.team.area && data.team.area !== 'Not specified') {
+                topicSlide.addText(`Area/Technology: ${data.team.area}`, {
+                    x: 0.5,
+                    y: 2.5,
+                    w: 9,
+                    h: 0.6,
+                    fontSize: 20,
+                    color: '666666'
+                });
+            }
+            
+            // Team Details slide
+            const teamSlide = pptx.addSlide();
+            teamSlide.addText('Team Details', {
+                x: 0.5,
+                y: 0.3,
+                w: 9,
+                h: 0.6,
+                fontSize: 36,
+                bold: true,
+                color: '363636'
+            });
+            
+            let teamY = 1.2;
+            teamSlide.addText(`Team Name: ${data.team.name}`, {
+                x: 0.5,
+                y: teamY,
+                w: 9,
+                h: 0.5,
+                fontSize: 20,
+                color: '363636'
+            });
+            teamY += 0.7;
+            
+            teamSlide.addText('Team Members:', {
+                x: 0.5,
+                y: teamY,
+                w: 9,
+                h: 0.5,
+                fontSize: 22,
+                bold: true,
+                color: '363636'
+            });
+            teamY += 0.6;
+            
+            let currentTeamSlide = teamSlide;
+            data.team.members.forEach((member, index) => {
+                if (teamY > 5.5) {
+                    // Create new slide if needed
+                    currentTeamSlide = pptx.addSlide();
+                    currentTeamSlide.addText('Team Members (continued)', {
+                        x: 0.5,
+                        y: 0.3,
+                        w: 9,
+                        h: 0.6,
+                        fontSize: 36,
+                        bold: true,
+                        color: '363636'
+                    });
+                    teamY = 1.2;
+                }
+                currentTeamSlide.addText(`${index + 1}. ${member.name}${member.ktuid ? ` (${member.ktuid})` : ''}`, {
+                    x: 0.8,
+                    y: teamY,
+                    w: 8.5,
+                    h: 0.4,
+                    fontSize: 18,
+                    color: '363636'
+                });
+                teamY += 0.5;
+            });
+            
+            if (data.team.guideName && data.team.guideName !== 'Not assigned') {
+                currentTeamSlide.addText(`Guide: ${data.team.guideName}`, {
+                    x: 0.5,
+                    y: teamY + 0.3,
+                    w: 9,
+                    h: 0.5,
+                    fontSize: 20,
+                    color: '666666'
+                });
+            }
+            
+            // Problem Statement slide
+            if (data.problemStatement) {
+                const psSlide = pptx.addSlide();
+                psSlide.addText('Problem Statement', {
+                    x: 0.5,
+                    y: 0.3,
+                    w: 9,
+                    h: 0.6,
+                    fontSize: 36,
+                    bold: true,
+                    color: '363636'
+                });
+                
+                let psY = 1.2;
+                if (data.problemStatement.title) {
+                    psSlide.addText(data.problemStatement.title, {
+                        x: 0.5,
+                        y: psY,
+                        w: 9,
+                        h: 0.6,
+                        fontSize: 24,
+                        bold: true,
+                        color: '363636'
+                    });
+                    psY += 0.8;
+                }
+                
+                if (data.problemStatement.area) {
+                    psSlide.addText(`Area/Technology: ${data.problemStatement.area}`, {
+                        x: 0.5,
+                        y: psY,
+                        w: 9,
+                        h: 0.5,
+                        fontSize: 18,
+                        color: '666666'
+                    });
+                    psY += 0.6;
+                }
+                
+                if (data.problemStatement.problemStatement) {
+                    psSlide.addText('Problem:', {
+                        x: 0.5,
+                        y: psY,
+                        w: 9,
+                        h: 0.4,
+                        fontSize: 20,
+                        bold: true,
+                        color: '363636'
+                    });
+                    psY += 0.5;
+                    
+                    // Split long text into multiple text boxes if needed
+                    const problemText = data.problemStatement.problemStatement;
+                    const maxLength = 500;
+                    let currentPsSlide = psSlide;
+                    if (problemText.length > maxLength) {
+                        const chunks = problemText.match(new RegExp(`.{1,${maxLength}}`, 'g'));
+                        chunks.forEach(chunk => {
+                            if (psY > 5.5) {
+                                currentPsSlide = pptx.addSlide();
+                                currentPsSlide.addText('Problem Statement (continued)', {
+                                    x: 0.5,
+                                    y: 0.3,
+                                    w: 9,
+                                    h: 0.6,
+                                    fontSize: 36,
+                                    bold: true,
+                                    color: '363636'
+                                });
+                                psY = 1.2;
+                            }
+                            currentPsSlide.addText(chunk, {
+                                x: 0.5,
+                                y: psY,
+                                w: 9,
+                                h: 0.8,
+                                fontSize: 16,
+                                color: '363636'
+                            });
+                            psY += 0.9;
+                        });
+                    } else {
+                        psSlide.addText(problemText, {
+                            x: 0.5,
+                            y: psY,
+                            w: 9,
+                            h: 1.5,
+                            fontSize: 16,
+                            color: '363636'
+                        });
+                    }
+                }
+                
+                if (data.problemStatement.solution) {
+                    const solutionSlide = pptx.addSlide();
+                    solutionSlide.addText('Solution', {
+                        x: 0.5,
+                        y: 0.3,
+                        w: 9,
+                        h: 0.6,
+                        fontSize: 36,
+                        bold: true,
+                        color: '363636'
+                    });
+                    
+                    let solY = 1.2;
+                    const solutionText = data.problemStatement.solution;
+                    const maxLength = 500;
+                    let currentSolSlide = solutionSlide;
+                    if (solutionText.length > maxLength) {
+                        const chunks = solutionText.match(new RegExp(`.{1,${maxLength}}`, 'g'));
+                        chunks.forEach(chunk => {
+                            if (solY > 5.5) {
+                                currentSolSlide = pptx.addSlide();
+                                currentSolSlide.addText('Solution (continued)', {
+                                    x: 0.5,
+                                    y: 0.3,
+                                    w: 9,
+                                    h: 0.6,
+                                    fontSize: 36,
+                                    bold: true,
+                                    color: '363636'
+                                });
+                                solY = 1.2;
+                            }
+                            currentSolSlide.addText(chunk, {
+                                x: 0.5,
+                                y: solY,
+                                w: 9,
+                                h: 0.8,
+                                fontSize: 16,
+                                color: '363636'
+                            });
+                            solY += 0.9;
+                        });
+                    } else {
+                        solutionSlide.addText(solutionText, {
+                            x: 0.5,
+                            y: solY,
+                            w: 9,
+                            h: 1.5,
+                            fontSize: 16,
+                            color: '363636'
+                        });
+                    }
+                }
+            }
+            
+            // Users slide
+            if (data.users.length > 0) {
+                const usersSlide = pptx.addSlide();
+                usersSlide.addText('Users', {
+                    x: 0.5,
+                    y: 0.3,
+                    w: 9,
+                    h: 0.6,
+                    fontSize: 36,
+                    bold: true,
+                    color: '363636'
+                });
+                
+                let usersY = 1.2;
+                let currentUsersSlide = usersSlide;
+                data.users.forEach((user, index) => {
+                    if (usersY > 5.5) {
+                        currentUsersSlide = pptx.addSlide();
+                        currentUsersSlide.addText('Users (continued)', {
+                            x: 0.5,
+                            y: 0.3,
+                            w: 9,
+                            h: 0.6,
+                            fontSize: 36,
+                            bold: true,
+                            color: '363636'
+                        });
+                        usersY = 1.2;
+                    }
+                    
+                    currentUsersSlide.addText(`${index + 1}. ${user.name}`, {
+                        x: 0.5,
+                        y: usersY,
+                        w: 9,
+                        h: 0.4,
+                        fontSize: 20,
+                        bold: true,
+                        color: '363636'
+                    });
+                    usersY += 0.5;
+                    
+                    if (user.description) {
+                        currentUsersSlide.addText(user.description, {
+                            x: 0.8,
+                            y: usersY,
+                            w: 8.5,
+                            h: 0.6,
+                            fontSize: 16,
+                            color: '666666'
+                        });
+                        usersY += 0.7;
+                    } else {
+                        usersY += 0.3;
+                    }
+                });
+            }
+            
+            // User Stories slide
+            if (data.userStories.length > 0) {
+                const storiesSlide = pptx.addSlide();
+                storiesSlide.addText('User Stories', {
+                    x: 0.5,
+                    y: 0.3,
+                    w: 9,
+                    h: 0.6,
+                    fontSize: 36,
+                    bold: true,
+                    color: '363636'
+                });
+                
+                let storiesY = 1.2;
+                let currentStoriesSlide = storiesSlide;
+                data.userStories.forEach((story, index) => {
+                    if (storiesY > 5.5) {
+                        currentStoriesSlide = pptx.addSlide();
+                        currentStoriesSlide.addText('User Stories (continued)', {
+                            x: 0.5,
+                            y: 0.3,
+                            w: 9,
+                            h: 0.6,
+                            fontSize: 36,
+                            bold: true,
+                            color: '363636'
+                        });
+                        storiesY = 1.2;
+                    }
+                    
+                    const storyText = `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.`;
+                    currentStoriesSlide.addText(`${index + 1}. ${storyText}`, {
+                        x: 0.5,
+                        y: storiesY,
+                        w: 9,
+                        h: 0.8,
+                        fontSize: 16,
+                        color: '363636'
+                    });
+                    storiesY += 1;
+                    
+                    currentStoriesSlide.addText(`Priority: ${story.priority.toUpperCase()} | Status: ${story.status}`, {
+                        x: 0.8,
+                        y: storiesY,
+                        w: 8.5,
+                        h: 0.3,
+                        fontSize: 14,
+                        color: '666666'
+                    });
+                    storiesY += 0.4;
+                });
+            }
+            
+            // Product Backlog slide
+            if (data.productBacklogs.length > 0) {
+                const backlogSlide = pptx.addSlide();
+                backlogSlide.addText('Product Backlog', {
+                    x: 0.5,
+                    y: 0.3,
+                    w: 9,
+                    h: 0.6,
+                    fontSize: 36,
+                    bold: true,
+                    color: '363636'
+                });
+                
+                let backlogY = 1.2;
+                let currentBacklogSlide = backlogSlide;
+                data.productBacklogs.forEach((backlog, index) => {
+                    if (backlogY > 5.5) {
+                        currentBacklogSlide = pptx.addSlide();
+                        currentBacklogSlide.addText('Product Backlog (continued)', {
+                            x: 0.5,
+                            y: 0.3,
+                            w: 9,
+                            h: 0.6,
+                            fontSize: 36,
+                            bold: true,
+                            color: '363636'
+                        });
+                        backlogY = 1.2;
+                    }
+                    
+                    currentBacklogSlide.addText(`${index + 1}. ${backlog.storyText}`, {
+                        x: 0.5,
+                        y: backlogY,
+                        w: 9,
+                        h: 0.5,
+                        fontSize: 16,
+                        color: '363636',
+                        italic: true
+                    });
+                    backlogY += 0.6;
+                    
+                    if (backlog.task) {
+                        currentBacklogSlide.addText(`Task: ${backlog.task}`, {
+                            x: 0.8,
+                            y: backlogY,
+                            w: 8.5,
+                            h: 0.4,
+                            fontSize: 16,
+                            color: '363636'
+                        });
+                        backlogY += 0.5;
+                    }
+                    
+                    if (backlog.acceptanceCriteria) {
+                        currentBacklogSlide.addText(`Acceptance Criteria: ${backlog.acceptanceCriteria}`, {
+                            x: 0.8,
+                            y: backlogY,
+                            w: 8.5,
+                            h: 0.5,
+                            fontSize: 14,
+                            color: '666666'
+                        });
+                        backlogY += 0.6;
+                    }
+                    
+                    currentBacklogSlide.addText(`Priority: ${backlog.priority.toUpperCase()} | Status: ${backlog.status}`, {
+                        x: 0.8,
+                        y: backlogY,
+                        w: 8.5,
+                        h: 0.3,
+                        fontSize: 14,
+                        color: '666666'
+                    });
+                    backlogY += 0.5;
+                });
+            }
+            
+            // Save presentation
+            const fileName = `${data.team.name.replace(/[^a-z0-9]/gi, '_')}_Project_Documentation_${new Date().toISOString().split('T')[0]}.pptx`;
+            await pptx.writeFile({ fileName: fileName });
+            
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+            
+            alert('PPT generated successfully!');
+        } catch (error) {
+            console.error('Error generating PPT:', error);
+            alert('Error generating PPT: ' + error.message);
+            
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    },
+    
+    // Generate PDF
+    async generateProjectPDF() {
+        const btn = document.getElementById('generate-pdf-btn');
+        const originalText = btn ? btn.innerHTML : '';
+        
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            }
+            
+            const data = await this.collectProjectData();
+            
+            // Create HTML content for PDF
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            margin: 40px;
+                            color: #333;
+                            line-height: 1.6;
+                        }
+                        h1 {
+                            color: #2c3e50;
+                            border-bottom: 3px solid #3498db;
+                            padding-bottom: 10px;
+                            margin-top: 30px;
+                        }
+                        h2 {
+                            color: #34495e;
+                            margin-top: 25px;
+                            margin-bottom: 15px;
+                        }
+                        h3 {
+                            color: #555;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                        }
+                        .section {
+                            margin-bottom: 30px;
+                            page-break-inside: avoid;
+                        }
+                        .team-info {
+                            background: #f8f9fa;
+                            padding: 15px;
+                            border-radius: 5px;
+                            margin-bottom: 20px;
+                        }
+                        .member-list, .user-list, .story-list, .backlog-list {
+                            margin-left: 20px;
+                        }
+                        .member-item, .user-item, .story-item, .backlog-item {
+                            margin-bottom: 15px;
+                            padding: 10px;
+                            background: #fff;
+                            border-left: 4px solid #3498db;
+                        }
+                        .priority {
+                            display: inline-block;
+                            padding: 3px 8px;
+                            border-radius: 3px;
+                            font-size: 0.85em;
+                            font-weight: bold;
+                            margin-left: 10px;
+                        }
+                        .priority-low { background: #95a5a6; color: white; }
+                        .priority-medium { background: #3498db; color: white; }
+                        .priority-high { background: #f39c12; color: white; }
+                        .priority-critical { background: #e74c3c; color: white; }
+                        .status {
+                            display: inline-block;
+                            padding: 3px 8px;
+                            border-radius: 3px;
+                            font-size: 0.85em;
+                            font-weight: bold;
+                            margin-left: 10px;
+                        }
+                        .status-approved { background: #27ae60; color: white; }
+                        .status-rejected { background: #e74c3c; color: white; }
+                        .status-pending { background: #f39c12; color: white; }
+                        .problem-statement-box {
+                            background: #ecf0f1;
+                            padding: 15px;
+                            border-radius: 5px;
+                            margin: 15px 0;
+                        }
+                        @media print {
+                            body { margin: 20px; }
+                            .section { page-break-inside: avoid; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div style="text-align: center; margin-bottom: 40px;">
+                        <h1 style="font-size: 36px; border: none; margin-bottom: 10px;">${this.escapeHtml(data.team.name)}</h1>
+                        <h2 style="color: #7f8c8d; font-size: 24px; margin-top: 0;">Project Documentation</h2>
+                        <p style="color: #95a5a6;">Generated on ${new Date().toLocaleDateString()}</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h1>Project Topic</h1>
+                        <div class="team-info">
+                            <h2>${this.escapeHtml(data.team.topic)}</h2>
+                            ${data.team.area && data.team.area !== 'Not specified' ? `<p><strong>Area/Technology:</strong> ${this.escapeHtml(data.team.area)}</p>` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h1>Team Details</h1>
+                        <div class="team-info">
+                            <p><strong>Team Name:</strong> ${this.escapeHtml(data.team.name)}</p>
+                            <h3>Team Members:</h3>
+                            <ul class="member-list">
+                                ${data.team.members.map(m => `<li>${this.escapeHtml(m.name)}${m.ktuid ? ` (${this.escapeHtml(m.ktuid)})` : ''}</li>`).join('')}
+                            </ul>
+                            ${data.team.guideName && data.team.guideName !== 'Not assigned' ? `<p><strong>Guide:</strong> ${this.escapeHtml(data.team.guideName)}</p>` : ''}
+                        </div>
+                    </div>
+                    
+                    ${data.problemStatement ? `
+                    <div class="section">
+                        <h1>Problem Statement</h1>
+                        <div class="problem-statement-box">
+                            ${data.problemStatement.title ? `<h2>${this.escapeHtml(data.problemStatement.title)}</h2>` : ''}
+                            ${data.problemStatement.area ? `<p><strong>Area/Technology:</strong> ${this.escapeHtml(data.problemStatement.area)}</p>` : ''}
+                            <h3>Problem:</h3>
+                            <p style="white-space: pre-wrap;">${this.escapeHtml(data.problemStatement.problemStatement)}</p>
+                            ${data.problemStatement.solution ? `
+                                <h3>Solution:</h3>
+                                <p style="white-space: pre-wrap;">${this.escapeHtml(data.problemStatement.solution)}</p>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${data.users.length > 0 ? `
+                    <div class="section">
+                        <h1>Users</h1>
+                        <div class="user-list">
+                            ${data.users.map((user, index) => `
+                                <div class="user-item">
+                                    <h3>${index + 1}. ${this.escapeHtml(user.name)}</h3>
+                                    ${user.description ? `<p>${this.escapeHtml(user.description)}</p>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${data.userStories.length > 0 ? `
+                    <div class="section">
+                        <h1>User Stories</h1>
+                        <div class="story-list">
+                            ${data.userStories.map((story, index) => `
+                                <div class="story-item">
+                                    <h3>${index + 1}. As a <span style="color: #3498db;">${this.escapeHtml(story.userName)}</span>, 
+                                    I want ${this.escapeHtml(story.feature)}, 
+                                    so that ${this.escapeHtml(story.benefit)}.</h3>
+                                    <p>
+                                        <span class="priority priority-${story.priority}">${story.priority.toUpperCase()}</span>
+                                        <span class="status status-${story.status.toLowerCase()}">${story.status}</span>
+                                    </p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${data.productBacklogs.length > 0 ? `
+                    <div class="section">
+                        <h1>Product Backlog</h1>
+                        <div class="backlog-list">
+                            ${data.productBacklogs.map((backlog, index) => `
+                                <div class="backlog-item">
+                                    <h3>${index + 1}. ${this.escapeHtml(backlog.storyText)}</h3>
+                                    ${backlog.task ? `<p><strong>Task:</strong> ${this.escapeHtml(backlog.task)}</p>` : ''}
+                                    ${backlog.acceptanceCriteria ? `<p><strong>Acceptance Criteria:</strong> ${this.escapeHtml(backlog.acceptanceCriteria)}</p>` : ''}
+                                    <p>
+                                        <span class="priority priority-${backlog.priority}">${backlog.priority.toUpperCase()}</span>
+                                        <span class="status status-${backlog.status.toLowerCase()}">${backlog.status}</span>
+                                    </p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </body>
+                </html>
+            `;
+            
+            // Create a temporary container for PDF generation
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            document.body.appendChild(tempDiv);
+            
+            // Generate PDF
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: `${data.team.name.replace(/[^a-z0-9]/gi, '_')}_Project_Documentation_${new Date().toISOString().split('T')[0]}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            await html2pdf().set(opt).from(tempDiv).save();
+            
+            // Clean up
+            document.body.removeChild(tempDiv);
+            
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+            
+            alert('PDF generated successfully!');
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF: ' + error.message);
+            
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
     }
 };
 
