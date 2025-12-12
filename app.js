@@ -12967,12 +12967,12 @@ const app = {
                 }
             });
             
-            // Build HTML
-            let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 1rem;">';
+            // Build HTML - modules stacked vertically
+            let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 1rem; max-width: 100%;">';
             
             // Unassigned column
             html += `
-                <div class="module-column" data-module-id="unassigned" style="width: 100%; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
+                <div class="module-column" data-module-id="unassigned" style="width: 100%; max-width: 100%; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                         <h4 style="margin: 0; color: #6c757d; font-size: 1rem;">
                             <i class="fas fa-inbox"></i> Unassigned
@@ -13006,7 +13006,7 @@ const app = {
                 const moduleColor = module.color || '#3b82f6';
                 
                 html += `
-                    <div class="module-column" data-module-id="${module.id}" style="width: 100%; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
+                    <div class="module-column" data-module-id="${module.id}" style="width: 100%; max-width: 100%; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                             <div style="flex: 1;">
                                 <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
