@@ -12971,10 +12971,10 @@ const app = {
                 }
             });
             
-            // Build HTML - Two column layout: Left = All Product Backlogs, Right = Modules Grid
+            // Build HTML - Two column layout: Left = Uncategorised Product Backlogs, Right = Modules Grid
             let html = '<div style="display: flex; gap: 1.5rem; padding-bottom: 1rem; align-items: flex-start;">';
             
-            // Left side: Uncategorised Product Backlogs
+            // Left side: Uncategorised Product Backlogs Only
             html += `
                 <div style="flex: 0 0 350px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; max-height: calc(100vh - 200px); overflow-y: auto;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; position: sticky; top: 0; background: #f8f9fa; padding-bottom: 0.5rem; z-index: 10;">
@@ -13141,7 +13141,7 @@ const app = {
         const userName = backlog.userName || 'Unknown';
         
         return `
-            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: move; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
+            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                     <div style="flex: 1;">
                         <p style="margin: 0; font-weight: 600; color: #111827; font-size: 0.9rem; line-height: 1.4;">${this.escapeHtml(backlog.task || 'No task')}</p>
@@ -13169,8 +13169,11 @@ const app = {
         const cards = document.querySelectorAll('.backlog-card');
         const columns = document.querySelectorAll('.module-cards');
         
+        let isDragging = false;
+        
         cards.forEach(card => {
             card.addEventListener('dragstart', (e) => {
+                isDragging = true;
                 e.dataTransfer.setData('text/plain', card.dataset.backlogId);
                 e.dataTransfer.effectAllowed = 'move';
                 card.style.opacity = '0.5';
@@ -13182,6 +13185,21 @@ const app = {
                 card.style.opacity = '1';
                 card.style.transform = '';
                 card.style.boxShadow = '';
+                // Reset drag flag after a short delay
+                setTimeout(() => {
+                    isDragging = false;
+                }, 200);
+            });
+            
+            // Handle click (but not during drag)
+            card.addEventListener('click', (e) => {
+                if (isDragging) {
+                    return; // Don't show details if we just dragged
+                }
+                const backlogId = card.dataset.backlogId;
+                if (backlogId) {
+                    this.showBacklogDetails(backlogId);
+                }
             });
             
             // Add hover effect
@@ -13421,6 +13439,208 @@ const app = {
             console.error('Error deleting module:', error);
             alert('Error deleting module. Please try again.');
         }
+    },
+    
+    async updateUncategorisedCount() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all backlogs and assignments
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignedBacklogIds = new Set();
+            assignmentsSnapshot.forEach(doc => {
+                assignedBacklogIds.add(doc.data().backlogId);
+            });
+            
+            let unassignedCount = 0;
+            backlogSnapshot.forEach(doc => {
+                if (!assignedBacklogIds.has(doc.id)) {
+                    unassignedCount++;
+                }
+            });
+            
+            // Update the count badge
+            const countBadge = document.querySelector('[data-module-id="unassigned"]')?.parentElement?.querySelector('span[style*="background: #6c757d"]');
+            if (countBadge) {
+                countBadge.textContent = unassignedCount;
+            }
+        } catch (error) {
+            console.error('Error updating uncategorised count:', error);
+        }
+    },
+    
+    async showBacklogDetails(backlogId) {
+        const modal = document.getElementById('backlog-details-modal');
+        const content = document.getElementById('backlog-details-content');
+        
+        if (!modal || !content) return;
+        
+        try {
+            content.innerHTML = '<p class="empty-state">Loading details...</p>';
+            modal.style.display = 'flex';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                content.innerHTML = '<p class="error-message">Team not found.</p>';
+                return;
+            }
+            
+            // Load backlog
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) {
+                content.innerHTML = '<p class="error-message">Product backlog not found.</p>';
+                return;
+            }
+            
+            const backlog = { id: backlogDoc.id, ...backlogDoc.data() };
+            
+            // Load user story
+            let userStory = null;
+            if (backlog.userStoryId) {
+                const storyDoc = await getDoc(doc(window.firebaseDb, 'userStories', backlog.userStoryId));
+                if (storyDoc.exists()) {
+                    userStory = { id: storyDoc.id, ...storyDoc.data() };
+                    
+                    // Load user for the story
+                    if (userStory.userId) {
+                        const userDoc = await getDoc(doc(window.firebaseDb, 'projectUsers', userStory.userId));
+                        if (userDoc.exists()) {
+                            userStory.userName = userDoc.data().name || 'Unknown';
+                        }
+                    }
+                }
+            }
+            
+            // Load user
+            let user = null;
+            if (backlog.userId) {
+                const userDoc = await getDoc(doc(window.firebaseDb, 'projectUsers', backlog.userId));
+                if (userDoc.exists()) {
+                    user = { id: userDoc.id, ...userDoc.data() };
+                }
+            }
+            
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            
+            const difficultyColors = {
+                easy: '#10b981',
+                medium: '#3b82f6',
+                hard: '#f59e0b',
+                'very-hard': '#ef4444'
+            };
+            
+            const priorityColor = priorityColors[backlog.priority] || priorityColors.medium;
+            const difficultyColor = difficultyColors[backlog.difficulty] || difficultyColors.medium;
+            
+            let html = `
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${priorityColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; color: #111827; font-size: 1.1rem; font-weight: 600;">${this.escapeHtml(backlog.task || 'No task')}</h3>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <span style="background: ${priorityColor}15; color: ${priorityColor}; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                    ${(backlog.priority || 'medium').toUpperCase()}
+                                </span>
+                                ${backlog.difficulty ? `
+                                    <span style="background: ${difficultyColor}15; color: ${difficultyColor}; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                        ${(backlog.difficulty || 'medium').replace('-', ' ').toUpperCase()}
+                                    </span>
+                                ` : ''}
+                            </div>
+                        </div>
+                        
+                        ${backlog.acceptanceCriteria ? `
+                            <div style="margin-top: 1rem;">
+                                <h4 style="margin: 0 0 0.5rem 0; color: #6b7280; font-size: 0.9rem; font-weight: 600;">
+                                    <i class="fas fa-check-circle"></i> Acceptance Criteria:
+                                </h4>
+                                <p style="margin: 0; color: #111827; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap;">${this.escapeHtml(backlog.acceptanceCriteria)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    ${userStory ? `
+                        <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <h4 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1rem; font-weight: 600;">
+                                <i class="fas fa-list-ul"></i> User Story
+                            </h4>
+                            <p style="margin: 0; color: #111827; font-size: 0.95rem; line-height: 1.6;">
+                                <strong>As a</strong> <span style="color: #1e40af; font-weight: 600;">${this.escapeHtml(userStory.userName || 'Unknown')}</span>,
+                                <strong>I want</strong> ${this.escapeHtml(userStory.feature || '')},
+                                <strong>so that</strong> ${this.escapeHtml(userStory.benefit || '')}.
+                            </p>
+                            ${userStory.description ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #fde68a;">
+                                    <p style="margin: 0; color: #78350f; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${this.escapeHtml(userStory.description)}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${user ? `
+                        <div style="padding: 1rem; background: #e0e7ff; border-radius: 8px; border-left: 4px solid #3730a3;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: #3730a3; font-size: 1rem; font-weight: 600;">
+                                <i class="fas fa-user"></i> User
+                            </h4>
+                            <p style="margin: 0; color: #111827; font-size: 0.95rem; font-weight: 500;">${this.escapeHtml(user.name || 'Unknown')}</p>
+                            ${user.description ? `
+                                <p style="margin: 0.5rem 0 0 0; color: #4c1d95; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${this.escapeHtml(user.description)}</p>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <h4 style="margin: 0 0 0.75rem 0; color: #6b7280; font-size: 0.9rem; font-weight: 600;">
+                            <i class="fas fa-info-circle"></i> Additional Information
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.9rem;">
+                            ${backlog.createdAt ? `
+                                <div>
+                                    <span style="color: #6b7280; font-weight: 600;">Created:</span>
+                                    <span style="color: #111827; margin-left: 0.5rem;">
+                                        ${backlog.createdAt.toDate ? backlog.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                                    </span>
+                                </div>
+                            ` : ''}
+                            ${backlog.updatedAt ? `
+                                <div>
+                                    <span style="color: #6b7280; font-weight: 600;">Updated:</span>
+                                    <span style="color: #111827; margin-left: 0.5rem;">
+                                        ${backlog.updatedAt.toDate ? backlog.updatedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading backlog details:', error);
+            content.innerHTML = '<p class="error-message">Error loading backlog details. Please try again.</p>';
+        }
+    },
+    
+    closeBacklogDetailsModal() {
+        const modal = document.getElementById('backlog-details-modal');
+        if (modal) modal.style.display = 'none';
     },
     
     // ========== PRODUCT BACKLOG REPORT FUNCTIONS ==========

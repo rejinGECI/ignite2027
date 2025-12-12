@@ -1226,6 +1226,24 @@ Bob Johnson,GHI789</pre>
                             </div>
                         </div>
                         
+                        <!-- Backlog Details Modal -->
+                        <div id="backlog-details-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeBacklogDetailsModal()">
+                            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+                                <div class="modal-header">
+                                    <h2><i class="fas fa-clipboard-list"></i> Product Backlog Details</h2>
+                                    <button type="button" class="modal-close" onclick="app.closeBacklogDetailsModal()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body" id="backlog-details-content">
+                                    <!-- Content will be loaded here -->
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="app.closeBacklogDetailsModal()">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Design Tab -->
                         <div id="design-tab" class="admin-tab-content">
                             <div class="project-planning-section">
