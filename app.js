@@ -12968,23 +12968,32 @@ const app = {
             });
             
             // Build HTML
-            let html = '<div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; min-height: 500px;">';
+            let html = '<div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; align-items: flex-start;">';
             
             // Unassigned column
             html += `
-                <div class="module-column" data-module-id="unassigned" style="min-width: 300px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div class="module-column" data-module-id="unassigned" style="min-width: 300px; max-width: 300px; background: #f8f9fa; border-radius: 12px; padding: 1rem; border: 2px dashed #dee2e6; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                         <h4 style="margin: 0; color: #6c757d; font-size: 1rem;">
                             <i class="fas fa-inbox"></i> Unassigned
                         </h4>
                         <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
-                    <div class="module-cards" data-module-id="unassigned" style="min-height: 400px;">
+                    <div class="module-cards" data-module-id="unassigned" style="flex: 1; min-height: 0;">
             `;
             
-            unassignedBacklogs.forEach(backlog => {
-                html += this.generateBacklogCard(backlog);
-            });
+            if (unassignedBacklogs.length === 0) {
+                html += `
+                    <div style="padding: 2rem 1rem; text-align: center; color: #9ca3af; font-size: 0.85rem;">
+                        <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                        <p style="margin: 0;">No cards</p>
+                    </div>
+                `;
+            } else {
+                unassignedBacklogs.forEach(backlog => {
+                    html += this.generateBacklogCard(backlog);
+                });
+            }
             
             html += `
                     </div>
@@ -12997,8 +13006,8 @@ const app = {
                 const moduleColor = module.color || '#3b82f6';
                 
                 html += `
-                    <div class="module-column" data-module-id="${module.id}" style="min-width: 300px; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div class="module-column" data-module-id="${module.id}" style="min-width: 300px; max-width: 300px; background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
                             <div style="flex: 1;">
                                 <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
                                     <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
@@ -13015,12 +13024,21 @@ const app = {
                                 </button>
                             </div>
                         </div>
-                        <div class="module-cards" data-module-id="${module.id}" style="min-height: 400px;">
+                        <div class="module-cards" data-module-id="${module.id}" style="flex: 1; min-height: 0;">
                 `;
                 
-                moduleBacklogs.forEach(backlog => {
-                    html += this.generateBacklogCard(backlog);
-                });
+                if (moduleBacklogs.length === 0) {
+                    html += `
+                        <div style="padding: 2rem 1rem; text-align: center; color: #9ca3af; font-size: 0.85rem;">
+                            <i class="fas fa-layer-group" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                            <p style="margin: 0;">No cards</p>
+                        </div>
+                    `;
+                } else {
+                    moduleBacklogs.forEach(backlog => {
+                        html += this.generateBacklogCard(backlog);
+                    });
+                }
                 
                 html += `
                         </div>
