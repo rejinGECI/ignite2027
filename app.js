@@ -12979,7 +12979,7 @@ const app = {
                         </h4>
                         <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
-                    <div class="module-cards" data-module-id="unassigned" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;">
+                    <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem;">
             `;
             
             if (unassignedBacklogs.length === 0) {
@@ -13024,7 +13024,7 @@ const app = {
                                 </button>
                             </div>
                         </div>
-                        <div class="module-cards" data-module-id="${module.id}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;">
+                        <div class="module-cards" data-module-id="${module.id}" style="display: flex; flex-direction: column; gap: 0.75rem;">
                 `;
                 
                 if (moduleBacklogs.length === 0) {
