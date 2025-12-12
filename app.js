@@ -12433,13 +12433,14 @@ const app = {
                 rejectAllBtn.style.display = 'none';
             }
             
-            // Check if all are approved
-            const allApproved = backlogs.length > 0 && backlogs.every(b => b.approved);
+            // Check if all items have been reviewed (either approved or rejected)
+            const allReviewed = backlogs.length > 0 && backlogs.every(b => b.approved === true || b.rejected === true);
             const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
             const planningData = planningDoc.exists() ? planningDoc.data() : null;
             const isVerified = planningData && planningData.productBacklogVerified === true;
             
-            if (allApproved && !isVerified) {
+            // Show verify button when all items are reviewed (approved or rejected) and not yet verified
+            if (allReviewed && !isVerified) {
                 verifyBtn.style.display = 'inline-flex';
             } else {
                 verifyBtn.style.display = 'none';
@@ -12708,7 +12709,7 @@ const app = {
             return;
         }
         
-        // Check if there are any pending or rejected backlogs
+        // Check if there are any pending backlogs (neither approved nor rejected)
         const backlogQuery = query(
             collection(window.firebaseDb, 'productBacklog'),
             where('teamId', '==', teamId)
@@ -12718,7 +12719,8 @@ const app = {
         const pendingBacklogs = [];
         backlogSnapshot.forEach(doc => {
             const backlog = doc.data();
-            if (!backlog.approved || backlog.rejected) {
+            // Check if item is pending (neither approved nor rejected)
+            if (!backlog.approved && !backlog.rejected) {
                 pendingBacklogs.push(backlog);
             }
         });
@@ -14379,7 +14381,8 @@ const app = {
         }
     },
     
-    // Generate PDF
+    // Generate PDF - Disabled for now, will be implemented later
+    /*
     async generateProjectPDF() {
         const btn = document.getElementById('generate-pdf-btn');
         const originalText = btn ? btn.innerHTML : '';
@@ -14629,6 +14632,7 @@ const app = {
             }
         }
     }
+    */
 };
 
 // Make app available globally for onclick handlers
