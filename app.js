@@ -377,10 +377,14 @@ const app = {
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
             }
-            // Hide guide navigation
-            const guideNav = document.getElementById('guide-dashboard-nav');
-            if (guideNav) {
-                guideNav.style.display = 'none';
+            // Hide guide navigation items for students
+            const guideDashboardNav = document.getElementById('guide-dashboard-nav');
+            if (guideDashboardNav) {
+                guideDashboardNav.style.display = 'none';
+            }
+            const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
+            if (guideProjectPlanningNav) {
+                guideProjectPlanningNav.style.display = 'none';
             }
             // Show all student navigation items
             document.querySelectorAll('.student-nav').forEach(nav => {
@@ -10574,10 +10578,28 @@ const app = {
                 const team = { id: teamDoc.id, ...teamDoc.data() };
                 if (team.deleted) continue;
                 
-                // Match by guideId or guideName
-                const matchesGuide = team.guideId === this.currentUser.uid || 
-                                   team.guideName === guideEmail ||
-                                   (team.guideId && team.guideId === this.currentUser.uid);
+                // Match by guideId (most reliable)
+                let matchesGuide = team.guideId === this.currentUser.uid;
+                
+                // If no guideId match, try matching by guide name or email
+                if (!matchesGuide) {
+                    const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const userName = userData.name || '';
+                        const userEmail = userData.email || guideEmail;
+                        
+                        // Match by guide name or email
+                        matchesGuide = team.guideName === userName || 
+                                      team.guideName === userEmail ||
+                                      team.guideName === guideEmail ||
+                                      (team.guideEmail && (team.guideEmail === userEmail || team.guideEmail === guideEmail));
+                    } else {
+                        // Fallback: match by email if user doc doesn't exist
+                        matchesGuide = team.guideName === guideEmail || 
+                                     (team.guideEmail && team.guideEmail === guideEmail);
+                    }
+                }
                 
                 if (!matchesGuide) continue;
                 
@@ -10642,14 +10664,17 @@ const app = {
             container.innerHTML = teams.map(team => {
                 const isSubmitted = team.planningData && team.planningData.userStoriesSubmitted === true;
                 const isVerified = team.planningData && team.planningData.userStoriesVerified === true;
+                const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
+                const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
                 
-                if (!isSubmitted) {
+                // Show team if they have submitted user stories OR product backlog
+                if (!isSubmitted && !pbSubmitted) {
                     return `
                         <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
                             <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
                                 <i class="fas fa-users"></i> ${this.escapeHtml(team.groupName || 'Unnamed Team')}
                             </h3>
-                            <p style="color: var(--text-secondary);">User stories not submitted yet.</p>
+                            <p style="color: var(--text-secondary);">No submissions yet.</p>
                         </div>
                     `;
                 }
@@ -10665,9 +10690,6 @@ const app = {
                 const approvedCount = team.stories.filter(s => s.approved === true).length;
                 const rejectedCount = team.stories.filter(s => s.rejected === true).length;
                 const pendingCount = team.stories.length - approvedCount - rejectedCount;
-                
-                const pbSubmitted = team.planningData && team.planningData.productBacklogSubmitted === true;
-                const pbVerified = team.planningData && team.planningData.productBacklogVerified === true;
                 const pbApprovedCount = team.backlogs ? team.backlogs.filter(b => b.approved === true).length : 0;
                 const pbRejectedCount = team.backlogs ? team.backlogs.filter(b => b.rejected === true).length : 0;
                 const pbPendingCount = team.backlogs ? (team.backlogs.length - pbApprovedCount - pbRejectedCount) : 0;
@@ -10711,9 +10733,13 @@ const app = {
                                         <i class="fas fa-check-circle"></i> Backlog Verified
                                     </span>
                                 ` : pbSubmitted ? `
-                                    <button type="button" class="btn btn-primary" onclick="app.showApproveProductBacklogModal('${team.id}')">
+                                    <button type="button" class="btn btn-success" onclick="app.showApproveProductBacklogModal('${team.id}')">
                                         <i class="fas fa-clipboard-check"></i> Review Backlog
                                     </button>
+                                ` : team.backlogs && team.backlogs.length > 0 ? `
+                                    <span style="padding: 6px 12px; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
+                                        <i class="fas fa-clock"></i> Backlog Not Submitted
+                                    </span>
                                 ` : ''}
                             </div>
                         </div>
