@@ -12979,7 +12979,7 @@ const app = {
                         </h4>
                         <span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${unassignedBacklogs.length}</span>
                     </div>
-                    <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div class="module-cards" data-module-id="unassigned" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
             `;
             
             if (unassignedBacklogs.length === 0) {
@@ -13024,7 +13024,7 @@ const app = {
                                 </button>
                             </div>
                         </div>
-                        <div class="module-cards" data-module-id="${module.id}" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="module-cards" data-module-id="${module.id}" style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start;">
                 `;
                 
                 if (moduleBacklogs.length === 0) {
@@ -13072,7 +13072,7 @@ const app = {
         const userName = backlog.userName || 'Unknown';
         
         return `
-            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: move; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
+            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: move; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                     <div style="flex: 1;">
                         <p style="margin: 0; font-weight: 600; color: #111827; font-size: 0.9rem; line-height: 1.4;">${this.escapeHtml(backlog.task || 'No task')}</p>
