@@ -767,6 +767,8 @@ body.mobile-menu-open {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    position: relative;
+    z-index: 1;
 }
 
 .admin-card h3 {
@@ -1125,12 +1127,13 @@ body.mobile-menu-open {
     display: none;
     animation: fadeIn 0.3s ease-in;
     position: relative;
-    min-height: 100%;
+    min-height: auto;
     pointer-events: auto;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
+    overflow-y: visible;
 }
 
 .page.active {
@@ -1139,6 +1142,8 @@ body.mobile-menu-open {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    position: relative;
+    z-index: 1;
 }
 
 /* Ensure inputs in active pages are always interactive */
@@ -1164,6 +1169,8 @@ body.mobile-menu-open {
 
 .page-header {
     margin-bottom: 2rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .page-header h1 {

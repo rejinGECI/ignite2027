@@ -994,6 +994,10 @@ const app = {
             page.classList.add('active');
                 // Show loading animation
                 this.showPageLoader(pageId, true);
+                // Scroll to top of page
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                }, 0);
         }
         
         
@@ -1024,6 +1028,8 @@ const app = {
                 } else if (pageId === 'admin-settings') {
                     await this.loadAdminSettings();
                 } else if (pageId === 'admin-miniproject') {
+                    // Scroll to top
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                     await this.loadGuidesList();
                     await this.loadProjectTeams();
                     await this.loadEvaluationStagesDropdown();
@@ -1063,6 +1069,14 @@ const app = {
                 // Hide loading animation after data is loaded (with small delay for smooth transition)
                 setTimeout(() => {
                     this.showPageLoader(pageId, false);
+                    // Ensure page is visible and scroll to top
+                    const activePage = document.getElementById(pageId);
+                    if (activePage && activePage.classList.contains('active')) {
+                        window.scrollTo({ top: 0, behavior: 'instant' });
+                        // Force layout recalculation
+                        activePage.style.display = 'block';
+                        activePage.offsetHeight; // Trigger reflow
+                    }
                 }, 100);
             } catch (error) {
                 console.error(`Error loading data for page ${pageId}:`, error);
