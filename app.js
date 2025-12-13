@@ -10383,15 +10383,18 @@ const app = {
                 critical: '#ef4444'
             };
             
-            container.innerHTML = stories.map(story => {
+            container.innerHTML = '<div class="user-stories-sortable-container" style="display: flex; flex-direction: column; gap: 0.75rem;">' + stories.map(story => {
                 const isApproved = story.approved === true;
                 const isRejected = story.rejected === true;
                 const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : 'transparent');
                 const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
                 
                 return `
-                <div class="user-story-card" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem; border-left: 4px solid ${priorityColors[story.priority] || priorityColors.medium};">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div class="user-story-card" draggable="true" data-story-id="${story.id}" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem; border-left: 4px solid ${priorityColors[story.priority] || priorityColors.medium}; cursor: move; position: relative; transition: all 0.2s;">
+                    <div style="position: absolute; left: 0.5rem; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.75rem; cursor: move; user-select: none; z-index: 10;" title="Drag to reorder">
+                        <i class="fas fa-grip-vertical"></i>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: start; padding-left: 1.5rem;">
                         <div style="flex: 1;">
                             <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; align-items: center;">
                                 <span style="padding: 3px 8px; background: ${priorityColors[story.priority] || priorityColors.medium}15; color: ${priorityColors[story.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
@@ -10417,31 +10420,205 @@ const app = {
                                 </div>
                             ` : ''}
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-left: 1rem; align-items: center;">
-                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                                <button type="button" class="btn btn-sm" onclick="app.moveUserStoryUp('${story.id}')" ${stories.indexOf(story) === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move up">
-                                    <i class="fas fa-chevron-up"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm" onclick="app.moveUserStoryDown('${story.id}')" ${stories.indexOf(story) === stories.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move down">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Editing it will require re-submission."' : ''}>
+                            <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Editing it will require re-submission."' : ''}>
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
-                        </div>
                     </div>
                 </div>
             `;
-            }).join('');
+            }).join('') + '</div>';
+            
+            // Initialize drag and drop for user stories
+            this.initializeUserStoriesDragDrop();
         } catch (error) {
             console.error('Error loading user stories:', error);
             container.innerHTML = '<p class="error-message">Error loading user stories.</p>';
+        }
+    },
+    
+    // Initialize drag and drop for user stories
+    initializeUserStoriesDragDrop() {
+        const cards = document.querySelectorAll('.user-story-card');
+        const container = document.querySelector('.user-stories-sortable-container');
+        
+        if (!container || cards.length === 0) return;
+        
+        let draggedCard = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        const createDropIndicator = () => {
+            const indicator = document.createElement('div');
+            indicator.className = 'user-story-drop-indicator';
+            indicator.style.cssText = 'height: 3px; background: #3b82f6; margin: 0.5rem 0; border-radius: 2px; opacity: 0; transition: opacity 0.2s;';
+            return indicator;
+        };
+        
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                e.dataTransfer.setData('text/plain', card.dataset.storyId);
+                e.dataTransfer.effectAllowed = 'move';
+                card.style.opacity = '0.5';
+                card.style.transform = 'rotate(2deg) scale(1.05)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+                card.style.zIndex = '1000';
+                
+                // Create drop indicator
+                dropIndicator = createDropIndicator();
+            });
+            
+            card.addEventListener('dragend', (e) => {
+                card.style.opacity = '1';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+                card.style.zIndex = '';
+                
+                // Remove all drop indicators
+                document.querySelectorAll('.user-story-drop-indicator').forEach(ind => ind.remove());
+                
+                draggedCard = null;
+                dropIndicator = null;
+            });
+            
+            // Handle drag over for sorting
+            card.addEventListener('dragover', (e) => {
+                if (!draggedCard || !dropIndicator) return;
+                
+                if (draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    // Remove all existing indicators
+                    container.querySelectorAll('.user-story-drop-indicator').forEach(ind => {
+                        if (ind !== dropIndicator) {
+                            ind.remove();
+                        }
+                    });
+                    
+                    // Insert indicator above or below the card
+                    if (mouseY < midpoint) {
+                        // Insert above
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        card.parentElement.insertBefore(dropIndicator, card);
+                    } else {
+                        // Insert below
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        if (card.nextSibling) {
+                            card.parentElement.insertBefore(dropIndicator, card.nextSibling);
+                        } else {
+                            card.parentElement.appendChild(dropIndicator);
+                        }
+                    }
+                    
+                    dropIndicator.style.opacity = '1';
+                }
+            });
+            
+            card.addEventListener('dragleave', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    const indicator = card.parentElement.querySelector('.user-story-drop-indicator');
+                    if (indicator && indicator !== dropIndicator) {
+                        indicator.style.opacity = '0';
+                    }
+                }
+            });
+            
+            // Handle drop for sorting
+            card.addEventListener('drop', async (e) => {
+                if (!draggedCard) return;
+                
+                if (draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const storyId = e.dataTransfer.getData('text/plain');
+                    const targetStoryId = card.dataset.storyId;
+                    
+                    if (storyId === targetStoryId) return;
+                    
+                    // Remove drop indicator
+                    document.querySelectorAll('.user-story-drop-indicator').forEach(ind => ind.remove());
+                    
+                    // Get all cards
+                    const allCards = Array.from(container.querySelectorAll('.user-story-card'));
+                    
+                    // Find the drop position
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const insertBefore = mouseY < midpoint;
+                    
+                    // Reorder cards array
+                    const draggedIndex = allCards.findIndex(c => c.dataset.storyId === storyId);
+                    const targetIndex = allCards.findIndex(c => c.dataset.storyId === targetStoryId);
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                        // Remove dragged card from array
+                        const [dragged] = allCards.splice(draggedIndex, 1);
+                        
+                        // Calculate new index
+                        let newIndex;
+                        if (draggedIndex < targetIndex) {
+                            // Moving down
+                            newIndex = insertBefore ? targetIndex - 1 : targetIndex;
+                        } else {
+                            // Moving up
+                            newIndex = insertBefore ? targetIndex : targetIndex + 1;
+                        }
+                        
+                        // Clamp to valid range
+                        newIndex = Math.max(0, Math.min(newIndex, allCards.length));
+                        
+                        // Insert at new position
+                        allCards.splice(newIndex, 0, dragged);
+                        
+                        // Update sortOrder for all stories
+                        await this.updateUserStoriesSortOrder(allCards.map(c => c.dataset.storyId));
+                    }
+                }
+            });
+        });
+    },
+    
+    // Update sortOrder for user stories
+    async updateUserStoriesSortOrder(storyIds) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Update sortOrder for each story in the new order
+            const updates = storyIds.map((storyId, index) => {
+                return updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
+                    sortOrder: index,
+                    updatedAt: serverTimestamp()
+                });
+            });
+            
+            await Promise.all(updates);
+            
+            // Reload to show new order
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error updating user stories sort order:', error);
+            alert('Error updating user stories order. Please try again.');
         }
     },
     
@@ -10758,9 +10935,9 @@ const app = {
             const storyDoc = await getDoc(doc(window.firebaseDb, 'userStories', storyId));
             if (!storyDoc.exists()) {
                 alert('User story not found.');
-                return;
-            }
-            
+            return;
+        }
+        
             const story = storyDoc.data();
             const team = await this.getUserTeam();
             if (!team || team.id !== story.teamId) {
@@ -12017,12 +12194,23 @@ const app = {
                 backlogs.push(backlog);
             });
             
-            // Sort by user name, then by user story
+            // Initialize sortOrder for backlogs that don't have it
+            backlogs.forEach((backlog, index) => {
+                if (backlog.sortOrder === undefined || backlog.sortOrder === null) {
+                    backlog.sortOrder = index;
+                }
+            });
+            
+            // Sort by user name, then by user story, then by sortOrder
             backlogs.sort((a, b) => {
                 const userCompare = (a.userName || '').localeCompare(b.userName || '');
                 if (userCompare !== 0) return userCompare;
                 const storyCompare = (a.storyText || '').localeCompare(b.storyText || '');
                 if (storyCompare !== 0) return storyCompare;
+                // Within same user story, sort by sortOrder
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
                 return 0;
             });
             
@@ -12158,7 +12346,7 @@ const app = {
                             <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
                                 ${this.escapeHtml(storyText)}
                             </p>
-                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div class="product-backlog-sortable-container" data-user-story-id="${items[0]?.userStoryId || ''}" style="display: flex; flex-direction: column; gap: 0.75rem;">
                     `;
                     
                     items.forEach((backlog, itemIndex) => {
@@ -12168,8 +12356,11 @@ const app = {
                         const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
                         
                         html += `
-                            <div class="product-backlog-card" style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${priorityColors[backlog.priority] || priorityColors.medium};">
-                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div class="product-backlog-card" draggable="true" data-backlog-id="${backlog.id}" data-user-story-id="${backlog.userStoryId}" style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${priorityColors[backlog.priority] || priorityColors.medium}; cursor: move; position: relative; transition: all 0.2s;">
+                                <div style="position: absolute; left: 0.5rem; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.75rem; cursor: move; user-select: none; z-index: 10;" title="Drag to reorder">
+                                    <i class="fas fa-grip-vertical"></i>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: start; padding-left: 1.5rem;">
                                     <div style="flex: 1;">
                                         <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; align-items: center;">
                                             <span style="padding: 3px 8px; background: ${priorityColors[backlog.priority] || priorityColors.medium}15; color: ${priorityColors[backlog.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
@@ -12196,24 +12387,14 @@ const app = {
                                             </div>
                                         ` : ''}
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-left: 1rem; align-items: center;">
-                                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                                            <button type="button" class="btn btn-sm" onclick="app.moveProductBacklogUp('${backlog.id}')" ${itemIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move up">
-                                                <i class="fas fa-chevron-up"></i>
-                                            </button>
-                                            <button type="button" class="btn btn-sm" onclick="app.moveProductBacklogDown('${backlog.id}')" ${itemIndex === items.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move down">
-                                                <i class="fas fa-chevron-down"></i>
-                                            </button>
-                                        </div>
-                                        <div style="display: flex; gap: 0.5rem;">
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Editing it will require re-submission."' : ''}>
+                                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Editing it will require re-submission."' : ''}>
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
-                                    </div>
                                 </div>
                             </div>
                         `;
@@ -12229,9 +12410,213 @@ const app = {
             }
             
             container.innerHTML = html;
+            
+            // Initialize drag and drop for product backlogs
+            this.initializeProductBacklogDragDrop();
         } catch (error) {
             console.error('Error loading product backlog:', error);
             container.innerHTML = '<p class="error-message">Error loading product backlog.</p>';
+        }
+    },
+    
+    // Initialize drag and drop for product backlogs
+    initializeProductBacklogDragDrop() {
+        const cards = document.querySelectorAll('.product-backlog-card');
+        const containers = document.querySelectorAll('.product-backlog-sortable-container');
+        
+        if (containers.length === 0 || cards.length === 0) return;
+        
+        let draggedCard = null;
+        let draggedUserStoryId = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        const createDropIndicator = () => {
+            const indicator = document.createElement('div');
+            indicator.className = 'product-backlog-drop-indicator';
+            indicator.style.cssText = 'height: 3px; background: #3b82f6; margin: 0.5rem 0; border-radius: 2px; opacity: 0; transition: opacity 0.2s;';
+            return indicator;
+        };
+        
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                draggedUserStoryId = card.dataset.userStoryId;
+                e.dataTransfer.setData('text/plain', card.dataset.backlogId);
+                e.dataTransfer.effectAllowed = 'move';
+                card.style.opacity = '0.5';
+                card.style.transform = 'rotate(2deg) scale(1.05)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+                card.style.zIndex = '1000';
+                
+                // Create drop indicator
+                dropIndicator = createDropIndicator();
+            });
+            
+            card.addEventListener('dragend', (e) => {
+                card.style.opacity = '1';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+                card.style.zIndex = '';
+                
+                // Remove all drop indicators
+                document.querySelectorAll('.product-backlog-drop-indicator').forEach(ind => ind.remove());
+                
+                draggedCard = null;
+                draggedUserStoryId = null;
+                dropIndicator = null;
+            });
+            
+            // Handle drag over for sorting within same user story
+            card.addEventListener('dragover', (e) => {
+                if (!draggedCard || !dropIndicator) return;
+                
+                const cardUserStoryId = card.dataset.userStoryId;
+                
+                // Only allow sorting within the same user story
+                if (draggedUserStoryId && cardUserStoryId === draggedUserStoryId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    // Get the container for this user story
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (!container) return;
+                    
+                    // Remove all existing indicators in this container
+                    container.querySelectorAll('.product-backlog-drop-indicator').forEach(ind => {
+                        if (ind !== dropIndicator) {
+                            ind.remove();
+                        }
+                    });
+                    
+                    // Insert indicator above or below the card
+                    if (mouseY < midpoint) {
+                        // Insert above
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        card.parentElement.insertBefore(dropIndicator, card);
+                    } else {
+                        // Insert below
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        if (card.nextSibling) {
+                            card.parentElement.insertBefore(dropIndicator, card.nextSibling);
+                        } else {
+                            card.parentElement.appendChild(dropIndicator);
+                        }
+                    }
+                    
+                    dropIndicator.style.opacity = '1';
+                }
+            });
+            
+            card.addEventListener('dragleave', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (container) {
+                        const indicator = container.querySelector('.product-backlog-drop-indicator');
+                        if (indicator && indicator !== dropIndicator) {
+                            indicator.style.opacity = '0';
+                        }
+                    }
+                }
+            });
+            
+            // Handle drop for sorting within same user story
+            card.addEventListener('drop', async (e) => {
+                if (!draggedCard) return;
+                
+                const cardUserStoryId = card.dataset.userStoryId;
+                
+                // Only handle sorting within the same user story
+                if (draggedUserStoryId && cardUserStoryId === draggedUserStoryId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const backlogId = e.dataTransfer.getData('text/plain');
+                    const targetBacklogId = card.dataset.backlogId;
+                    
+                    if (backlogId === targetBacklogId) return;
+                    
+                    // Remove drop indicator
+                    document.querySelectorAll('.product-backlog-drop-indicator').forEach(ind => ind.remove());
+                    
+                    // Get the container for this user story
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (!container) return;
+                    
+                    // Get all cards in this user story group
+                    const allCards = Array.from(container.querySelectorAll('.product-backlog-card'));
+                    
+                    // Find the drop position
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const insertBefore = mouseY < midpoint;
+                    
+                    // Reorder cards array
+                    const draggedIndex = allCards.findIndex(c => c.dataset.backlogId === backlogId);
+                    const targetIndex = allCards.findIndex(c => c.dataset.backlogId === targetBacklogId);
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                        // Remove dragged card from array
+                        const [dragged] = allCards.splice(draggedIndex, 1);
+                        
+                        // Calculate new index
+                        let newIndex;
+                        if (draggedIndex < targetIndex) {
+                            // Moving down
+                            newIndex = insertBefore ? targetIndex - 1 : targetIndex;
+                        } else {
+                            // Moving up
+                            newIndex = insertBefore ? targetIndex : targetIndex + 1;
+                        }
+                        
+                        // Clamp to valid range
+                        newIndex = Math.max(0, Math.min(newIndex, allCards.length));
+                        
+                        // Insert at new position
+                        allCards.splice(newIndex, 0, dragged);
+                        
+                        // Update sortOrder for all backlogs in this user story
+                        await this.updateProductBacklogSortOrder(cardUserStoryId, allCards.map(c => c.dataset.backlogId));
+                    }
+                }
+            });
+        });
+    },
+    
+    // Update sortOrder for product backlogs within a user story
+    async updateProductBacklogSortOrder(userStoryId, backlogIds) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Update sortOrder for each backlog in the new order
+            const updates = backlogIds.map((backlogId, index) => {
+                return updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                    sortOrder: index,
+                    updatedAt: serverTimestamp()
+                });
+            });
+            
+            await Promise.all(updates);
+            
+            // Reload to show new order
+            await this.loadProductBacklog();
+        } catch (error) {
+            console.error('Error updating product backlog sort order:', error);
+            alert('Error updating product backlog order. Please try again.');
         }
     },
     
@@ -12667,7 +13052,7 @@ const app = {
             
             if (isSubmitted || isVerified) {
                 if (!confirm('This product backlog item has been submitted/verified. Editing it will reset the verification status and require re-submission. Do you want to continue?')) {
-                    return;
+                return;
                 }
             }
             
@@ -12896,7 +13281,7 @@ const app = {
             if (isSubmitted || isVerified) {
                 alert('Product backlog item updated successfully! Verification status has been reset. Please submit for verification again after guide approval.');
             } else {
-                alert('Product backlog item updated successfully!');
+            alert('Product backlog item updated successfully!');
             }
         } catch (error) {
             console.error('Error saving product backlog:', error);
@@ -14187,22 +14572,17 @@ const app = {
         const storyText = backlog.storyText || 'Unknown Story';
         const userName = backlog.userName || 'Unknown';
         
-        // Show sort buttons only if in a module
-        const showSortButtons = moduleId !== null && cardIndex !== null && totalCards !== null;
+        // Show drag handle only if in a module
+        const showDragHandle = moduleId !== null;
         
         return `
-            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" data-module-id="${moduleId || ''}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; position: relative;">
-                ${showSortButtons ? `
-                    <div style="position: absolute; right: 0.5rem; top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; z-index: 10;">
-                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.moveCardUp('${backlog.id}', '${moduleId}')" ${cardIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px;"' : 'style="padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px; cursor: pointer;"'} title="Move card up">
-                            <i class="fas fa-chevron-up"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.moveCardDown('${backlog.id}', '${moduleId}')" ${cardIndex === totalCards - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px;"' : 'style="padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px; cursor: pointer;"'} title="Move card down">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
+            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" data-module-id="${moduleId || ''}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: ${showDragHandle ? 'move' : 'pointer'}; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; position: relative;">
+                ${showDragHandle ? `
+                    <div style="position: absolute; left: 0.5rem; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.75rem; cursor: move; user-select: none;" title="Drag to reorder">
+                        <i class="fas fa-grip-vertical"></i>
                     </div>
                 ` : ''}
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; ${showSortButtons ? 'padding-right: 2rem;' : ''}">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; ${showDragHandle ? 'padding-left: 1.5rem;' : ''}">
                     <div style="flex: 1;">
                         <p style="margin: 0; font-weight: 600; color: #111827; font-size: 0.9rem; line-height: 1.4;">${this.escapeHtml(backlog.task || 'No task')}</p>
                     </div>
@@ -14230,25 +14610,175 @@ const app = {
         const columns = document.querySelectorAll('.module-cards');
         
         let isDragging = false;
+        let draggedCard = null;
+        let draggedModuleId = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        const createDropIndicator = () => {
+            const indicator = document.createElement('div');
+            indicator.className = 'drop-indicator';
+            indicator.style.cssText = 'height: 3px; background: #3b82f6; margin: 0.5rem 0; border-radius: 2px; opacity: 0; transition: opacity 0.2s;';
+            return indicator;
+        };
         
         cards.forEach(card => {
             card.addEventListener('dragstart', (e) => {
                 isDragging = true;
+                draggedCard = card;
+                draggedModuleId = card.dataset.moduleId || null;
                 e.dataTransfer.setData('text/plain', card.dataset.backlogId);
                 e.dataTransfer.effectAllowed = 'move';
+                
+                // Visual feedback for dragging
                 card.style.opacity = '0.5';
-                card.style.transform = 'rotate(2deg)';
+                card.style.transform = 'rotate(2deg) scale(1.05)';
                 card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+                card.style.zIndex = '1000';
+                
+                // Create drop indicator
+                dropIndicator = createDropIndicator();
             });
             
             card.addEventListener('dragend', (e) => {
                 card.style.opacity = '1';
                 card.style.transform = '';
                 card.style.boxShadow = '';
+                card.style.zIndex = '';
+                
+                // Remove all drop indicators
+                document.querySelectorAll('.drop-indicator').forEach(ind => ind.remove());
+                
                 // Reset drag flag after a short delay
                 setTimeout(() => {
                     isDragging = false;
+                    draggedCard = null;
+                    draggedModuleId = null;
+                    dropIndicator = null;
                 }, 200);
+            });
+            
+            // Handle drag over for sorting within same module
+            card.addEventListener('dragover', (e) => {
+                if (!isDragging || !draggedCard || !dropIndicator) return;
+                
+                const cardModuleId = card.dataset.moduleId || null;
+                
+                // Only allow sorting within the same module
+                if (draggedModuleId && cardModuleId === draggedModuleId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    // Remove all existing indicators in this module
+                    const moduleColumn = card.closest('.module-cards');
+                    if (moduleColumn) {
+                        moduleColumn.querySelectorAll('.drop-indicator').forEach(ind => {
+                            if (ind !== dropIndicator) {
+                                ind.remove();
+                            }
+                        });
+                    }
+                    
+                    // Insert indicator above or below the card
+                    if (mouseY < midpoint) {
+                        // Insert above
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        card.parentElement.insertBefore(dropIndicator, card);
+                    } else {
+                        // Insert below
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        if (card.nextSibling && card.nextSibling.classList && card.nextSibling.classList.contains('drop-indicator')) {
+                            // Already there, do nothing
+                        } else if (card.nextSibling) {
+                            card.parentElement.insertBefore(dropIndicator, card.nextSibling);
+                        } else {
+                            card.parentElement.appendChild(dropIndicator);
+                        }
+                    }
+                    
+                    dropIndicator.style.opacity = '1';
+                }
+            });
+            
+            card.addEventListener('dragleave', (e) => {
+                // Only remove indicator if we're actually leaving the card
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    const indicator = card.parentElement.querySelector('.drop-indicator');
+                    if (indicator && indicator !== dropIndicator) {
+                        indicator.style.opacity = '0';
+                    }
+                }
+            });
+            
+            // Handle drop for sorting within same module
+            card.addEventListener('drop', async (e) => {
+                if (!isDragging || !draggedCard) return;
+                
+                const cardModuleId = card.dataset.moduleId || null;
+                
+                // Only handle sorting within the same module
+                if (draggedModuleId && cardModuleId === draggedModuleId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const backlogId = e.dataTransfer.getData('text/plain');
+                    const targetBacklogId = card.dataset.backlogId;
+                    
+                    if (backlogId === targetBacklogId) return; // Same card, no change needed
+                    
+                    // Remove drop indicator
+                    document.querySelectorAll('.drop-indicator').forEach(ind => ind.remove());
+                    
+                    // Get all cards in this module (excluding drop indicators)
+                    const moduleColumn = card.closest('.module-cards');
+                    const allCards = Array.from(moduleColumn.querySelectorAll('.backlog-card'));
+                    
+                    // Find the drop position
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const insertBefore = mouseY < midpoint;
+                    
+                    // Reorder cards array
+                    const draggedIndex = allCards.findIndex(c => c.dataset.backlogId === backlogId);
+                    const targetIndex = allCards.findIndex(c => c.dataset.backlogId === targetBacklogId);
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                        // Remove dragged card from array
+                        const [dragged] = allCards.splice(draggedIndex, 1);
+                        
+                        // Calculate new index
+                        let newIndex;
+                        if (draggedIndex < targetIndex) {
+                            // Moving down
+                            newIndex = insertBefore ? targetIndex - 1 : targetIndex;
+                        } else {
+                            // Moving up
+                            newIndex = insertBefore ? targetIndex : targetIndex + 1;
+                        }
+                        
+                        // Clamp to valid range
+                        newIndex = Math.max(0, Math.min(newIndex, allCards.length));
+                        
+                        // Insert at new position
+                        allCards.splice(newIndex, 0, dragged);
+                        
+                        // Update sortOrder for all cards
+                        await this.updateCardSortOrder(cardModuleId, allCards.map(c => c.dataset.backlogId));
+                    }
+                }
             });
             
             // Handle click (but not during drag)
@@ -14282,8 +14812,12 @@ const app = {
             column.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
-                column.style.backgroundColor = '#f0f9ff';
-                column.style.borderTop = '3px solid #3b82f6';
+                
+                // Only highlight if moving between modules (not sorting within)
+                if (!draggedModuleId || column.dataset.moduleId !== draggedModuleId) {
+                    column.style.backgroundColor = '#f0f9ff';
+                    column.style.borderTop = '3px solid #3b82f6';
+                }
             });
             
             column.addEventListener('dragleave', (e) => {
@@ -14302,12 +14836,58 @@ const app = {
                 column.style.backgroundColor = '';
                 column.style.borderTop = '';
                 
+                // Remove drop indicators
+                document.querySelectorAll('.drop-indicator').forEach(ind => ind.remove());
+                
                 const backlogId = e.dataTransfer.getData('text/plain');
                 const moduleId = column.dataset.moduleId === 'unassigned' ? null : column.dataset.moduleId;
                 
-                await this.assignBacklogToModule(backlogId, moduleId);
+                // Only assign if moving to different module
+                if (draggedModuleId !== moduleId) {
+                    await this.assignBacklogToModule(backlogId, moduleId);
+                }
             });
         });
+    },
+    
+    // Update sortOrder for cards in a module
+    async updateCardSortOrder(moduleId, backlogIds) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all assignments for this module
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                assignments[data.backlogId] = { id: doc.id, ...data };
+            });
+            
+            // Update sortOrder for each backlog in the new order
+            const updates = backlogIds.map((backlogId, index) => {
+                if (assignments[backlogId]) {
+                    return updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignments[backlogId].id), {
+                        sortOrder: index,
+                        updatedAt: serverTimestamp()
+                    });
+                }
+                return null;
+            }).filter(update => update !== null);
+            
+            await Promise.all(updates);
+            
+            // Reload to show new order
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error updating card sort order:', error);
+            alert('Error updating card order. Please try again.');
+        }
     },
     
     async assignBacklogToModule(backlogId, moduleId) {
@@ -18298,6 +18878,13 @@ const app = {
                 users.push({ id: doc.id, ...doc.data() });
             });
             
+            // Sort users alphabetically by name to match portal display order
+            users.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
             // Get user stories
             const storiesQuery = query(
                 collection(window.firebaseDb, 'userStories'),
@@ -18310,6 +18897,21 @@ const app = {
                 const user = users.find(u => u.id === story.userId);
                 story.userName = user ? user.name : 'Unknown';
                 userStories.push(story);
+            });
+            
+            // Sort user stories by sortOrder
+            userStories.forEach((story, index) => {
+                if (story.sortOrder === undefined || story.sortOrder === null) {
+                    story.sortOrder = index;
+                }
+            });
+            userStories.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA; // Fallback to newest first
             });
             
             // Get product backlogs
@@ -18328,6 +18930,23 @@ const app = {
                 productBacklogs.push(backlog);
             });
             
+            // Sort product backlogs by userStoryId, then by sortOrder
+            productBacklogs.forEach((backlog, index) => {
+                if (backlog.sortOrder === undefined || backlog.sortOrder === null) {
+                    backlog.sortOrder = index;
+                }
+            });
+            productBacklogs.sort((a, b) => {
+                // First sort by userStoryId
+                const storyCompare = (a.userStoryId || '').localeCompare(b.userStoryId || '');
+                if (storyCompare !== 0) return storyCompare;
+                // Within same user story, sort by sortOrder
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
             // Get card sorting modules
             const modulesQuery = query(
                 collection(window.firebaseDb, 'cardSortingModules'),
@@ -18339,28 +18958,68 @@ const app = {
                 modules.push({ id: doc.id, ...doc.data() });
             });
             
-            // Get card sorting assignments
+            // Sort modules by sortOrder
+            modules.forEach((module, index) => {
+                if (module.sortOrder === undefined || module.sortOrder === null) {
+                    module.sortOrder = index;
+                }
+            });
+            modules.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA; // Fallback to newest first
+            });
+            
+            // Get card sorting assignments with sortOrder
             const assignmentsQuery = query(
                 collection(window.firebaseDb, 'cardSortingAssignments'),
                 where('teamId', '==', team.id)
             );
             const assignmentsSnapshot = await getDocs(assignmentsQuery);
             const assignments = {};
+            const assignmentsData = {}; // Store full assignment data including sortOrder
             assignmentsSnapshot.forEach(doc => {
                 const data = doc.data();
                 assignments[data.backlogId] = data.moduleId;
+                assignmentsData[data.backlogId] = {
+                    moduleId: data.moduleId,
+                    sortOrder: data.sortOrder !== undefined && data.sortOrder !== null ? data.sortOrder : null
+                };
             });
             
             // Group backlogs by module
             const backlogsByModule = {};
             productBacklogs.forEach(backlog => {
-                const moduleId = assignments[backlog.id];
-                if (moduleId) {
-                    if (!backlogsByModule[moduleId]) {
-                        backlogsByModule[moduleId] = [];
+                const assignment = assignmentsData[backlog.id];
+                if (assignment && assignment.moduleId) {
+                    if (!backlogsByModule[assignment.moduleId]) {
+                        backlogsByModule[assignment.moduleId] = [];
                     }
-                    backlogsByModule[moduleId].push(backlog);
+                    // Add sortOrder from assignment
+                    backlog.moduleSortOrder = assignment.sortOrder;
+                    backlogsByModule[assignment.moduleId].push(backlog);
                 }
+            });
+            
+            // Sort cards within each module by sortOrder
+            Object.keys(backlogsByModule).forEach(moduleId => {
+                const moduleBacklogs = backlogsByModule[moduleId];
+                // Initialize sortOrder for cards that don't have it
+                moduleBacklogs.forEach((backlog, index) => {
+                    if (backlog.moduleSortOrder === null || backlog.moduleSortOrder === undefined) {
+                        backlog.moduleSortOrder = index;
+                    }
+                });
+                // Sort by sortOrder
+                moduleBacklogs.sort((a, b) => {
+                    if (a.moduleSortOrder !== undefined && b.moduleSortOrder !== undefined) {
+                        return a.moduleSortOrder - b.moduleSortOrder;
+                    }
+                    return 0;
+                });
             });
             
             // Get schedules
@@ -18388,19 +19047,41 @@ const app = {
             }
             
             // Organize data by users -> user stories -> backlogs
+            // Note: userStories and productBacklogs are already sorted by sortOrder
+            // Users are already sorted alphabetically by name
             const usersWithStories = users.map(user => {
+                // Get user stories for this user, sorted by sortOrder (matching portal display)
+                // Filter first, then sort to maintain sortOrder within this user's stories
                 const userStoriesForUser = userStories
                     .filter(s => s.userId === user.id)
-                    .map(s => ({
-                        id: s.id,
-                        userName: s.userName || 'Unknown',
-                        feature: s.feature || '',
-                        benefit: s.benefit || '',
-                        priority: s.priority || 'medium',
-                        status: s.approved ? 'Approved' : (s.rejected ? 'Rejected' : 'Pending'),
-                        backlogs: productBacklogs
+                    .sort((a, b) => {
+                        // Sort by sortOrder to match portal display
+                        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                            return a.sortOrder - b.sortOrder;
+                        }
+                        return 0;
+                    })
+                    .map(s => {
+                        // Get backlogs for this story, sorted by sortOrder
+                        // Group by story text first (matching portal grouping), then sort by sortOrder
+                        const storyBacklogs = productBacklogs
                             .filter(b => b.userStoryId === s.id)
-                            .map(b => ({
+                            .sort((a, b) => {
+                                // Sort by sortOrder within the same story
+                                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                                    return a.sortOrder - b.sortOrder;
+                                }
+                                return 0;
+                            });
+                        
+                        return {
+                            id: s.id,
+                            userName: s.userName || 'Unknown',
+                            feature: s.feature || '',
+                            benefit: s.benefit || '',
+                            priority: s.priority || 'medium',
+                            status: s.approved ? 'Approved' : (s.rejected ? 'Rejected' : 'Pending'),
+                            backlogs: storyBacklogs.map(b => ({
                                 id: b.id,
                                 storyText: b.storyText || '',
                                 task: b.task || '',
@@ -18409,7 +19090,8 @@ const app = {
                                 difficulty: b.difficulty || 'medium',
                                 status: b.approved ? 'Approved' : (b.rejected ? 'Rejected' : 'Pending')
                             }))
-                    }));
+                        };
+                    });
                 
                 return {
                     id: user.id,
