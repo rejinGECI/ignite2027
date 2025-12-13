@@ -13912,13 +13912,23 @@ const app = {
                 }
             });
             
-            // Sort cards within each module by sortOrder
+            // Sort cards within each module by sortOrder and initialize missing sortOrders
+            const sortOrderUpdates = [];
             Object.keys(backlogsByModule).forEach(moduleId => {
                 const moduleBacklogs = backlogsByModule[moduleId];
                 // Initialize sortOrder for cards that don't have it
                 moduleBacklogs.forEach((backlog, index) => {
                     if (backlog.moduleSortOrder === null || backlog.moduleSortOrder === undefined) {
                         backlog.moduleSortOrder = index;
+                        // Save the initialized sortOrder to Firestore
+                        if (backlog.assignmentId) {
+                            sortOrderUpdates.push(
+                                updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', backlog.assignmentId), {
+                                    sortOrder: index,
+                                    updatedAt: serverTimestamp()
+                                })
+                            );
+                        }
                     }
                 });
                 // Sort by sortOrder
@@ -13929,6 +13939,11 @@ const app = {
                     return 0;
                 });
             });
+            
+            // Save any initialized sortOrders
+            if (sortOrderUpdates.length > 0) {
+                await Promise.all(sortOrderUpdates);
+            }
             
             // Build HTML - Two column layout: Left = Uncategorised Product Backlogs, Right = Modules Grid
             let html = '<div style="display: flex; gap: 1.5rem; padding-bottom: 1rem; align-items: flex-start;">';
@@ -14364,12 +14379,27 @@ const app = {
                 assignments.push({ id: doc.id, ...doc.data() });
             });
             
-            // Sort by sortOrder
+            // Initialize and save sortOrder for assignments that don't have it
+            const initUpdates = [];
             assignments.forEach((assignment, index) => {
                 if (assignment.sortOrder === undefined || assignment.sortOrder === null) {
                     assignment.sortOrder = index;
+                    // Save the initialized sortOrder
+                    initUpdates.push(
+                        updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignment.id), {
+                            sortOrder: index,
+                            updatedAt: serverTimestamp()
+                        })
+                    );
                 }
             });
+            
+            // Wait for all initializations to complete
+            if (initUpdates.length > 0) {
+                await Promise.all(initUpdates);
+            }
+            
+            // Sort by sortOrder
             assignments.sort((a, b) => {
                 if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                     return a.sortOrder - b.sortOrder;
@@ -14420,12 +14450,27 @@ const app = {
                 assignments.push({ id: doc.id, ...doc.data() });
             });
             
-            // Sort by sortOrder
+            // Initialize and save sortOrder for assignments that don't have it
+            const initUpdates = [];
             assignments.forEach((assignment, index) => {
                 if (assignment.sortOrder === undefined || assignment.sortOrder === null) {
                     assignment.sortOrder = index;
+                    // Save the initialized sortOrder
+                    initUpdates.push(
+                        updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignment.id), {
+                            sortOrder: index,
+                            updatedAt: serverTimestamp()
+                        })
+                    );
                 }
             });
+            
+            // Wait for all initializations to complete
+            if (initUpdates.length > 0) {
+                await Promise.all(initUpdates);
+            }
+            
+            // Sort by sortOrder
             assignments.sort((a, b) => {
                 if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                     return a.sortOrder - b.sortOrder;
