@@ -4148,34 +4148,50 @@ const app = {
                 const isPast = dateOnly < today;
                 const isToday = dateOnly.getTime() === today.getTime();
                 const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                const dateStr = date.toISOString().split('T')[0];
                 
                 html += `
-                    <div style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
-                        <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-                                <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${this.escapeHtml(dateItem.name || 'Important Date')}</h4>
-                                ${isToday ? `
-                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
-                                ` : isPast ? `
-                                    <span style="background: #e5e7eb; color: #6b7280; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
-                                ` : `
-                                    <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''} away</span>
-                                `}
+                    <div id="important-date-item-${index}" style="padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 300px;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600;">Date Name:</label>
+                                        <input type="text" id="date-name-${index}" value="${this.escapeHtml(dateItem.name || '')}" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem; background: var(--bg-color); color: var(--text-primary);" placeholder="Enter date name">
+                                    </div>
+                                    <div style="min-width: 150px;">
+                                        <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600;">Date:</label>
+                                        <input type="date" id="date-value-${index}" value="${dateStr}" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem; background: var(--bg-color); color: var(--text-primary);">
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 0.75rem;">
+                                    <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600;">Description (optional):</label>
+                                    <textarea id="date-description-${index}" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; background: var(--bg-color); color: var(--text-primary); min-height: 60px; resize: vertical;" placeholder="Enter description">${this.escapeHtml(dateItem.description || '')}</textarea>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="fas fa-calendar" style="color: var(--text-secondary);"></i>
+                                        <span style="color: var(--text-secondary); font-size: 0.9rem;">
+                                            ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                        </span>
+                                    </div>
+                                    ${isToday ? `
+                                        <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                    ` : isPast ? `
+                                        <span style="background: #e5e7eb; color: #6b7280; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                    ` : `
+                                        <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''} away</span>
+                                    `}
+                                </div>
                             </div>
-                            <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem;">
-                                <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
-                            </p>
-                            ${dateItem.description ? `
-                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
-                            ` : ''}
-                        </div>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button type="button" class="btn btn-sm" onclick="app.editImportantDate(${index})" style="padding: 4px 8px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button type="button" class="btn btn-sm" onclick="app.deleteImportantDate(${index})" style="padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <div style="display: flex; gap: 0.5rem; align-items: start;">
+                                <button type="button" class="btn btn-sm" onclick="app.saveImportantDate(${index})" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                                <button type="button" class="btn btn-sm" onclick="app.deleteImportantDate(${index})" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -4276,44 +4292,56 @@ const app = {
         }
     },
     
-    async editImportantDate(index) {
+    async saveImportantDate(index) {
         if (!this.isAdmin) {
             alert('Only administrators can edit important dates.');
             return;
         }
         
         try {
+            const nameInput = document.getElementById(`date-name-${index}`);
+            const dateInput = document.getElementById(`date-value-${index}`);
+            const descriptionInput = document.getElementById(`date-description-${index}`);
+            
+            if (!nameInput || !dateInput) {
+                alert('Could not find form fields. Please refresh and try again.');
+                return;
+            }
+            
+            const newName = nameInput.value.trim();
+            const newDateStr = dateInput.value;
+            const newDescription = descriptionInput ? descriptionInput.value.trim() : '';
+            
+            if (!newName || !newDateStr) {
+                alert('Please provide both date name and date.');
+                return;
+            }
+            
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
-            if (!settingsDoc.exists()) return;
+            if (!settingsDoc.exists()) {
+                alert('Settings document not found.');
+                return;
+            }
             
             const importantDates = settingsDoc.data().importantDates || [];
-            if (index < 0 || index >= importantDates.length) return;
-            
-            const dateItem = importantDates[index];
-            const date = dateItem.date?.toDate ? dateItem.date.toDate() : new Date(dateItem.date);
-            const dateStr = date.toISOString().split('T')[0];
-            
-            const newName = prompt('Enter new date name:', dateItem.name || '');
-            if (newName === null) return;
-            
-            const newDateStr = prompt('Enter new date (YYYY-MM-DD):', dateStr);
-            if (newDateStr === null) return;
-            
-            const newDescription = prompt('Enter description (optional):', dateItem.description || '');
+            if (index < 0 || index >= importantDates.length) {
+                alert('Invalid date index.');
+                return;
+            }
             
             // Convert date string to Firestore Timestamp
             const dateObj = new Date(newDateStr + 'T00:00:00'); // Add time to ensure correct timezone handling
             if (isNaN(dateObj.getTime())) {
-                alert('Invalid date format. Please enter a valid date in YYYY-MM-DD format.');
+                alert('Invalid date format. Please select a valid date.');
                 return;
             }
             const dateTimestamp = Timestamp.fromDate(dateObj);
             
             importantDates[index] = {
                 ...importantDates[index], // Preserve existing fields like createdAt, createdBy
-                name: newName.trim(),
+                name: newName,
                 date: dateTimestamp,
-                description: newDescription ? newDescription.trim() : '',
+                description: newDescription,
                 updatedAt: Timestamp.now(), // Use Timestamp.now() instead of serverTimestamp() in arrays
                 updatedBy: this.currentUser.uid
             };
@@ -4327,16 +4355,21 @@ const app = {
             });
             
             await this.loadImportantDates();
-            alert('Important date updated successfully!');
+            
+            // Show success message
+            const itemElement = document.getElementById(`important-date-item-${index}`);
+            if (itemElement) {
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = 'padding: 0.5rem; background: #d1fae5; color: #065f46; border-radius: 4px; margin-top: 0.5rem; font-size: 0.85rem;';
+                successMsg.textContent = '✓ Saved successfully!';
+                itemElement.appendChild(successMsg);
+                setTimeout(() => {
+                    successMsg.remove();
+                }, 2000);
+            }
         } catch (error) {
-            console.error('Error editing important date:', error);
-            console.error('Error details:', {
-                message: error.message,
-                stack: error.stack,
-                newDateStr: newDateStr,
-                newName: newName
-            });
-            alert('Error editing important date: ' + error.message);
+            console.error('Error saving important date:', error);
+            alert('Error saving important date: ' + error.message);
         }
     },
     
@@ -16321,6 +16354,21 @@ const app = {
                 modules.push({ id: doc.id, ...doc.data() });
             });
             
+            // Sort modules by sortOrder
+            modules.forEach((module, index) => {
+                if (module.sortOrder === undefined || module.sortOrder === null) {
+                    module.sortOrder = index;
+                }
+            });
+            modules.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
+                return dateB - dateA; // Fallback to newest first
+            });
+            
             // Load product backlogs
             const backlogQuery = query(
                 collection(window.firebaseDb, 'productBacklog'),
@@ -16332,31 +16380,56 @@ const app = {
                 backlogs.push({ id: doc.id, ...doc.data() });
             });
             
-            // Load module assignments
+            // Load module assignments with sortOrder
             const assignmentsQuery = query(
                 collection(window.firebaseDb, 'cardSortingAssignments'),
                 where('teamId', '==', teamId)
             );
             const assignmentsSnapshot = await getDocs(assignmentsQuery);
             const assignments = {};
+            const assignmentsData = {}; // Store full assignment data including sortOrder
             assignmentsSnapshot.forEach(doc => {
                 const data = doc.data();
                 assignments[data.backlogId] = data.moduleId;
+                assignmentsData[data.backlogId] = {
+                    moduleId: data.moduleId,
+                    sortOrder: data.sortOrder !== undefined && data.sortOrder !== null ? data.sortOrder : null
+                };
             });
             
-            // Group backlogs by module
+            // Group backlogs by module and add sortOrder
             const backlogsByModule = {};
             const unassignedBacklogs = [];
             backlogs.forEach(backlog => {
-                const moduleId = assignments[backlog.id];
-                if (moduleId) {
-                    if (!backlogsByModule[moduleId]) {
-                        backlogsByModule[moduleId] = [];
+                const assignment = assignmentsData[backlog.id];
+                if (assignment && assignment.moduleId) {
+                    if (!backlogsByModule[assignment.moduleId]) {
+                        backlogsByModule[assignment.moduleId] = [];
                     }
-                    backlogsByModule[moduleId].push(backlog);
+                    // Add sortOrder from assignment
+                    backlog.moduleSortOrder = assignment.sortOrder;
+                    backlogsByModule[assignment.moduleId].push(backlog);
                 } else {
                     unassignedBacklogs.push(backlog);
                 }
+            });
+            
+            // Sort cards within each module by sortOrder
+            Object.keys(backlogsByModule).forEach(moduleId => {
+                const moduleBacklogs = backlogsByModule[moduleId];
+                // Initialize sortOrder for cards that don't have it
+                moduleBacklogs.forEach((backlog, index) => {
+                    if (backlog.moduleSortOrder === null || backlog.moduleSortOrder === undefined) {
+                        backlog.moduleSortOrder = index;
+                    }
+                });
+                // Sort by sortOrder
+                moduleBacklogs.sort((a, b) => {
+                    if (a.moduleSortOrder !== undefined && b.moduleSortOrder !== undefined) {
+                        return a.moduleSortOrder - b.moduleSortOrder;
+                    }
+                    return 0;
+                });
             });
             
             // Load planning data
@@ -16471,35 +16544,37 @@ const app = {
             
             content.innerHTML = html;
             
-            // Show verify button
-            verifyBtn.style.display = 'inline-flex';
-            if (isVerified) {
-                verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Card Sorting';
-                verifyBtn.className = 'btn btn-success';
-                
-                // Add verification status message
-                if (verificationStatus) {
-                    html += `
-                        <div style="margin-top: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
-                                <i class="fas fa-check-circle"></i>
-                                <strong>Card Sorting Verified</strong>
+            // Show verify button if it exists
+            if (verifyBtn) {
+                verifyBtn.style.display = 'inline-flex';
+                if (isVerified) {
+                    verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Card Sorting';
+                    verifyBtn.className = 'btn btn-success';
+                    
+                    // Add verification status message
+                    if (verificationStatus) {
+                        html += `
+                            <div style="margin-top: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-check-circle"></i>
+                                    <strong>Card Sorting Verified</strong>
+                                </div>
+                                ${verificationStatus.feedback ? `
+                                    <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                                ` : ''}
+                                ${verificationStatus.verifiedAt ? `
+                                    <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                        Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    </p>
+                                ` : ''}
                             </div>
-                            ${verificationStatus.feedback ? `
-                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
-                            ` : ''}
-                            ${verificationStatus.verifiedAt ? `
-                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
-                                    Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
-                                </p>
-                            ` : ''}
-                        </div>
-                    `;
-                    content.innerHTML = html;
+                        `;
+                        content.innerHTML = html;
+                    }
+                } else {
+                    verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify Card Sorting';
+                    verifyBtn.className = 'btn btn-primary';
                 }
-            } else {
-                verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify Card Sorting';
-                verifyBtn.className = 'btn btn-primary';
             }
             
             // Store teamId for verify function
@@ -20025,58 +20100,10 @@ const app = {
                 });
             }
             
-            // Schedule section
+            // Schedule section - Gantt Chart
             if (data.schedules && data.schedules.length > 0) {
-                const scheduleSlide = pptx.addSlide();
-                scheduleSlide.background = { color: colors.light };
-                scheduleSlide.addShape(pptx.ShapeType.rect, {
-                    x: 0,
-                    y: 0,
-                    w: 10,
-                    h: 0.6,
-                    fill: { color: colors.accent },
-                    line: { color: colors.accent, width: 0 }
-                });
-                scheduleSlide.addText('Project Schedule', {
-                    x: 0.5,
-                    y: 0.1,
-                    w: 9,
-                    h: 0.4,
-                    fontSize: 32,
-                    bold: true,
-                    color: 'FFFFFF',
-                    fontFace: 'Arial'
-                });
-                
-                let scheduleY = 1;
-                let currentScheduleSlide = scheduleSlide;
-                
-                data.schedules.forEach((schedule, scheduleIndex) => {
-                    if (scheduleY > 5.5) {
-                        currentScheduleSlide = pptx.addSlide();
-                        currentScheduleSlide.background = { color: colors.light };
-                        currentScheduleSlide.addShape(pptx.ShapeType.rect, {
-                            x: 0,
-                            y: 0,
-                            w: 10,
-                            h: 0.6,
-                            fill: { color: colors.accent },
-                            line: { color: colors.accent, width: 0 }
-                        });
-                        currentScheduleSlide.addText('Project Schedule (continued)', {
-                            x: 0.5,
-                            y: 0.1,
-                            w: 9,
-                            h: 0.4,
-                            fontSize: 32,
-                            bold: true,
-                            color: 'FFFFFF',
-                            fontFace: 'Arial'
-                        });
-                        scheduleY = 1;
-                    }
-                    
-                    // Find module or backlog name
+                // Prepare schedule data with dates
+                const scheduleItems = data.schedules.map(schedule => {
                     let scheduleName = '';
                     if (schedule.moduleId) {
                         const module = data.cardSortingModules.find(m => m.id === schedule.moduleId);
@@ -20086,46 +20113,181 @@ const app = {
                         scheduleName = backlog ? backlog.task : 'Task';
                     }
                     
-                    currentScheduleSlide.addShape(pptx.ShapeType.roundRect, {
-                        x: 0.5,
-                        y: scheduleY,
-                        w: 9,
-                        h: 0.8,
-                        fill: { color: 'FFFFFF' },
-                        line: { color: colors.accent, width: 2 },
-                        rectRadius: 0.1
-                    });
+                    const startDate = schedule.startDate instanceof Date 
+                        ? schedule.startDate 
+                        : (schedule.startDate ? new Date(schedule.startDate) : new Date());
+                    const endDate = schedule.endDate instanceof Date 
+                        ? schedule.endDate 
+                        : (schedule.endDate ? new Date(schedule.endDate) : new Date());
                     
-                    currentScheduleSlide.addText(scheduleName, {
-                        x: 0.6,
-                        y: scheduleY + 0.1,
-                        w: 8.8,
-                        h: 0.3,
-                        fontSize: 18,
-                        bold: true,
-                        color: colors.text,
-                        fontFace: 'Arial'
-                    });
+                    return {
+                        name: scheduleName,
+                        startDate: startDate,
+                        endDate: endDate,
+                        duration: schedule.duration || 0
+                    };
+                }).filter(item => item.name); // Filter out items without names
+                
+                if (scheduleItems.length > 0) {
+                    // Calculate date range
+                    const allDates = scheduleItems.flatMap(item => [item.startDate, item.endDate]);
+                    const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+                    const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
                     
-                    const startDateStr = schedule.startDate && typeof schedule.startDate.toLocaleDateString === 'function' 
-                        ? schedule.startDate.toLocaleDateString() 
-                        : (schedule.startDate ? new Date(schedule.startDate).toLocaleDateString() : 'N/A');
-                    const endDateStr = schedule.endDate && typeof schedule.endDate.toLocaleDateString === 'function' 
-                        ? schedule.endDate.toLocaleDateString() 
-                        : (schedule.endDate ? new Date(schedule.endDate).toLocaleDateString() : 'N/A');
-                    const scheduleDetails = `Start: ${startDateStr} | End: ${endDateStr} | Duration: ${schedule.duration || 0} day(s)`;
-                    currentScheduleSlide.addText(scheduleDetails, {
-                        x: 0.6,
-                        y: scheduleY + 0.45,
-                        w: 8.8,
-                        h: 0.25,
-                        fontSize: 14,
-                        color: colors.textLight,
-                        fontFace: 'Arial'
-                    });
+                    // Add some padding to the date range
+                    const dateRange = maxDate.getTime() - minDate.getTime();
+                    const padding = dateRange * 0.1; // 10% padding
+                    const chartStartDate = new Date(minDate.getTime() - padding);
+                    const chartEndDate = new Date(maxDate.getTime() + padding);
+                    const totalDays = Math.ceil((chartEndDate.getTime() - chartStartDate.getTime()) / (1000 * 60 * 60 * 24));
                     
-                    scheduleY += 1;
-                });
+                    // Gantt chart dimensions
+                    const chartLeft = 2.5; // Left margin for task names
+                    const chartTop = 1.5; // Top margin for date axis
+                    const chartWidth = 7; // Width of the chart area
+                    const barHeight = 0.35; // Height of each bar
+                    const barSpacing = 0.45; // Spacing between bars
+                    const maxItemsPerSlide = 8; // Maximum items per slide
+                    
+                    // Split items across multiple slides if needed
+                    const numSlides = Math.ceil(scheduleItems.length / maxItemsPerSlide);
+                    
+                    for (let slideIndex = 0; slideIndex < numSlides; slideIndex++) {
+                        const startIndex = slideIndex * maxItemsPerSlide;
+                        const endIndex = Math.min(startIndex + maxItemsPerSlide, scheduleItems.length);
+                        const itemsForSlide = scheduleItems.slice(startIndex, endIndex);
+                        const chartHeight = Math.min(4, itemsForSlide.length * barSpacing + 0.2);
+                        
+                        const scheduleSlide = pptx.addSlide();
+                        scheduleSlide.background = { color: colors.light };
+                        scheduleSlide.addShape(pptx.ShapeType.rect, {
+                            x: 0,
+                            y: 0,
+                            w: 10,
+                            h: 0.6,
+                            fill: { color: colors.accent },
+                            line: { color: colors.accent, width: 0 }
+                        });
+                        scheduleSlide.addText(`Project Schedule - Gantt Chart${numSlides > 1 ? ` (${slideIndex + 1}/${numSlides})` : ''}`, {
+                            x: 0.5,
+                            y: 0.1,
+                            w: 9,
+                            h: 0.4,
+                            fontSize: 32,
+                            bold: true,
+                            color: 'FFFFFF',
+                            fontFace: 'Arial'
+                        });
+                        
+                        // Draw chart background
+                        scheduleSlide.addShape(pptx.ShapeType.rect, {
+                            x: chartLeft,
+                            y: chartTop,
+                            w: chartWidth,
+                            h: chartHeight,
+                            fill: { color: 'FFFFFF' },
+                            line: { color: colors.textLight, width: 1 }
+                        });
+                        
+                        // Draw date axis labels (show 5-7 date markers)
+                        const numMarkers = Math.min(7, Math.max(5, Math.ceil(totalDays / 7)));
+                        for (let i = 0; i <= numMarkers; i++) {
+                            const date = new Date(chartStartDate.getTime() + (chartEndDate.getTime() - chartStartDate.getTime()) * (i / numMarkers));
+                            const xPos = chartLeft + (chartWidth * (i / numMarkers));
+                            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            
+                            // Draw vertical line (using thin rectangle)
+                            scheduleSlide.addShape(pptx.ShapeType.rect, {
+                                x: xPos - 0.01,
+                                y: chartTop,
+                                w: 0.02,
+                                h: chartHeight,
+                                fill: { color: colors.textLight },
+                                line: { color: colors.textLight, width: 0 }
+                            });
+                            
+                            // Add date label
+                            scheduleSlide.addText(dateStr, {
+                                x: xPos - 0.3,
+                                y: chartTop - 0.3,
+                                w: 0.6,
+                                h: 0.2,
+                                fontSize: 10,
+                                color: colors.textLight,
+                                fontFace: 'Arial',
+                                align: 'center'
+                            });
+                        }
+                        
+                        // Draw Gantt bars for each schedule item on this slide
+                        itemsForSlide.forEach((item, localIndex) => {
+                            const index = startIndex + localIndex;
+                            const yPos = chartTop + 0.1 + (localIndex * barSpacing);
+                            
+                            // Calculate bar position and width
+                            const startOffset = (item.startDate.getTime() - chartStartDate.getTime()) / (chartEndDate.getTime() - chartStartDate.getTime());
+                            const endOffset = (item.endDate.getTime() - chartStartDate.getTime()) / (chartEndDate.getTime() - chartStartDate.getTime());
+                            const barX = chartLeft + (chartWidth * startOffset);
+                            const barWidth = chartWidth * (endOffset - startOffset);
+                            
+                            // Draw task name on the left
+                            scheduleSlide.addText(item.name, {
+                                x: 0.3,
+                                y: yPos,
+                                w: chartLeft - 0.4,
+                                h: barHeight,
+                                fontSize: 11,
+                                color: colors.text,
+                                fontFace: 'Arial',
+                                valign: 'middle',
+                                truncate: true
+                            });
+                            
+                            // Draw Gantt bar
+                            if (barWidth > 0.05) { // Only draw if bar is wide enough
+                                scheduleSlide.addShape(pptx.ShapeType.roundRect, {
+                                    x: barX,
+                                    y: yPos,
+                                    w: Math.max(0.05, barWidth),
+                                    h: barHeight,
+                                    fill: { color: colors.accent },
+                                    line: { color: colors.accent, width: 1 },
+                                    rectRadius: 0.02
+                                });
+                                
+                                // Add duration label on bar if there's space
+                                if (barWidth > 0.3) {
+                                    const durationText = `${item.duration || Math.ceil((item.endDate.getTime() - item.startDate.getTime()) / (1000 * 60 * 60 * 24))}d`;
+                                    scheduleSlide.addText(durationText, {
+                                        x: barX + 0.05,
+                                        y: yPos + 0.05,
+                                        w: barWidth - 0.1,
+                                        h: barHeight - 0.1,
+                                        fontSize: 9,
+                                        color: 'FFFFFF',
+                                        fontFace: 'Arial',
+                                        bold: true,
+                                        valign: 'middle'
+                                    });
+                                }
+                            }
+                        });
+                        
+                        // Add legend (only on first slide)
+                        if (slideIndex === 0) {
+                            scheduleSlide.addText('Legend: Each bar represents a scheduled task with its start and end dates', {
+                                x: 0.5,
+                                y: chartTop + chartHeight + 0.2,
+                                w: 9,
+                                h: 0.3,
+                                fontSize: 11,
+                                color: colors.textLight,
+                                fontFace: 'Arial',
+                                italic: true
+                            });
+                        }
+                    }
+                }
             }
             
             // Thank you slide
