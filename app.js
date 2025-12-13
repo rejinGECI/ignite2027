@@ -10410,11 +10410,9 @@ const app = {
                             ` : ''}
                         </div>
                         <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
-                            ${!isSubmitted && !isVerified ? `
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                            ` : ''}
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Editing it will require re-submission."' : ''}>
+                                <i class="fas fa-edit"></i>
+                            </button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -10667,6 +10665,27 @@ const app = {
         }
         
         try {
+            // Get story to check team
+            const storyDoc = await getDoc(doc(window.firebaseDb, 'userStories', storyId));
+            if (!storyDoc.exists()) {
+                alert('User story not found.');
+                return;
+            }
+            
+            const story = storyDoc.data();
+            const team = await this.getUserTeam();
+            if (!team || team.id !== story.teamId) {
+                alert('You do not have permission to edit this story.');
+                return;
+            }
+            
+            // Check if submitted or verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.userStoriesSubmitted === true;
+            const isVerified = planningData && planningData.userStoriesVerified === true;
+            
+            // Update the story
             await updateDoc(doc(window.firebaseDb, 'userStories', storyId), {
                 userId: userId,
                 feature: feature,
@@ -10675,8 +10694,24 @@ const app = {
                 updatedAt: serverTimestamp()
             });
             
+            // If submitted or verified, reset verification status
+            if (isSubmitted || isVerified) {
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    userStoriesSubmitted: false,
+                    userStoriesVerified: false,
+                    userStoriesVerificationStatus: null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
             this.closeEditUserStoryModal();
             await this.loadUserStories();
+            
+            if (isSubmitted || isVerified) {
+                alert('User story updated successfully! Verification status has been reset. Please submit for verification again after guide approval.');
+            } else {
+                alert('User story updated successfully!');
+            }
         } catch (error) {
             console.error('Error saving user story:', error);
             alert('Error saving user story. Please try again.');
@@ -12011,11 +12046,9 @@ const app = {
                                         ` : ''}
                                     </div>
                                     <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
-                                        ${!isSubmitted && !isVerified ? `
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                        ` : ''}
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Editing it will require re-submission."' : ''}>
+                                            <i class="fas fa-edit"></i>
+                                        </button>
                                         <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -12449,15 +12482,16 @@ const app = {
                 return;
             }
             
-            // Check if submitted or verified
+            // Check if submitted or verified (for warning, but allow editing)
             const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
             const planningData = planningDoc.exists() ? planningDoc.data() : null;
             const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
             const isVerified = planningData && planningData.productBacklogVerified === true;
             
             if (isSubmitted || isVerified) {
-                alert('Cannot edit product backlog items that have been submitted or verified.');
-                return;
+                if (!confirm('This product backlog item has been submitted/verified. Editing it will reset the verification status and require re-submission. Do you want to continue?')) {
+                    return;
+                }
             }
             
             const modal = document.getElementById('edit-product-backlog-modal');
@@ -12639,6 +12673,27 @@ const app = {
         }
         
         try {
+            // Get backlog to check team
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Product backlog item not found.');
+                return;
+            }
+            
+            const backlog = backlogDoc.data();
+            const team = await this.getUserTeam();
+            if (!team || team.id !== backlog.teamId) {
+                alert('You do not have permission to edit this item.');
+                return;
+            }
+            
+            // Check if submitted or verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
+            const isVerified = planningData && planningData.productBacklogVerified === true;
+            
+            // Update the backlog
             await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
                 userId: userId,
                 userStoryId: userStoryId,
@@ -12648,9 +12703,24 @@ const app = {
                 updatedAt: serverTimestamp()
             });
             
+            // If submitted or verified, reset verification status
+            if (isSubmitted || isVerified) {
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    productBacklogSubmitted: false,
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
             this.closeEditProductBacklogModal();
             await this.loadProductBacklog();
-            alert('Product backlog item updated successfully!');
+            
+            if (isSubmitted || isVerified) {
+                alert('Product backlog item updated successfully! Verification status has been reset. Please submit for verification again after guide approval.');
+            } else {
+                alert('Product backlog item updated successfully!');
+            }
         } catch (error) {
             console.error('Error saving product backlog:', error);
             alert('Error saving product backlog. Please try again.');
