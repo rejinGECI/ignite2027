@@ -19047,19 +19047,35 @@ const app = {
             }
             
             // Organize data by users -> user stories -> backlogs
-            // Note: userStories and productBacklogs are already sorted by sortOrder
-            // Users are already sorted alphabetically by name
-            const usersWithStories = users.map(user => {
-                // Get user stories for this user, sorted by sortOrder (matching portal display)
-                // Filter first, then sort to maintain sortOrder within this user's stories
-                const userStoriesForUser = userStories
-                    .filter(s => s.userId === user.id)
+            // IMPORTANT: Follow the same order as the product backlog tab:
+            // 1. Users sorted alphabetically by name
+            // 2. User stories sorted alphabetically by story text (not by sortOrder)
+            // 3. Product backlogs sorted by sortOrder within each story
+            
+            // Group user stories by userId
+            const userStoryMap = {};
+            userStories.forEach(story => {
+                if (!userStoryMap[story.userId]) {
+                    userStoryMap[story.userId] = [];
+                }
+                userStoryMap[story.userId].push(story);
+            });
+            
+            // Sort users alphabetically by name (matching product backlog tab)
+            const sortedUsers = [...users].sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            const usersWithStories = sortedUsers.map(user => {
+                // Get user stories for this user, sorted by story text (alphabetically) to match product backlog tab
+                const userStoriesForUser = (userStoryMap[user.id] || [])
                     .sort((a, b) => {
-                        // Sort by sortOrder to match portal display
-                        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
-                            return a.sortOrder - b.sortOrder;
-                        }
-                        return 0;
+                        // Sort by story text alphabetically (matching product backlog tab grouping)
+                        const storyTextA = `As a ${a.userName || 'Unknown'}, I want ${a.feature || ''}, so that ${a.benefit || ''}.`;
+                        const storyTextB = `As a ${b.userName || 'Unknown'}, I want ${b.feature || ''}, so that ${b.benefit || ''}.`;
+                        return storyTextA.localeCompare(storyTextB);
                     })
                     .map(s => {
                         // Get backlogs for this story, sorted by sortOrder
