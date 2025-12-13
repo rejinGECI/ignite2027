@@ -10409,16 +10409,16 @@ const app = {
                                 </div>
                             ` : ''}
                         </div>
-                        ${!isSubmitted && !isVerified ? `
-                            <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                            ${!isSubmitted && !isVerified ? `
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        ` : ''}
+                            ` : ''}
+                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -10685,13 +10685,90 @@ const app = {
     
     // Delete user story
     async deleteUserStory(storyId) {
-        if (!confirm('Are you sure you want to delete this user story?')) {
-            return;
-        }
-        
         try {
+            // Get story details to check status
+            const storyDoc = await getDoc(doc(window.firebaseDb, 'userStories', storyId));
+            if (!storyDoc.exists()) {
+                alert('User story not found.');
+                return;
+            }
+            
+            const story = storyDoc.data();
+            const team = await this.getUserTeam();
+            if (!team || team.id !== story.teamId) {
+                alert('You do not have permission to delete this story.');
+                return;
+            }
+            
+            // Check if submitted or verified
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            const isSubmitted = planningData && planningData.userStoriesSubmitted === true;
+            const isVerified = planningData && planningData.userStoriesVerified === true;
+            
+            let confirmMessage = 'Are you sure you want to delete this user story?';
+            if (isSubmitted || isVerified) {
+                confirmMessage = 'This user story has been submitted/verified. Deleting it will remove it permanently and may require re-submission of all user stories. Are you sure you want to continue?';
+            }
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Delete related product backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('userStoryId', '==', storyId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const deletePromises = [];
+            
+            backlogSnapshot.forEach(doc => {
+                deletePromises.push(deleteDoc(doc.ref));
+            });
+            
+            // Delete related schedules
+            for (const backlogDoc of backlogSnapshot.docs) {
+                const scheduleQuery = query(
+                    collection(window.firebaseDb, 'productBacklogSchedules'),
+                    where('backlogId', '==', backlogDoc.id)
+                );
+                const scheduleSnapshot = await getDocs(scheduleQuery);
+                scheduleSnapshot.forEach(scheduleDoc => {
+                    deletePromises.push(deleteDoc(scheduleDoc.ref));
+                });
+            }
+            
+            // Delete card sorting assignments for related backlogs
+            for (const backlogDoc of backlogSnapshot.docs) {
+                const assignmentQuery = query(
+                    collection(window.firebaseDb, 'cardSortingAssignments'),
+                    where('backlogId', '==', backlogDoc.id)
+                );
+                const assignmentSnapshot = await getDocs(assignmentQuery);
+                assignmentSnapshot.forEach(assignmentDoc => {
+                    deletePromises.push(deleteDoc(assignmentDoc.ref));
+                });
+            }
+            
+            // Delete all related data
+            await Promise.all(deletePromises);
+            
+            // Delete the user story
             await deleteDoc(doc(window.firebaseDb, 'userStories', storyId));
+            
+            // If submitted or verified, reset verification status
+            if (isSubmitted || isVerified) {
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    userStoriesSubmitted: false,
+                    userStoriesVerified: false,
+                    userStoriesVerificationStatus: null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
             await this.loadUserStories();
+            alert('User story and related data deleted successfully!');
         } catch (error) {
             console.error('Error deleting user story:', error);
             alert('Error deleting user story. Please try again.');
@@ -11933,16 +12010,16 @@ const app = {
                                             </div>
                                         ` : ''}
                                     </div>
-                                    ${!isSubmitted && !isVerified ? `
-                                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                                    <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                                        ${!isSubmitted && !isVerified ? `
                                             <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </div>
-                                    ` : ''}
+                                        ` : ''}
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         `;
@@ -12582,10 +12659,6 @@ const app = {
     
     // Delete product backlog
     async deleteProductBacklog(backlogId) {
-        if (!confirm('Are you sure you want to delete this product backlog item?')) {
-            return;
-        }
-        
         try {
             const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
             if (!backlogDoc.exists()) {
@@ -12606,14 +12679,55 @@ const app = {
             const isSubmitted = planningData && planningData.productBacklogSubmitted === true;
             const isVerified = planningData && planningData.productBacklogVerified === true;
             
+            let confirmMessage = 'Are you sure you want to delete this product backlog item?';
             if (isSubmitted || isVerified) {
-                alert('Cannot delete product backlog items that have been submitted or verified.');
+                confirmMessage = 'This product backlog item has been submitted/verified. Deleting it will remove it permanently and may require re-submission of all backlog items. Are you sure you want to continue?';
+            }
+            
+            if (!confirm(confirmMessage)) {
                 return;
             }
             
+            // Delete related schedules
+            const scheduleQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('backlogId', '==', backlogId)
+            );
+            const scheduleSnapshot = await getDocs(scheduleQuery);
+            const deletePromises = [];
+            
+            scheduleSnapshot.forEach(doc => {
+                deletePromises.push(deleteDoc(doc.ref));
+            });
+            
+            // Delete card sorting assignments
+            const assignmentQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('backlogId', '==', backlogId)
+            );
+            const assignmentSnapshot = await getDocs(assignmentQuery);
+            assignmentSnapshot.forEach(doc => {
+                deletePromises.push(deleteDoc(doc.ref));
+            });
+            
+            // Delete all related data
+            await Promise.all(deletePromises);
+            
+            // Delete the product backlog
             await deleteDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            
+            // If submitted or verified, reset verification status
+            if (isSubmitted || isVerified) {
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    productBacklogSubmitted: false,
+                    productBacklogVerified: false,
+                    productBacklogVerificationStatus: null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+            
             await this.loadProductBacklog();
-            alert('Product backlog item deleted successfully!');
+            alert('Product backlog item and related data deleted successfully!');
         } catch (error) {
             console.error('Error deleting product backlog:', error);
             alert('Error deleting product backlog. Please try again.');
@@ -15220,6 +15334,43 @@ const app = {
                 schedules.push({ id: doc.id, ...doc.data() });
             });
             
+            // Load important dates
+            let processedDates = [];
+            try {
+                const importantDatesDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+                const importantDatesData = importantDatesDoc.exists() ? importantDatesDoc.data() : null;
+                const importantDates = importantDatesData && importantDatesData.importantDates ? importantDatesData.importantDates : [];
+                
+                // Process dates to ensure they're in the correct format
+                if (Array.isArray(importantDates) && importantDates.length > 0) {
+                    processedDates = importantDates.map(dateItem => {
+                        let date;
+                        if (dateItem.date?.toDate) {
+                            // Firestore Timestamp
+                            date = dateItem.date.toDate();
+                        } else if (dateItem.date instanceof Date) {
+                            date = dateItem.date;
+                        } else if (typeof dateItem.date === 'string') {
+                            date = new Date(dateItem.date);
+                        } else if (dateItem.date?.seconds) {
+                            // Firestore Timestamp object with seconds
+                            date = new Date(dateItem.date.seconds * 1000);
+                        } else {
+                            date = new Date(dateItem.date);
+                        }
+                        return { ...dateItem, date };
+                    });
+                    
+                    // Sort by date
+                    processedDates.sort((a, b) => {
+                        return a.date - b.date;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading important dates:', error);
+                processedDates = [];
+            }
+            
             // Build content
             let html = `
                 <div style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -15232,20 +15383,61 @@ const app = {
                         </p>
                     </div>
                     
-                    ${scheduleIsVerified && scheduleVerificationStatus ? `
+                    ${isVerified && verificationStatus ? `
                         <div style="padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
                                 <i class="fas fa-check-circle"></i>
                                 <strong>Schedule Already Verified</strong>
                             </div>
-                            ${scheduleVerificationStatus.feedback ? `
-                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(scheduleVerificationStatus.feedback)}</p>
+                            ${verificationStatus.feedback ? `
+                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
                             ` : ''}
-                            ${scheduleVerificationStatus.verifiedAt ? `
+                            ${verificationStatus.verifiedAt ? `
                                 <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
-                                    Verified on: ${scheduleVerificationStatus.verifiedAt.toDate ? scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
                                 </p>
                             ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${processedDates.length > 0 ? `
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); color: white;">
+                            <h4 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-calendar-check"></i> Important Dates
+                            </h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                                ${processedDates.map(dateItem => {
+                                    const date = dateItem.date;
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const dateOnly = new Date(date);
+                                    dateOnly.setHours(0, 0, 0, 0);
+                                    const isPast = dateOnly < today;
+                                    const isToday = dateOnly.getTime() === today.getTime();
+                                    const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                    
+                                    return `
+                                        <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                                <h5 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
+                                                ${isToday ? `
+                                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                ` : isPast ? `
+                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                ` : `
+                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                `}
+                                            </div>
+                                            <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                                <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                            </p>
+                                            ${dateItem.description ? `
+                                                <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     ` : ''}
                     
@@ -15308,7 +15500,7 @@ const app = {
             
             // Update verify button
             if (verifyBtn) {
-                if (scheduleIsVerified) {
+                if (isVerified) {
                     verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Schedule';
                     verifyBtn.className = 'btn btn-success';
                 } else {
@@ -15575,10 +15767,47 @@ const app = {
         }
     },
     
-    generateScheduleHTMLReport(teamsStatus, reportType, downloadAsDocx = false) {
+    async generateScheduleHTMLReport(teamsStatus, reportType, downloadAsDocx = false) {
+        // Load important dates
+        let processedDates = [];
+        try {
+            const importantDatesDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+            const importantDatesData = importantDatesDoc.exists() ? importantDatesDoc.data() : null;
+            const importantDates = importantDatesData && importantDatesData.importantDates ? importantDatesData.importantDates : [];
+            
+            // Process dates to ensure they're in the correct format
+            if (Array.isArray(importantDates) && importantDates.length > 0) {
+                processedDates = importantDates.map(dateItem => {
+                    let date;
+                    if (dateItem.date?.toDate) {
+                        // Firestore Timestamp
+                        date = dateItem.date.toDate();
+                    } else if (dateItem.date instanceof Date) {
+                        date = dateItem.date;
+                    } else if (typeof dateItem.date === 'string') {
+                        date = new Date(dateItem.date);
+                    } else if (dateItem.date?.seconds) {
+                        // Firestore Timestamp object with seconds
+                        date = new Date(dateItem.date.seconds * 1000);
+                    } else {
+                        date = new Date(dateItem.date);
+                    }
+                    return { ...dateItem, date };
+                });
+                
+                // Sort by date
+                processedDates.sort((a, b) => {
+                    return a.date - b.date;
+                });
+            }
+        } catch (error) {
+            console.error('Error loading important dates:', error);
+            processedDates = [];
+        }
+        
         const html = reportType === 'detailed' 
-            ? this.generateScheduleDetailedReportContent(teamsStatus)
-            : this.generateScheduleMinimalReportContent(teamsStatus);
+            ? this.generateScheduleDetailedReportContent(teamsStatus, processedDates)
+            : this.generateScheduleMinimalReportContent(teamsStatus, processedDates);
         
         const blob = new Blob([html], { type: 'text/html' });
         const url = URL.createObjectURL(blob);
@@ -15595,7 +15824,7 @@ const app = {
         }
     },
     
-    generateScheduleDetailedReportContent(teamsStatus) {
+    generateScheduleDetailedReportContent(teamsStatus, processedDates = []) {
         let html = `
             <!DOCTYPE html>
             <html>
@@ -15619,6 +15848,47 @@ const app = {
             <body>
                 <h1>Schedule Submission Status Report - Detailed</h1>
                 <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+                
+                ${processedDates.length > 0 ? `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-calendar-check"></i> Important Dates
+                        </h2>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                            ${processedDates.map(dateItem => {
+                                const date = dateItem.date;
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const dateOnly = new Date(date);
+                                dateOnly.setHours(0, 0, 0, 0);
+                                const isPast = dateOnly < today;
+                                const isToday = dateOnly.getTime() === today.getTime();
+                                const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                
+                                return `
+                                    <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                            <h3 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
+                                            ${isToday ? `
+                                                <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                            ` : isPast ? `
+                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                            ` : `
+                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                            `}
+                                        </div>
+                                        <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                            <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                        </p>
+                                        ${dateItem.description ? `
+                                            <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
         `;
         
         teamsStatus.forEach(team => {
@@ -15680,7 +15950,7 @@ const app = {
         return html;
     },
     
-    generateScheduleMinimalReportContent(teamsStatus) {
+    generateScheduleMinimalReportContent(teamsStatus, processedDates = []) {
         let html = `
             <!DOCTYPE html>
             <html>
@@ -15700,6 +15970,47 @@ const app = {
             <body>
                 <h1>Schedule Submission Status Report - Summary</h1>
                 <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
+                
+                ${processedDates.length > 0 ? `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <h2 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-calendar-check"></i> Important Dates
+                        </h2>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+                            ${processedDates.map(dateItem => {
+                                const date = dateItem.date;
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const dateOnly = new Date(date);
+                                dateOnly.setHours(0, 0, 0, 0);
+                                const isPast = dateOnly < today;
+                                const isToday = dateOnly.getTime() === today.getTime();
+                                const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                
+                                return `
+                                    <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                            <h3 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
+                                            ${isToday ? `
+                                                <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                            ` : isPast ? `
+                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                            ` : `
+                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                            `}
+                                        </div>
+                                        <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                            <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                        </p>
+                                        ${dateItem.description ? `
+                                            <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
                 <table>
                     <thead>
                         <tr>
@@ -15798,9 +16109,46 @@ const app = {
     },
     
     async generateSchedulePDFReport(teamsStatus, reportType) {
+        // Load important dates
+        let processedDates = [];
+        try {
+            const importantDatesDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+            const importantDatesData = importantDatesDoc.exists() ? importantDatesDoc.data() : null;
+            const importantDates = importantDatesData && importantDatesData.importantDates ? importantDatesData.importantDates : [];
+            
+            // Process dates to ensure they're in the correct format
+            if (Array.isArray(importantDates) && importantDates.length > 0) {
+                processedDates = importantDates.map(dateItem => {
+                    let date;
+                    if (dateItem.date?.toDate) {
+                        // Firestore Timestamp
+                        date = dateItem.date.toDate();
+                    } else if (dateItem.date instanceof Date) {
+                        date = dateItem.date;
+                    } else if (typeof dateItem.date === 'string') {
+                        date = new Date(dateItem.date);
+                    } else if (dateItem.date?.seconds) {
+                        // Firestore Timestamp object with seconds
+                        date = new Date(dateItem.date.seconds * 1000);
+                    } else {
+                        date = new Date(dateItem.date);
+                    }
+                    return { ...dateItem, date };
+                });
+                
+                // Sort by date
+                processedDates.sort((a, b) => {
+                    return a.date - b.date;
+                });
+            }
+        } catch (error) {
+            console.error('Error loading important dates:', error);
+            processedDates = [];
+        }
+        
         const html = reportType === 'detailed' 
-            ? this.generateScheduleDetailedReportContent(teamsStatus)
-            : this.generateScheduleMinimalReportContent(teamsStatus);
+            ? this.generateScheduleDetailedReportContent(teamsStatus, processedDates)
+            : this.generateScheduleMinimalReportContent(teamsStatus, processedDates);
         
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
