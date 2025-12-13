@@ -10292,8 +10292,16 @@ const app = {
                 stories.push(story);
             });
             
-            // Sort by createdAt in JavaScript (newest first)
+            // Sort by sortOrder if available, otherwise by createdAt (newest first)
+            stories.forEach((story, index) => {
+                if (story.sortOrder === undefined || story.sortOrder === null) {
+                    story.sortOrder = index;
+                }
+            });
             stories.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
                 return dateB - dateA; // Descending order
@@ -10409,13 +10417,23 @@ const app = {
                                 </div>
                             ` : ''}
                         </div>
-                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Editing it will require re-submission."' : ''}>
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
-                                <i class="fas fa-trash"></i>
-                            </button>
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-left: 1rem; align-items: center;">
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <button type="button" class="btn btn-sm" onclick="app.moveUserStoryUp('${story.id}')" ${stories.indexOf(story) === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move up">
+                                    <i class="fas fa-chevron-up"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm" onclick="app.moveUserStoryDown('${story.id}')" ${stories.indexOf(story) === stories.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move down">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="app.editUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Editing it will require re-submission."' : ''}>
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteUserStory('${story.id}')" ${isSubmitted || isVerified ? 'title="This story has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -10559,6 +10577,20 @@ const app = {
             const planningDoc = await getDoc(planningRef);
             const wasVerified = planningDoc.exists() && planningDoc.data().userStoriesVerified === true;
             
+            // Get max sortOrder for this team
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            let maxSortOrder = -1;
+            storiesSnapshot.forEach(doc => {
+                const story = doc.data();
+                if (story.sortOrder !== undefined && story.sortOrder !== null && story.sortOrder > maxSortOrder) {
+                    maxSortOrder = story.sortOrder;
+                }
+            });
+            
             const storyRef = doc(collection(window.firebaseDb, 'userStories'));
             await setDoc(storyRef, {
                 teamId: team.id,
@@ -10566,6 +10598,7 @@ const app = {
                 feature: feature,
                 benefit: benefit,
                 priority: priority || 'medium',
+                sortOrder: maxSortOrder + 1,
                 createdAt: serverTimestamp()
             });
             
@@ -10807,6 +10840,116 @@ const app = {
         } catch (error) {
             console.error('Error deleting user story:', error);
             alert('Error deleting user story. Please try again.');
+        }
+    },
+    
+    // Move user story up
+    async moveUserStoryUp(storyId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                stories.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            stories.forEach((story, index) => {
+                if (story.sortOrder === undefined || story.sortOrder === null) {
+                    story.sortOrder = index;
+                }
+            });
+            stories.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = stories.findIndex(s => s.id === storyId);
+            if (currentIndex <= 0) return;
+            
+            // Swap sortOrder
+            const temp = stories[currentIndex].sortOrder;
+            stories[currentIndex].sortOrder = stories[currentIndex - 1].sortOrder;
+            stories[currentIndex - 1].sortOrder = temp;
+            
+            // Update both stories
+            await updateDoc(doc(window.firebaseDb, 'userStories', stories[currentIndex].id), {
+                sortOrder: stories[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'userStories', stories[currentIndex - 1].id), {
+                sortOrder: stories[currentIndex - 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error moving user story:', error);
+            alert('Error moving user story. Please try again.');
+        }
+    },
+    
+    // Move user story down
+    async moveUserStoryDown(storyId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all stories
+            const storiesQuery = query(
+                collection(window.firebaseDb, 'userStories'),
+                where('teamId', '==', team.id)
+            );
+            const storiesSnapshot = await getDocs(storiesQuery);
+            const stories = [];
+            storiesSnapshot.forEach(doc => {
+                stories.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            stories.forEach((story, index) => {
+                if (story.sortOrder === undefined || story.sortOrder === null) {
+                    story.sortOrder = index;
+                }
+            });
+            stories.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = stories.findIndex(s => s.id === storyId);
+            if (currentIndex < 0 || currentIndex >= stories.length - 1) return;
+            
+            // Swap sortOrder
+            const temp = stories[currentIndex].sortOrder;
+            stories[currentIndex].sortOrder = stories[currentIndex + 1].sortOrder;
+            stories[currentIndex + 1].sortOrder = temp;
+            
+            // Update both stories
+            await updateDoc(doc(window.firebaseDb, 'userStories', stories[currentIndex].id), {
+                sortOrder: stories[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'userStories', stories[currentIndex + 1].id), {
+                sortOrder: stories[currentIndex + 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadUserStories();
+        } catch (error) {
+            console.error('Error moving user story:', error);
+            alert('Error moving user story. Please try again.');
         }
     },
     
@@ -12002,6 +12145,14 @@ const app = {
                 `;
                 
                 for (const [storyText, items] of Object.entries(storiesObj)) {
+                    // Sort items within this story group by sortOrder
+                    items.sort((a, b) => {
+                        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                            return a.sortOrder - b.sortOrder;
+                        }
+                        return 0;
+                    });
+                    
                     html += `
                         <div style="margin-left: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color);">
                             <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
@@ -12010,7 +12161,7 @@ const app = {
                             <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                     `;
                     
-                    items.forEach(backlog => {
+                    items.forEach((backlog, itemIndex) => {
                         const isApproved = backlog.approved === true;
                         const isRejected = backlog.rejected === true;
                         const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : 'transparent');
@@ -12045,13 +12196,23 @@ const app = {
                                             </div>
                                         ` : ''}
                                     </div>
-                                    <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Editing it will require re-submission."' : ''}>
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                    <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-left: 1rem; align-items: center;">
+                                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                            <button type="button" class="btn btn-sm" onclick="app.moveProductBacklogUp('${backlog.id}')" ${itemIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move up">
+                                                <i class="fas fa-chevron-up"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm" onclick="app.moveProductBacklogDown('${backlog.id}')" ${itemIndex === items.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"'} title="Move down">
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </div>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Editing it will require re-submission."' : ''}>
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteProductBacklog('${backlog.id}')" ${isSubmitted || isVerified ? 'title="This backlog item has been submitted/verified. Deleting it will require re-submission."' : ''}>
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -12423,8 +12584,23 @@ const app = {
                 return;
             }
             
+            // Get max sortOrder for this userStoryId
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id),
+                where('userStoryId', '==', userStoryId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            let maxSortOrder = -1;
+            backlogSnapshot.forEach(doc => {
+                const backlog = doc.data();
+                if (backlog.sortOrder !== undefined && backlog.sortOrder !== null && backlog.sortOrder > maxSortOrder) {
+                    maxSortOrder = backlog.sortOrder;
+                }
+            });
+            
             // Add all tasks
-            const addPromises = tasks.map(task => 
+            const addPromises = tasks.map((task, index) => 
                 addDoc(collection(window.firebaseDb, 'productBacklog'), {
                     teamId: team.id,
                     userId: userId,
@@ -12432,6 +12608,7 @@ const app = {
                     task: task.task,
                     difficulty: task.difficulty,
                     priority: task.priority,
+                    sortOrder: maxSortOrder + 1 + index,
                     approved: false,
                     rejected: false,
                     createdAt: serverTimestamp(),
@@ -12724,6 +12901,128 @@ const app = {
         } catch (error) {
             console.error('Error saving product backlog:', error);
             alert('Error saving product backlog. Please try again.');
+        }
+    },
+    
+    // Move product backlog up (within same user story)
+    async moveProductBacklogUp(backlogId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Get the backlog to find its userStoryId
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) return;
+            const backlog = backlogDoc.data();
+            
+            // Load all backlogs with the same userStoryId
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id),
+                where('userStoryId', '==', backlog.userStoryId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            backlogs.forEach((b, index) => {
+                if (b.sortOrder === undefined || b.sortOrder === null) {
+                    b.sortOrder = index;
+                }
+            });
+            backlogs.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = backlogs.findIndex(b => b.id === backlogId);
+            if (currentIndex <= 0) return;
+            
+            // Swap sortOrder
+            const temp = backlogs[currentIndex].sortOrder;
+            backlogs[currentIndex].sortOrder = backlogs[currentIndex - 1].sortOrder;
+            backlogs[currentIndex - 1].sortOrder = temp;
+            
+            // Update both backlogs
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogs[currentIndex].id), {
+                sortOrder: backlogs[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogs[currentIndex - 1].id), {
+                sortOrder: backlogs[currentIndex - 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadProductBacklog();
+        } catch (error) {
+            console.error('Error moving product backlog:', error);
+            alert('Error moving product backlog. Please try again.');
+        }
+    },
+    
+    // Move product backlog down (within same user story)
+    async moveProductBacklogDown(backlogId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Get the backlog to find its userStoryId
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+            if (!backlogDoc.exists()) return;
+            const backlog = backlogDoc.data();
+            
+            // Load all backlogs with the same userStoryId
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id),
+                where('userStoryId', '==', backlog.userStoryId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const backlogs = [];
+            backlogSnapshot.forEach(doc => {
+                backlogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            backlogs.forEach((b, index) => {
+                if (b.sortOrder === undefined || b.sortOrder === null) {
+                    b.sortOrder = index;
+                }
+            });
+            backlogs.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = backlogs.findIndex(b => b.id === backlogId);
+            if (currentIndex < 0 || currentIndex >= backlogs.length - 1) return;
+            
+            // Swap sortOrder
+            const temp = backlogs[currentIndex].sortOrder;
+            backlogs[currentIndex].sortOrder = backlogs[currentIndex + 1].sortOrder;
+            backlogs[currentIndex + 1].sortOrder = temp;
+            
+            // Update both backlogs
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogs[currentIndex].id), {
+                sortOrder: backlogs[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'productBacklog', backlogs[currentIndex + 1].id), {
+                sortOrder: backlogs[currentIndex + 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadProductBacklog();
+        } catch (error) {
+            console.error('Error moving product backlog:', error);
+            alert('Error moving product backlog. Please try again.');
         }
     },
     
@@ -13031,6 +13330,14 @@ const app = {
                 `;
                 
                 for (const [storyText, items] of Object.entries(storiesObj)) {
+                    // Sort items within this story group by sortOrder
+                    items.sort((a, b) => {
+                        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                            return a.sortOrder - b.sortOrder;
+                        }
+                        return 0;
+                    });
+                    
                     html += `
                         <div style="margin-left: 1.5rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color);">
                             <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
@@ -13039,7 +13346,7 @@ const app = {
                             <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                     `;
                     
-                    items.forEach(backlog => {
+                    items.forEach((backlog, itemIndex) => {
                         const isApproved = backlog.approved === true;
                         const isRejected = backlog.rejected === true;
                         const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : priorityColors[backlog.priority] || priorityColors.medium);
@@ -13509,8 +13816,18 @@ const app = {
                 modules.push({ id: doc.id, ...doc.data() });
             });
             
-            // Sort modules by creation date (newest first) for better UX - new modules appear at top
+            // Initialize sortOrder for modules that don't have it
+            modules.forEach((module, index) => {
+                if (module.sortOrder === undefined || module.sortOrder === null) {
+                    module.sortOrder = index;
+                }
+            });
+            
+            // Sort modules by sortOrder if available, otherwise by creation date (newest first)
             modules.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
                 return dateB - dateA; // Newest first
@@ -13558,16 +13875,22 @@ const app = {
                 backlogs.push(backlog);
             });
             
-            // Load module assignments
+            // Load module assignments with sortOrder
             const assignmentsQuery = query(
                 collection(window.firebaseDb, 'cardSortingAssignments'),
                 where('teamId', '==', team.id)
             );
             const assignmentsSnapshot = await getDocs(assignmentsQuery);
             const assignments = {};
+            const assignmentsData = {}; // Store full assignment data including sortOrder
             assignmentsSnapshot.forEach(doc => {
                 const data = doc.data();
                 assignments[data.backlogId] = data.moduleId;
+                assignmentsData[data.backlogId] = {
+                    assignmentId: doc.id,
+                    moduleId: data.moduleId,
+                    sortOrder: data.sortOrder !== undefined && data.sortOrder !== null ? data.sortOrder : null
+                };
             });
             
             // Group backlogs by module
@@ -13575,15 +13898,36 @@ const app = {
             const unassignedBacklogs = [];
             
             backlogs.forEach(backlog => {
-                const moduleId = assignments[backlog.id];
-                if (moduleId) {
-                    if (!backlogsByModule[moduleId]) {
-                        backlogsByModule[moduleId] = [];
+                const assignment = assignmentsData[backlog.id];
+                if (assignment && assignment.moduleId) {
+                    if (!backlogsByModule[assignment.moduleId]) {
+                        backlogsByModule[assignment.moduleId] = [];
                     }
-                    backlogsByModule[moduleId].push(backlog);
+                    // Add assignment info to backlog for sorting
+                    backlog.assignmentId = assignment.assignmentId;
+                    backlog.moduleSortOrder = assignment.sortOrder;
+                    backlogsByModule[assignment.moduleId].push(backlog);
                 } else {
                     unassignedBacklogs.push(backlog);
                 }
+            });
+            
+            // Sort cards within each module by sortOrder
+            Object.keys(backlogsByModule).forEach(moduleId => {
+                const moduleBacklogs = backlogsByModule[moduleId];
+                // Initialize sortOrder for cards that don't have it
+                moduleBacklogs.forEach((backlog, index) => {
+                    if (backlog.moduleSortOrder === null || backlog.moduleSortOrder === undefined) {
+                        backlog.moduleSortOrder = index;
+                    }
+                });
+                // Sort by sortOrder
+                moduleBacklogs.sort((a, b) => {
+                    if (a.moduleSortOrder !== undefined && b.moduleSortOrder !== undefined) {
+                        return a.moduleSortOrder - b.moduleSortOrder;
+                    }
+                    return 0;
+                });
             });
             
             // Build HTML - Two column layout: Left = Uncategorised Product Backlogs, Right = Modules Grid
@@ -13610,7 +13954,7 @@ const app = {
                 `;
             } else {
                 unassignedBacklogs.forEach(backlog => {
-                    html += this.generateBacklogCard(backlog);
+                    html += this.generateBacklogCard(backlog, null, null, null);
                 });
             }
             
@@ -13624,8 +13968,8 @@ const app = {
                 <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
             `;
             
-            // Module columns - newest modules appear first in grid
-            modules.forEach(module => {
+            // Module columns - sorted by sortOrder
+            modules.forEach((module, moduleIndex) => {
                 const moduleBacklogs = backlogsByModule[module.id] || [];
                 const moduleColor = module.color || '#3b82f6';
                 
@@ -13682,14 +14026,24 @@ const app = {
                                 </h4>
                                 ${module.description ? `<p style="margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.85rem;">${this.escapeHtml(module.description)}</p>` : ''}
                             </div>
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <span style="background: ${moduleColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${moduleBacklogs.length}</span>
-                                <button type="button" class="btn btn-sm" onclick="app.editModule('${module.id}')" style="padding: 4px 8px; background: ${moduleColor}15; color: ${moduleColor}; border: none; border-radius: 4px; cursor: pointer;" title="Edit Module">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm" onclick="app.deleteModule('${module.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;" title="Delete Module">
-                                    <i class="fas fa-trash"></i>
-                                </button>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: center;">
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <button type="button" class="btn btn-sm" onclick="app.moveModuleUp('${module.id}')" ${moduleIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 6px; font-size: 0.7rem;"' : 'style="padding: 2px 6px; font-size: 0.7rem;"'} title="Move module up">
+                                        <i class="fas fa-chevron-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm" onclick="app.moveModuleDown('${module.id}')" ${moduleIndex === modules.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 6px; font-size: 0.7rem;"' : 'style="padding: 2px 6px; font-size: 0.7rem;"'} title="Move module down">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span style="background: ${moduleColor}; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${moduleBacklogs.length}</span>
+                                    <button type="button" class="btn btn-sm" onclick="app.editModule('${module.id}')" style="padding: 4px 8px; background: ${moduleColor}15; color: ${moduleColor}; border: none; border-radius: 4px; cursor: pointer;" title="Edit Module">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm" onclick="app.deleteModule('${module.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;" title="Delete Module">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         ${moduleBacklogs.length > 0 ? `
@@ -13716,8 +14070,8 @@ const app = {
                         </div>
                     `;
                 } else {
-                    moduleBacklogs.forEach(backlog => {
-                        html += this.generateBacklogCard(backlog);
+                    moduleBacklogs.forEach((backlog, cardIndex) => {
+                        html += this.generateBacklogCard(backlog, module.id, cardIndex, moduleBacklogs.length);
                     });
                 }
                 
@@ -13806,7 +14160,7 @@ const app = {
         }
     },
     
-    generateBacklogCard(backlog) {
+    generateBacklogCard(backlog, moduleId = null, cardIndex = null, totalCards = null) {
         const priorityColors = {
             low: '#6b7280',
             medium: '#3b82f6',
@@ -13818,9 +14172,22 @@ const app = {
         const storyText = backlog.storyText || 'Unknown Story';
         const userName = backlog.userName || 'Unknown';
         
+        // Show sort buttons only if in a module
+        const showSortButtons = moduleId !== null && cardIndex !== null && totalCards !== null;
+        
         return `
-            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+            <div class="backlog-card" draggable="true" data-backlog-id="${backlog.id}" data-module-id="${moduleId || ''}" style="max-width: 300px; background: white; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-left: 4px solid ${priorityColor}; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; position: relative;">
+                ${showSortButtons ? `
+                    <div style="position: absolute; right: 0.5rem; top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; z-index: 10;">
+                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.moveCardUp('${backlog.id}', '${moduleId}')" ${cardIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px;"' : 'style="padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px; cursor: pointer;"'} title="Move card up">
+                            <i class="fas fa-chevron-up"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); app.moveCardDown('${backlog.id}', '${moduleId}')" ${cardIndex === totalCards - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px;"' : 'style="padding: 2px 4px; font-size: 0.65rem; background: #f3f4f6; border: none; border-radius: 3px; cursor: pointer;"'} title="Move card down">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                ` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; ${showSortButtons ? 'padding-right: 2rem;' : ''}">
                     <div style="flex: 1;">
                         <p style="margin: 0; font-weight: 600; color: #111827; font-size: 0.9rem; line-height: 1.4;">${this.escapeHtml(backlog.task || 'No task')}</p>
                     </div>
@@ -13946,10 +14313,26 @@ const app = {
             
             // Create new assignment if moduleId is provided
             if (moduleId) {
+                // Get max sortOrder for cards in this module
+                const moduleAssignmentsQuery = query(
+                    collection(window.firebaseDb, 'cardSortingAssignments'),
+                    where('teamId', '==', team.id),
+                    where('moduleId', '==', moduleId)
+                );
+                const moduleAssignmentsSnapshot = await getDocs(moduleAssignmentsQuery);
+                let maxSortOrder = -1;
+                moduleAssignmentsSnapshot.forEach(doc => {
+                    const assignment = doc.data();
+                    if (assignment.sortOrder !== undefined && assignment.sortOrder !== null && assignment.sortOrder > maxSortOrder) {
+                        maxSortOrder = assignment.sortOrder;
+                    }
+                });
+                
                 await setDoc(doc(collection(window.firebaseDb, 'cardSortingAssignments')), {
                     teamId: team.id,
                     backlogId: backlogId,
                     moduleId: moduleId,
+                    sortOrder: maxSortOrder + 1,
                     assignedAt: serverTimestamp(),
                     assignedBy: this.currentUser.uid
                 });
@@ -13960,6 +14343,118 @@ const app = {
         } catch (error) {
             console.error('Error assigning backlog to module:', error);
             alert('Error assigning card to module. Please try again.');
+        }
+    },
+    
+    // Move card up within module
+    async moveCardUp(backlogId, moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all assignments for this module
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = [];
+            assignmentsSnapshot.forEach(doc => {
+                assignments.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            assignments.forEach((assignment, index) => {
+                if (assignment.sortOrder === undefined || assignment.sortOrder === null) {
+                    assignment.sortOrder = index;
+                }
+            });
+            assignments.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = assignments.findIndex(a => a.backlogId === backlogId);
+            if (currentIndex <= 0) return;
+            
+            // Swap sortOrder
+            const temp = assignments[currentIndex].sortOrder;
+            assignments[currentIndex].sortOrder = assignments[currentIndex - 1].sortOrder;
+            assignments[currentIndex - 1].sortOrder = temp;
+            
+            // Update both assignments
+            await updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignments[currentIndex].id), {
+                sortOrder: assignments[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignments[currentIndex - 1].id), {
+                sortOrder: assignments[currentIndex - 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error moving card:', error);
+            alert('Error moving card. Please try again.');
+        }
+    },
+    
+    // Move card down within module
+    async moveCardDown(backlogId, moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all assignments for this module
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const assignments = [];
+            assignmentsSnapshot.forEach(doc => {
+                assignments.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            assignments.forEach((assignment, index) => {
+                if (assignment.sortOrder === undefined || assignment.sortOrder === null) {
+                    assignment.sortOrder = index;
+                }
+            });
+            assignments.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = assignments.findIndex(a => a.backlogId === backlogId);
+            if (currentIndex < 0 || currentIndex >= assignments.length - 1) return;
+            
+            // Swap sortOrder
+            const temp = assignments[currentIndex].sortOrder;
+            assignments[currentIndex].sortOrder = assignments[currentIndex + 1].sortOrder;
+            assignments[currentIndex + 1].sortOrder = temp;
+            
+            // Update both assignments
+            await updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignments[currentIndex].id), {
+                sortOrder: assignments[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'cardSortingAssignments', assignments[currentIndex + 1].id), {
+                sortOrder: assignments[currentIndex + 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error moving card:', error);
+            alert('Error moving card. Please try again.');
         }
     },
     
@@ -14087,6 +14582,116 @@ const app = {
     
     async editModule(moduleId) {
         this.showAddModuleModal(moduleId);
+    },
+    
+    // Move module up
+    async moveModuleUp(moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            modules.forEach((module, index) => {
+                if (module.sortOrder === undefined || module.sortOrder === null) {
+                    module.sortOrder = index;
+                }
+            });
+            modules.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = modules.findIndex(m => m.id === moduleId);
+            if (currentIndex <= 0) return;
+            
+            // Swap sortOrder
+            const temp = modules[currentIndex].sortOrder;
+            modules[currentIndex].sortOrder = modules[currentIndex - 1].sortOrder;
+            modules[currentIndex - 1].sortOrder = temp;
+            
+            // Update both modules
+            await updateDoc(doc(window.firebaseDb, 'cardSortingModules', modules[currentIndex].id), {
+                sortOrder: modules[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'cardSortingModules', modules[currentIndex - 1].id), {
+                sortOrder: modules[currentIndex - 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error moving module:', error);
+            alert('Error moving module. Please try again.');
+        }
+    },
+    
+    // Move module down
+    async moveModuleDown(moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Load all modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const modules = [];
+            modulesSnapshot.forEach(doc => {
+                modules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Sort by sortOrder
+            modules.forEach((module, index) => {
+                if (module.sortOrder === undefined || module.sortOrder === null) {
+                    module.sortOrder = index;
+                }
+            });
+            modules.sort((a, b) => {
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
+                return 0;
+            });
+            
+            const currentIndex = modules.findIndex(m => m.id === moduleId);
+            if (currentIndex < 0 || currentIndex >= modules.length - 1) return;
+            
+            // Swap sortOrder
+            const temp = modules[currentIndex].sortOrder;
+            modules[currentIndex].sortOrder = modules[currentIndex + 1].sortOrder;
+            modules[currentIndex + 1].sortOrder = temp;
+            
+            // Update both modules
+            await updateDoc(doc(window.firebaseDb, 'cardSortingModules', modules[currentIndex].id), {
+                sortOrder: modules[currentIndex].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            await updateDoc(doc(window.firebaseDb, 'cardSortingModules', modules[currentIndex + 1].id), {
+                sortOrder: modules[currentIndex + 1].sortOrder,
+                updatedAt: serverTimestamp()
+            });
+            
+            await this.loadCardSorting();
+        } catch (error) {
+            console.error('Error moving module:', error);
+            alert('Error moving module. Please try again.');
+        }
     },
     
     async deleteModule(moduleId) {
