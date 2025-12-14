@@ -412,6 +412,12 @@ const app = {
                 nav.style.display = 'block';
             });
             
+            // Hide evaluator navigation from students (only for evaluators)
+            const evaluatorNav = document.getElementById('evaluator-nav');
+            if (evaluatorNav) {
+                evaluatorNav.style.display = 'none';
+            }
+            
             // Restore saved page or default to dashboard
             const savedPage = localStorage.getItem('currentPage');
             const defaultPage = savedPage || 'dashboard';
@@ -12559,8 +12565,17 @@ const app = {
                                         <span style="color: var(--text-secondary); margin-left: 0.5rem;">
                                             <i class="fas fa-calendar-alt"></i> Schedule
                                         </span>
-                                        ${schedVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
-                                        ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
+                                        ${schedVerified ? `
+                                            <span style="color: #10b981; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                                <i class="fas fa-check-circle"></i> Verified
+                                                ${team.planningData && team.planningData.scheduleVerificationStatus && team.planningData.scheduleVerificationStatus.verifiedAt ? `
+                                                    <span style="font-size: 0.75rem; opacity: 0.8;">
+                                                        (${team.planningData.scheduleVerificationStatus.verifiedAt.toDate ? team.planningData.scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : ''})
+                                                    </span>
+                                                ` : ''}
+                                            </span>
+                                        ` : ''}
+                                        ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending Verification</span>` : ''}
                                     ` : ''}
                                 </div>
                             </div>
@@ -12611,6 +12626,35 @@ const app = {
                                 ` : ''}
                             </div>
                         </div>
+                        
+                        ${schedVerified && team.planningData && team.planningData.scheduleVerificationStatus ? `
+                            <div style="padding: 0.75rem; background: #d1fae5; border-radius: 6px; border-left: 3px solid #10b981; margin-bottom: 1rem; font-size: 0.85rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.25rem;">
+                                    <i class="fas fa-check-circle"></i>
+                                    <strong>Schedule Verified</strong>
+                                </div>
+                                ${team.planningData.scheduleVerificationStatus.feedback ? `
+                                    <p style="margin: 0.25rem 0 0 0; color: #047857; white-space: pre-wrap; font-size: 0.8rem;">${this.escapeHtml(team.planningData.scheduleVerificationStatus.feedback)}</p>
+                                ` : ''}
+                                ${team.planningData.scheduleVerificationStatus.verifiedAt ? `
+                                    <p style="margin: 0.25rem 0 0 0; color: #047857; font-size: 0.75rem; font-style: italic;">
+                                        Verified on: ${team.planningData.scheduleVerificationStatus.verifiedAt.toDate ? team.planningData.scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    </p>
+                                ` : ''}
+                            </div>
+                        ` : schedSubmitted && !schedVerified ? `
+                            <div style="padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 1rem; font-size: 0.85rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                    <i class="fas fa-clock"></i>
+                                    <strong>Schedule Submitted - Awaiting Verification</strong>
+                                </div>
+                                ${team.planningData && team.planningData.scheduleSubmittedAt ? `
+                                    <p style="margin: 0.25rem 0 0 0; color: #92400e; font-size: 0.75rem; font-style: italic;">
+                                        Submitted on: ${team.planningData.scheduleSubmittedAt.toDate ? team.planningData.scheduleSubmittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    </p>
+                                ` : ''}
+                            </div>
+                        ` : ''}
                         
                         <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
                             <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1rem;">
@@ -16854,6 +16898,9 @@ const app = {
                                     Verified on: ${scheduleVerificationStatus.verifiedAt.toDate ? scheduleVerificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
                                 </p>
                             ` : ''}
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem; font-style: italic;">
+                                <i class="fas fa-info-circle"></i> You can update the schedule and resubmit for reverification.
+                            </p>
                         </div>
                     `;
                 } else if (scheduleIsSubmitted) {
@@ -17443,6 +17490,18 @@ const app = {
             } else {
                 // Create new schedule
                 await setDoc(doc(collection(window.firebaseDb, 'productBacklogSchedules')), scheduleData);
+            }
+            
+            // If schedule was verified, reset verification status when student updates
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : null;
+            if (planningData && planningData.scheduleVerified === true) {
+                // Reset verification status to allow reverification
+                await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                    scheduleVerified: false,
+                    scheduleSubmitted: false, // Also reset submission status
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
             }
             
             this.closeScheduleModal();
@@ -18091,7 +18150,13 @@ const app = {
             return;
         }
         
-        const feedback = prompt('Enter verification feedback (optional):');
+        // Check if already verified
+        const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+        const planningData = planningDoc.exists() ? planningDoc.data() : null;
+        const isVerified = planningData && planningData.scheduleVerified === true;
+        
+        const actionText = isVerified ? 're-verify' : 'verify';
+        const feedback = prompt(`Enter verification feedback (optional) for ${actionText}:`);
         
         try {
             const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
@@ -18106,7 +18171,7 @@ const app = {
                 updatedAt: serverTimestamp()
             }, { merge: true });
             
-            alert('Schedule verified successfully!');
+            alert(`Schedule ${actionText === 're-verify' ? 're-verified' : 'verified'} successfully!`);
             await this.loadGuideProjectPlanning();
             this.closeApproveScheduleModal();
         } catch (error) {
