@@ -9690,7 +9690,10 @@ const app = {
                                                 ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
                                                     <div class="marks-section team-marks">
                                                         <div class="marks-header">
-                                                            <span class="marks-label"><i class="fas fa-users"></i> Team Marks</span>
+                                                            <span class="marks-label">
+                                                                <i class="fas fa-users"></i> Team Marks
+                                                                ${evalData.evaluatorCount > 1 ? `<span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem; font-style: italic;">(Average from ${evalData.evaluatorCount} evaluators)</span>` : ''}
+                                                            </span>
                                                             <span class="marks-value marks-team">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</span>
                                                         </div>
                                                         ${teamParams.length > 0 ? `
