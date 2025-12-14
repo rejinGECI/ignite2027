@@ -17992,6 +17992,10 @@ const app = {
                 processedDates = [];
             }
             
+            // Get submission status
+            const isSubmitted = planningData && planningData.scheduleSubmitted === true;
+            const scheduleSubmittedAt = planningData && planningData.scheduleSubmittedAt ? planningData.scheduleSubmittedAt : null;
+            
             // Build content
             let html = `
                 <div style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -18008,16 +18012,38 @@ const app = {
                         <div style="padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
                                 <i class="fas fa-check-circle"></i>
-                                <strong>Schedule Already Verified</strong>
+                                <strong>Schedule Verified</strong>
                             </div>
                             ${verificationStatus.feedback ? `
-                                <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                                <p style="margin: 0 0 0.5rem 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
                             ` : ''}
                             ${verificationStatus.verifiedAt ? `
-                                <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
-                                    Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                <p style="margin: 0; color: #047857; font-size: 0.85rem;">
+                                    <i class="fas fa-calendar-check"></i> Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
                                 </p>
                             ` : ''}
+                        </div>
+                    ` : isSubmitted && !isVerified ? `
+                        <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                <strong>Schedule Submitted - Awaiting Verification</strong>
+                            </div>
+                            ${scheduleSubmittedAt ? `
+                                <p style="margin: 0; color: #92400e; font-size: 0.85rem;">
+                                    <i class="fas fa-calendar"></i> Submitted on: ${scheduleSubmittedAt.toDate ? scheduleSubmittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                            ` : ''}
+                        </div>
+                    ` : !isSubmitted && schedules.length > 0 ? `
+                        <div style="padding: 1rem; background: #fee2e2; border-radius: 8px; border-left: 4px solid #ef4444;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b;">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <strong>Schedule Not Submitted</strong>
+                            </div>
+                            <p style="margin: 0.5rem 0 0 0; color: #7f1d1d; font-size: 0.85rem;">
+                                The team has created schedules but has not submitted them for verification yet.
+                            </p>
                         </div>
                     ` : ''}
                     
