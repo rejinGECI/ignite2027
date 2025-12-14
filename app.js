@@ -91,6 +91,7 @@ const app = {
     userRole: null,
     isAdmin: false,
     isGuide: false,
+    isEvaluator: false,
     filteredByAttention: false,
     allProgressStudents: null,
     currentEditingMembers: [],
@@ -156,6 +157,16 @@ const app = {
                         this.userRole = 'guide';
                         this.isAdmin = false;
                         this.isGuide = true;
+                        // Load evaluator status from Firestore
+                        try {
+                            const guideDoc = await getDoc(doc(window.firebaseDb, 'users', guideData.uid));
+                            if (guideDoc.exists()) {
+                                const data = guideDoc.data();
+                                this.isEvaluator = data.isEvaluator === true;
+                            }
+                        } catch (e) {
+                            console.warn('Error loading evaluator status:', e);
+                        }
                         await this.loadUserData();
                         this.showApp();
                         return;
@@ -187,6 +198,7 @@ const app = {
             this.userRole = userData.role || 'student';
             this.isAdmin = this.userRole === 'admin';
             this.isGuide = this.userRole === 'guide';
+            this.isEvaluator = userData.isEvaluator === true;
             
             // Display user name and KTU ID in navbar (for students only)
             if (!this.isAdmin && this.userRole === 'student') {
@@ -339,6 +351,14 @@ const app = {
                 guideProjectPlanningNav.style.display = 'block';
             }
             
+            // Show evaluator navigation if user is evaluator
+            const evaluatorNav = document.getElementById('evaluator-nav');
+            if (evaluatorNav && this.isEvaluator) {
+                evaluatorNav.style.display = 'block';
+            } else if (evaluatorNav) {
+                evaluatorNav.style.display = 'none';
+            }
+            
             // Hide user info for guide
             const userInfoDiv = document.getElementById('user-info');
             if (userInfoDiv) {
@@ -449,6 +469,7 @@ const app = {
                     this.userRole = 'guide';
                     this.isAdmin = false;
                     this.isGuide = true;
+                    this.isEvaluator = guideData.isEvaluator === true;
                     
                     // Store guide session
                     sessionStorage.setItem('guideSession', JSON.stringify({
@@ -1041,6 +1062,8 @@ const app = {
                     await this.loadAdminProjectPlanning();
                 } else if (pageId === 'guide-project-planning') {
                     await this.loadGuideProjectPlanning();
+                } else if (pageId === 'evaluator') {
+                    await this.loadEvaluatorStagesDropdown();
                 } else if (pageId === 'miniproject') {
                     await this.loadStudentMiniProject();
         } else if (pageId === 'admin-dashboard') {
@@ -4036,6 +4059,9 @@ const app = {
                 const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                 const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                 const pptRequired = stage.pptRequired || false;
+                const evaluationStartDate = stage.evaluationStartDate || '';
+                const evaluationEndDate = stage.evaluationEndDate || '';
+                const evaluationComplete = stage.evaluationComplete === true;
                 
                 return `
                 <div class="evaluation-stage-item">
@@ -4048,6 +4074,29 @@ const app = {
                         <input type="checkbox" id="ppt-required-${index}" ${pptRequired ? 'checked' : ''} onchange="app.togglePPTRequired(${index})" style="cursor: pointer;">
                         <span style="font-size: 0.9rem; color: var(--text-secondary);">PPT Required</span>
                     </label>
+                    <div style="display: flex; gap: 0.5rem; margin-left: 1rem; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary);">Start:</label>
+                            <input type="date" id="evaluation-start-date-${index}" value="${evaluationStartDate}" 
+                                   onchange="app.updateEvaluationDates(${index})" 
+                                   style="padding: 0.25rem 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;"
+                                   title="Evaluation Start Date">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary);">End:</label>
+                            <input type="date" id="evaluation-end-date-${index}" value="${evaluationEndDate}" 
+                                   onchange="app.updateEvaluationDates(${index})" 
+                                   style="padding: 0.25rem 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;"
+                                   title="Evaluation End Date">
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="evaluation-complete-${index}" ${evaluationComplete ? 'checked' : ''} 
+                                   onchange="app.toggleEvaluationComplete(${index})" style="cursor: pointer;">
+                            <span style="font-size: 0.9rem; color: ${evaluationComplete ? '#ef4444' : 'var(--text-secondary)'}; font-weight: ${evaluationComplete ? '600' : 'normal'};">
+                                ${evaluationComplete ? '<i class="fas fa-lock"></i> Complete' : 'Mark Complete'}
+                            </span>
+                        </label>
+                    </div>
                     <div style="display: flex; gap: 0.5rem; margin-left: auto;">
                         <button class="btn btn-primary btn-sm" onclick="app.editStageMarkParameters(${index})" title="Configure marks">
                             <i class="fas fa-cog"></i> Configure
@@ -4754,6 +4803,73 @@ const app = {
         }
     },
     
+    async updateEvaluationDates(stageIndex) {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (stageIndex >= 0 && stageIndex < stages.length) {
+                const startDateInput = document.getElementById(`evaluation-start-date-${stageIndex}`);
+                const endDateInput = document.getElementById(`evaluation-end-date-${stageIndex}`);
+                const startDateValue = startDateInput ? startDateInput.value : '';
+                const endDateValue = endDateInput ? endDateInput.value : '';
+                
+                // Validate that end date is not before start date
+                if (startDateValue && endDateValue && new Date(endDateValue) < new Date(startDateValue)) {
+                    alert('End date cannot be before start date. Please correct the dates.');
+                    // Revert end date to previous value
+                    endDateInput.value = stages[stageIndex].evaluationEndDate || '';
+                    return;
+                }
+                
+                stages[stageIndex].evaluationStartDate = startDateValue || null;
+                stages[stageIndex].evaluationEndDate = endDateValue || null;
+                // Remove old evaluationDate field for backward compatibility cleanup
+                delete stages[stageIndex].evaluationDate;
+                
+                await updateDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                    evaluationStages: stages
+                });
+            }
+        } catch (error) {
+            console.error('Error updating evaluation dates:', error);
+            alert('Error updating evaluation dates. Please try again.');
+        }
+    },
+    
+    async toggleEvaluationComplete(stageIndex) {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (stageIndex >= 0 && stageIndex < stages.length) {
+                const checkbox = document.getElementById(`evaluation-complete-${stageIndex}`);
+                const isComplete = checkbox ? checkbox.checked : false;
+                
+                if (isComplete && !confirm('Marking this evaluation as complete will prevent all evaluators from entering new marks. Continue?')) {
+                    // Revert checkbox
+                    checkbox.checked = false;
+                    return;
+                }
+                
+                stages[stageIndex].evaluationComplete = isComplete;
+                
+                await updateDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                    evaluationStages: stages
+                });
+                
+                if (isComplete) {
+                    alert('Evaluation marked as complete. Evaluators can no longer enter new marks.');
+                } else {
+                    alert('Evaluation reopened. Evaluators can now enter marks.');
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling evaluation complete:', error);
+            alert('Error updating evaluation status. Please try again.');
+        }
+    },
+    
     // Guide Management
     async createGuideAccount() {
         const name = document.getElementById('guide-name').value.trim();
@@ -4855,7 +4971,8 @@ const app = {
                     name: data.name || 'Unknown',
                     email: data.email || '',
                     username: data.username || '',
-                    password: data.password || '' // Include password for report generation
+                    password: data.password || '', // Include password for report generation
+                    isEvaluator: data.isEvaluator === true
                 });
             });
             
@@ -4864,13 +4981,19 @@ const app = {
                 return;
             }
             
-            container.innerHTML = guides.map(guide => `
+            container.innerHTML = guides.map(guide => {
+                const isEvaluator = guide.isEvaluator === true;
+                return `
                 <div class="guide-item">
                     <div class="guide-info">
                         <strong>${this.escapeHtml(guide.name)}</strong>
                         <span class="guide-email">${this.escapeHtml(guide.email)}</span>
+                        ${isEvaluator ? '<span class="badge badge-success" style="margin-left: 0.5rem;"><i class="fas fa-check-circle"></i> Evaluator</span>' : ''}
                     </div>
                     <div class="guide-actions">
+                        <button type="button" class="btn ${isEvaluator ? 'btn-success' : 'btn-secondary'} btn-sm" onclick="app.toggleEvaluatorRole('${guide.id}', ${!isEvaluator})" title="${isEvaluator ? 'Remove Evaluator Role' : 'Make Evaluator'}">
+                            <i class="fas fa-${isEvaluator ? 'user-check' : 'user-plus'}"></i> ${isEvaluator ? 'Evaluator' : 'Make Evaluator'}
+                        </button>
                         <button type="button" class="btn btn-primary btn-sm" onclick="app.editGuide('${guide.id}')">
                             <i class="fas fa-edit"></i> Edit
                         </button>
@@ -4879,7 +5002,8 @@ const app = {
                     </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         } catch (error) {
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
                 container.innerHTML = '<p class="error-message">Permission denied. Please update Firestore security rules to allow admin access to users collection.</p>';
@@ -4981,6 +5105,21 @@ const app = {
         document.getElementById('edit-guide-form').reset();
         // Clear password field
         document.getElementById('edit-guide-password').value = '';
+    },
+    
+    async toggleEvaluatorRole(guideId, makeEvaluator) {
+        try {
+            await updateDoc(doc(window.firebaseDb, 'users', guideId), {
+                isEvaluator: makeEvaluator,
+                updatedAt: new Date().toISOString()
+            });
+            
+            alert(makeEvaluator ? 'Guide assigned as evaluator successfully!' : 'Evaluator role removed successfully!');
+            await this.loadGuidesList();
+        } catch (error) {
+            console.error('Error toggling evaluator role:', error);
+            alert('Error updating evaluator role. Please try again.');
+        }
     },
     
     async deleteGuide(guideId) {
@@ -5461,7 +5600,21 @@ const app = {
                     try {
                         const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${i}`));
                         if (evalDoc.exists()) {
-                            evaluations[i] = evalDoc.data();
+                            const evalData = evalDoc.data();
+                            // Load evaluator entries
+                            try {
+                                const evaluatorEntriesRef = collection(window.firebaseDb, 'evaluations', `${team.id}_${i}`, 'evaluatorEntries');
+                                const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                                const evaluatorEntries = [];
+                                evaluatorEntriesSnapshot.forEach(doc => {
+                                    evaluatorEntries.push(doc.data());
+                                });
+                                evalData.evaluatorEntries = evaluatorEntries;
+                                evalData.evaluatorCount = evaluatorEntries.length;
+                            } catch (error) {
+                                console.error(`Error loading evaluator entries for team ${team.id}, stage ${i}:`, error);
+                            }
+                            evaluations[i] = evalData;
                         }
                     } catch (error) {
                         console.error(`Error loading evaluation for team ${team.id}, stage ${i}:`, error);
@@ -5598,9 +5751,14 @@ const app = {
                                             </span>
                                         </div>
                                         ${showEvaluationDetails ? `
+                                            ${evalData.evaluatorCount > 0 ? `
+                                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; font-style: italic;">
+                                                    <i class="fas fa-user-check"></i> Evaluated by ${evalData.evaluatorCount} evaluator${evalData.evaluatorCount > 1 ? 's' : ''} (Average marks shown)
+                                                </div>
+                                            ` : ''}
                                             ${teamTotal > 0 && (teamMarks > 0 || teamMarksData) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                                    <i class="fas fa-users"></i> Team: ${teamMarks || 0} / ${teamTotal} marks
+                                                    <i class="fas fa-users"></i> Team: ${teamMarks || 0} / ${teamTotal} marks${evalData.evaluatorCount > 1 ? ' (Average)' : ''}
                                                 </div>
                                             ` : ''}
                                             ${hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
@@ -6244,21 +6402,25 @@ const app = {
             const teamParams = stage?.teamMarkParams || [];
             const individualParams = stage?.individualMarkParams || [];
             
-            // Get team comments from Quill editor
+            // Get team comments from Quill editor (check both admin and evaluator editor keys)
             let teamComments = '';
-            if (this.quillEditors && this.quillEditors['team-comments']) {
-                const html = this.quillEditors['team-comments'].root.innerHTML;
-                teamComments = html.trim() === '<p><br></p>' ? '' : html.trim();
+            if (this.quillEditors) {
+                const teamCommentsEditor = this.quillEditors['team-comments'] || this.quillEditors['evaluator-team-comments'];
+                if (teamCommentsEditor) {
+                    const html = teamCommentsEditor.root.innerHTML;
+                    teamComments = html.trim() === '<p><br></p>' ? '' : html.trim();
+                }
             }
             
-            // Collect team marks (parameter-based or single)
+            // Collect team marks (parameter-based or single) - check both admin and evaluator input IDs
             let teamMarks = null;
             let teamMarksData = {};
             
             if (teamParams.length > 0) {
                 // Parameter-based marks
                 teamParams.forEach((param, idx) => {
-                    const input = document.getElementById(`team-param-${idx}`);
+                    // Try evaluator input first, then admin input
+                    const input = document.getElementById(`evaluator-team-param-${idx}`) || document.getElementById(`team-param-${idx}`);
                     if (input) {
                         const value = parseFloat(input.value) || 0;
                         if (value > 0) {
@@ -6268,8 +6430,8 @@ const app = {
                 });
                 teamMarks = Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
             } else {
-                // Legacy single marks
-                const teamMarksInput = document.getElementById('team-marks');
+                // Legacy single marks - try evaluator input first, then admin input
+                const teamMarksInput = document.getElementById('evaluator-team-marks') || document.getElementById('team-marks');
                 if (teamMarksInput) {
                     const value = teamMarksInput.value.trim();
                     teamMarks = value ? parseFloat(value) : null;
@@ -6284,11 +6446,14 @@ const app = {
             
             members.forEach((member, index) => {
                 const userId = member.userId || member.ktuid;
-                // Get individual comments from Quill editor
+                // Get individual comments from Quill editor (check both admin and evaluator editor keys)
                 let comments = '';
-                if (this.quillEditors && this.quillEditors[`individual-comments-${index}`]) {
-                    const html = this.quillEditors[`individual-comments-${index}`].root.innerHTML;
-                    comments = html.trim() === '<p><br></p>' ? '' : html.trim();
+                if (this.quillEditors) {
+                    const individualCommentsEditor = this.quillEditors[`individual-comments-${index}`] || this.quillEditors[`evaluator-individual-comments-${index}`];
+                    if (individualCommentsEditor) {
+                        const html = individualCommentsEditor.root.innerHTML;
+                        comments = html.trim() === '<p><br></p>' ? '' : html.trim();
+                    }
                 }
                 
                 // Check if student is marked as absent
@@ -6301,9 +6466,9 @@ const app = {
                 if (!isAbsent) {
                     // Only calculate marks if not absent
                     if (individualParams.length > 0) {
-                        // Parameter-based marks
+                        // Parameter-based marks - try evaluator input first, then admin input
                         individualParams.forEach((param, paramIdx) => {
-                            const input = document.getElementById(`individual-param-${index}-${paramIdx}`);
+                            const input = document.getElementById(`evaluator-individual-param-${index}-${paramIdx}`) || document.getElementById(`individual-param-${index}-${paramIdx}`);
                             if (input) {
                                 const value = parseFloat(input.value) || 0;
                                 if (value > 0) {
@@ -6313,8 +6478,8 @@ const app = {
                         });
                         marks = Object.values(marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
                     } else {
-                        // Legacy single marks
-                        const marksInput = document.getElementById(`individual-marks-${index}`);
+                        // Legacy single marks - try evaluator input first, then admin input
+                        const marksInput = document.getElementById(`evaluator-individual-marks-${index}`) || document.getElementById(`individual-marks-${index}`);
                         if (marksInput) {
                             const value = marksInput.value.trim();
                             marks = value ? parseFloat(value) : null;
@@ -6339,35 +6504,871 @@ const app = {
                 individualEvaluations[userId] = individualEval;
             });
             
-            // Build evaluation data object, only including fields with values
-            const evalData = {
-                teamId: teamId,
-                stageIndex: parseInt(stageIndex),
-                teamComments: teamComments || '',
-                individualEvaluations: individualEvaluations,
-                updatedAt: new Date().toISOString(),
-                updatedBy: this.currentUser.uid
-            };
+            // Check if current user is evaluator
+            const isEvaluator = this.isEvaluator;
             
-            // Only include teamMarks if it has a value
-            if (teamMarks !== null && teamMarks !== undefined) {
-                evalData.teamMarks = teamMarks;
+            if (isEvaluator) {
+                // For evaluators, store in evaluatorEntries subcollection
+                const evaluatorEntry = {
+                    evaluatorId: this.currentUser.uid,
+                    evaluatorName: this.currentUser.displayName || this.currentUser.email || 'Evaluator',
+                    teamId: teamId,
+                    stageIndex: parseInt(stageIndex),
+                    teamComments: teamComments || '',
+                    individualEvaluations: individualEvaluations,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // Only include teamMarks if it has a value
+                if (teamMarks !== null && teamMarks !== undefined) {
+                    evaluatorEntry.teamMarks = teamMarks;
+                }
+                
+                // Only include teamMarksData if it has values
+                if (Object.keys(teamMarksData).length > 0) {
+                    evaluatorEntry.teamMarksData = teamMarksData;
+                }
+                
+                // Save evaluator entry
+                const evaluatorEntryRef = doc(collection(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries'), this.currentUser.uid);
+                await setDoc(evaluatorEntryRef, evaluatorEntry, { merge: true });
+                
+                // Calculate and update average marks
+                await this.calculateAndUpdateAverageMarks(teamId, stageIndex);
+            } else {
+                // For admin, store in main evaluation document (backward compatibility)
+                const evalData = {
+                    teamId: teamId,
+                    stageIndex: parseInt(stageIndex),
+                    teamComments: teamComments || '',
+                    individualEvaluations: individualEvaluations,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: this.currentUser.uid
+                };
+                
+                // Only include teamMarks if it has a value
+                if (teamMarks !== null && teamMarks !== undefined) {
+                    evalData.teamMarks = teamMarks;
+                }
+                
+                // Only include teamMarksData if it has values
+                if (Object.keys(teamMarksData).length > 0) {
+                    evalData.teamMarksData = teamMarksData;
+                }
+                
+                // Save to Firestore
+                const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
+                await setDoc(evalRef, evalData, { merge: true });
             }
-            
-            // Only include teamMarksData if it has values
-            if (Object.keys(teamMarksData).length > 0) {
-                evalData.teamMarksData = teamMarksData;
-            }
-            
-            // Save to Firestore
-            const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
-            await setDoc(evalRef, evalData, { merge: true });
             
             alert('Evaluation data saved successfully!');
         } catch (error) {
             console.error('Error saving evaluation data:', error);
             alert('Error saving evaluation data. Please try again.');
         }
+    },
+    
+    // Calculate and update average marks from all evaluators
+    async calculateAndUpdateAverageMarks(teamId, stageIndex) {
+        try {
+            // Get all evaluator entries
+            const evaluatorEntriesRef = collection(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries');
+            const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+            
+            const evaluatorEntries = [];
+            evaluatorEntriesSnapshot.forEach(doc => {
+                evaluatorEntries.push(doc.data());
+            });
+            
+            if (evaluatorEntries.length === 0) {
+                return; // No evaluator entries yet
+            }
+            
+            // Calculate average team marks
+            let totalTeamMarks = 0;
+            let teamMarksCount = 0;
+            const teamMarksDataMap = {}; // For parameter-based marks
+            
+            // Calculate average individual marks
+            const individualMarksMap = {}; // userId -> { total, count }
+            const individualMarksDataMap = {}; // userId -> { paramName -> { total, count } }
+            
+            evaluatorEntries.forEach(entry => {
+                // Team marks
+                if (entry.teamMarks !== null && entry.teamMarks !== undefined) {
+                    totalTeamMarks += entry.teamMarks;
+                    teamMarksCount++;
+                }
+                
+                // Team marks data (parameter-based)
+                if (entry.teamMarksData) {
+                    Object.keys(entry.teamMarksData).forEach(paramName => {
+                        if (!teamMarksDataMap[paramName]) {
+                            teamMarksDataMap[paramName] = { total: 0, count: 0 };
+                        }
+                        teamMarksDataMap[paramName].total += entry.teamMarksData[paramName];
+                        teamMarksDataMap[paramName].count++;
+                    });
+                }
+                
+                // Individual marks
+                if (entry.individualEvaluations) {
+                    Object.keys(entry.individualEvaluations).forEach(userId => {
+                        const individualEval = entry.individualEvaluations[userId];
+                        
+                        if (!individualMarksMap[userId]) {
+                            individualMarksMap[userId] = { total: 0, count: 0, isAbsent: false };
+                        }
+                        
+                        if (individualEval.isAbsent) {
+                            individualMarksMap[userId].isAbsent = true;
+                        } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                            individualMarksMap[userId].total += individualEval.marks;
+                            individualMarksMap[userId].count++;
+                        }
+                        
+                        // Individual marks data (parameter-based)
+                        if (individualEval.marksData) {
+                            if (!individualMarksDataMap[userId]) {
+                                individualMarksDataMap[userId] = {};
+                            }
+                            Object.keys(individualEval.marksData).forEach(paramName => {
+                                if (!individualMarksDataMap[userId][paramName]) {
+                                    individualMarksDataMap[userId][paramName] = { total: 0, count: 0 };
+                                }
+                                individualMarksDataMap[userId][paramName].total += individualEval.marksData[paramName];
+                                individualMarksDataMap[userId][paramName].count++;
+                            });
+                        }
+                    });
+                }
+            });
+            
+            // Calculate averages
+            const averageData = {
+                teamId: teamId,
+                stageIndex: parseInt(stageIndex),
+                evaluatorCount: evaluatorEntries.length,
+                updatedAt: new Date().toISOString()
+            };
+            
+            // Average team marks
+            if (teamMarksCount > 0) {
+                averageData.teamMarks = totalTeamMarks / teamMarksCount;
+            }
+            
+            // Average team marks data
+            const averageTeamMarksData = {};
+            Object.keys(teamMarksDataMap).forEach(paramName => {
+                const data = teamMarksDataMap[paramName];
+                if (data.count > 0) {
+                    averageTeamMarksData[paramName] = data.total / data.count;
+                }
+            });
+            if (Object.keys(averageTeamMarksData).length > 0) {
+                averageData.teamMarksData = averageTeamMarksData;
+            }
+            
+            // Average individual marks
+            const averageIndividualEvaluations = {};
+            Object.keys(individualMarksMap).forEach(userId => {
+                const data = individualMarksMap[userId];
+                const individualEval = evaluatorEntries[0].individualEvaluations[userId] || {};
+                
+                const avgEval = {
+                    studentName: individualEval.studentName || '',
+                    ktuid: individualEval.ktuid || '',
+                    isAbsent: data.isAbsent,
+                    marks: data.isAbsent ? 0 : (data.count > 0 ? data.total / data.count : null),
+                    comments: '' // Comments are not averaged, keep empty
+                };
+                
+                // Average individual marks data
+                if (individualMarksDataMap[userId]) {
+                    const avgMarksData = {};
+                    Object.keys(individualMarksDataMap[userId]).forEach(paramName => {
+                        const paramData = individualMarksDataMap[userId][paramName];
+                        if (paramData.count > 0) {
+                            avgMarksData[paramName] = paramData.total / paramData.count;
+                        }
+                    });
+                    if (Object.keys(avgMarksData).length > 0) {
+                        avgEval.marksData = avgMarksData;
+                    }
+                }
+                
+                averageIndividualEvaluations[userId] = avgEval;
+            });
+            
+            if (Object.keys(averageIndividualEvaluations).length > 0) {
+                averageData.individualEvaluations = averageIndividualEvaluations;
+            }
+            
+            // Save average marks to main evaluation document
+            const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
+            await setDoc(evalRef, averageData, { merge: true });
+        } catch (error) {
+            console.error('Error calculating average marks:', error);
+        }
+    },
+    
+    // Evaluator Functions
+    async loadTeamsForEvaluator() {
+        if (!this.isEvaluator) return;
+        
+        const stageIndex = document.getElementById('evaluator-stage-select').value;
+        if (!stageIndex) {
+            document.getElementById('evaluator-teams-list-container').style.display = 'none';
+            return;
+        }
+        
+        const container = document.getElementById('evaluator-teams-list');
+        const listContainer = document.getElementById('evaluator-teams-list-container');
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading teams...</div>';
+            listContainer.style.display = 'block';
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (!stage) {
+                alert('Evaluation stage not found!');
+                return;
+            }
+            
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            const teams = [];
+            
+            for (const teamDoc of teamsSnapshot.docs) {
+                const data = teamDoc.data();
+                // Skip deleted teams
+                if (data.deleted) {
+                    continue;
+                }
+                
+                const team = { 
+                    id: teamDoc.id, 
+                    groupName: data.groupName || 'Unnamed Team',
+                    ...data 
+                };
+                
+                // Check if evaluator has already evaluated this team
+                let hasEvaluated = false;
+                try {
+                    const evaluatorEntryRef = doc(collection(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`, 'evaluatorEntries'), this.currentUser.uid);
+                    const evaluatorEntryDoc = await getDoc(evaluatorEntryRef);
+                    if (evaluatorEntryDoc.exists()) {
+                        const evaluatorEntryData = evaluatorEntryDoc.data();
+                        // Check if evaluator entry has actual evaluation data
+                        const hasTeamMarks = (evaluatorEntryData.teamMarks !== null && evaluatorEntryData.teamMarks !== undefined) || 
+                                           (evaluatorEntryData.teamMarksData && Object.keys(evaluatorEntryData.teamMarksData).length > 0);
+                        const hasTeamComments = evaluatorEntryData.teamComments && evaluatorEntryData.teamComments.trim() !== '' && 
+                                             evaluatorEntryData.teamComments.trim() !== '<p><br></p>' &&
+                                             evaluatorEntryData.teamComments.trim() !== '<p></p>';
+                        const hasIndividualEvals = evaluatorEntryData.individualEvaluations && 
+                                                Object.keys(evaluatorEntryData.individualEvaluations).length > 0;
+                        
+                        hasEvaluated = hasTeamMarks || hasTeamComments || hasIndividualEvals;
+                    }
+                } catch (error) {
+                    console.error(`Error checking evaluator entry for team ${team.id}:`, error);
+                }
+                
+                // Also check if ANY evaluator has evaluated (check all evaluator entries)
+                let isEvaluationComplete = false;
+                let anyEvaluatorHasEvaluated = false;
+                try {
+                    // Check all evaluator entries
+                    const evaluatorEntriesRef = collection(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`, 'evaluatorEntries');
+                    const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                    
+                    evaluatorEntriesSnapshot.forEach(doc => {
+                        const evaluatorEntryData = doc.data();
+                        const hasTeamMarks = (evaluatorEntryData.teamMarks !== null && evaluatorEntryData.teamMarks !== undefined) || 
+                                           (evaluatorEntryData.teamMarksData && Object.keys(evaluatorEntryData.teamMarksData).length > 0);
+                        const hasTeamComments = evaluatorEntryData.teamComments && evaluatorEntryData.teamComments.trim() !== '' && 
+                                             evaluatorEntryData.teamComments.trim() !== '<p><br></p>' &&
+                                             evaluatorEntryData.teamComments.trim() !== '<p></p>';
+                        const hasIndividualEvals = evaluatorEntryData.individualEvaluations && 
+                                                Object.keys(evaluatorEntryData.individualEvaluations).length > 0;
+                        
+                        if (hasTeamMarks || hasTeamComments || hasIndividualEvals) {
+                            anyEvaluatorHasEvaluated = true;
+                        }
+                    });
+                    
+                    // Also check main evaluation document (for admin evaluations or averages)
+                    const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
+                    if (evalDoc.exists()) {
+                        const evalData = evalDoc.data();
+                        // Check if evaluation has any data (marks, comments, or individual evaluations)
+                        const hasTeamMarks = (evalData.teamMarks !== null && evalData.teamMarks !== undefined) || 
+                                           (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0);
+                        const hasTeamComments = evalData.teamComments && evalData.teamComments.trim() !== '' && 
+                                             evalData.teamComments.trim() !== '<p><br></p>' &&
+                                             evalData.teamComments.trim() !== '<p></p>';
+                        const hasIndividualEvals = evalData.individualEvaluations && 
+                                                Object.keys(evalData.individualEvaluations).length > 0;
+                        
+                        if (hasTeamMarks || hasTeamComments || hasIndividualEvals) {
+                            isEvaluationComplete = true;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error checking evaluation completion for team ${team.id}:`, error);
+                }
+                
+                // Mark as complete if any evaluator has evaluated OR if main evaluation is complete
+                isEvaluationComplete = isEvaluationComplete || anyEvaluatorHasEvaluated;
+                
+                // Status: completed if evaluator has evaluated, or if evaluation is complete overall (by admin or other evaluators)
+                const evaluationStatus = (hasEvaluated || isEvaluationComplete) ? 'completed' : 'pending';
+                
+                teams.push({
+                    ...team,
+                    hasEvaluated: hasEvaluated,
+                    isEvaluationComplete: isEvaluationComplete,
+                    evaluationStatus: evaluationStatus
+                });
+            }
+            
+            // Apply team order settings
+            const sortedTeams = await this.applyTeamOrder(teams);
+            
+            if (sortedTeams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No teams found.</p>';
+                return;
+            }
+            
+            container.innerHTML = sortedTeams.map(team => {
+                // Show appropriate status text
+                let statusText = 'Pending';
+                let statusIcon = 'fa-clock';
+                if (team.hasEvaluated) {
+                    statusText = 'Evaluated by You';
+                    statusIcon = 'fa-check-circle';
+                } else if (team.isEvaluationComplete) {
+                    statusText = 'Completed (by others)';
+                    statusIcon = 'fa-check-circle';
+                }
+                
+                return `
+                <div class="eval-team-card eval-team-${team.evaluationStatus}">
+                    <div onclick="app.selectTeamForEvaluator('${team.id}', '${this.escapeHtml(team.groupName)}', '${stageIndex}')" style="cursor: pointer;">
+                        <div class="eval-team-header">
+                            <h4>${this.escapeHtml(team.groupName || 'Unknown Team')}</h4>
+                            <span class="eval-status-badge ${team.evaluationStatus === 'completed' ? 'completed' : 'pending'}">
+                                <i class="fas ${statusIcon}"></i>
+                                ${statusText}
+                            </span>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">
+                            ${team.topic || 'No topic assigned'}
+                        </p>
+                    </div>
+                </div>
+            `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading teams for evaluator:', error);
+            container.innerHTML = '<p class="error-message">Error loading teams. Please try again.</p>';
+        }
+    },
+    
+    async selectTeamForEvaluator(teamId, teamName, stageIndex) {
+        await this.loadEvaluatorForm(teamId, stageIndex);
+    },
+    
+    async loadEvaluatorForm(teamId, stageIndex) {
+        const formContainer = document.getElementById('evaluator-form-container');
+        if (!formContainer) return;
+        
+        try {
+            formContainer.style.display = 'block';
+            // Scroll to form container
+            formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            formContainer.innerHTML = '<div class="loading-state">Loading evaluation form...</div>';
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (!stage) {
+                alert('Evaluation stage not found!');
+                return;
+            }
+            
+            const teamParams = stage?.teamMarkParams || [];
+            const individualParams = stage?.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Check if evaluation is marked as complete by admin
+            const isEvaluationComplete = stage?.evaluationComplete === true;
+            if (isEvaluationComplete) {
+                // Load existing evaluator entry to show what was entered before completion
+                const evaluatorEntryRef = doc(collection(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries'), this.currentUser.uid);
+                const evaluatorEntryDoc = await getDoc(evaluatorEntryRef);
+                const evalData = evaluatorEntryDoc.exists() ? evaluatorEntryDoc.data() : {};
+                
+                // Load team data for member names
+                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+                const teamData = teamDoc.exists() ? teamDoc.data() : {};
+                const members = teamData.members || [];
+                
+                // Build read-only form HTML
+                let readOnlyFormHTML = `
+                    <div class="evaluation-form">
+                        <div style="padding: 1.5rem; background: #fee2e2; border: 2px solid #ef4444; border-radius: 8px; text-align: center; margin-bottom: 1.5rem;">
+                            <i class="fas fa-lock" style="font-size: 2rem; color: #ef4444; margin-bottom: 1rem;"></i>
+                            <h3 style="color: #991b1b; margin-bottom: 0.5rem;">Evaluation Closed</h3>
+                            <p style="color: #7f1d1d; margin: 0;">
+                                This evaluation has been marked as complete by the administrator. 
+                                No further marks or comments can be entered.
+                            </p>
+                            ${(stage.evaluationStartDate || stage.evaluationEndDate) ? `
+                                <p style="color: #7f1d1d; margin-top: 0.5rem; font-size: 0.9rem;">
+                                    Evaluation Period: 
+                                    ${stage.evaluationStartDate ? new Date(stage.evaluationStartDate).toLocaleDateString() : 'Not set'} 
+                                    ${stage.evaluationStartDate && stage.evaluationEndDate ? ' - ' : ''}
+                                    ${stage.evaluationEndDate ? new Date(stage.evaluationEndDate).toLocaleDateString() : ''}
+                                </p>
+                            ` : ''}
+                        </div>
+                        
+                        <div style="padding: 1.5rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Your Evaluation Details (Read Only)</h3>
+                            ${(stage.evaluationStartDate || stage.evaluationEndDate) ? `
+                                <div style="margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: white; border-radius: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                                    <i class="fas fa-calendar"></i> Evaluation Period: 
+                                    <strong>
+                                        ${stage.evaluationStartDate ? new Date(stage.evaluationStartDate).toLocaleDateString() : 'Not set'} 
+                                        ${stage.evaluationStartDate && stage.evaluationEndDate ? ' - ' : ''}
+                                        ${stage.evaluationEndDate ? new Date(stage.evaluationEndDate).toLocaleDateString() : ''}
+                                    </strong>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="evaluation-section">
+                                <h4><i class="fas fa-users"></i> Team Evaluation
+                                    ${teamTotal > 0 ? `<span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
+                                </h4>
+                `;
+                
+                // Team marks - show parameter breakdown if available
+                if (teamParams.length > 0) {
+                    teamParams.forEach((param, idx) => {
+                        const value = evalData.teamMarksData?.[param.name] || '';
+                        readOnlyFormHTML += `
+                            <div class="form-group">
+                                <label style="color: var(--text-secondary); font-weight: 500;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                <input type="text" class="form-input" 
+                                       value="${value || 'Not entered'}" 
+                                       readonly 
+                                       style="background: #f3f4f6; cursor: not-allowed; color: var(--text-primary);">
+                            </div>
+                        `;
+                    });
+                    const teamMarksTotal = evalData.teamMarks || (Object.values(evalData.teamMarksData || {}).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                    readOnlyFormHTML += `
+                        <div style="margin-top: 0.75rem; padding: 0.5rem; background: white; border-radius: 6px; font-size: 0.9rem;">
+                            <strong>Total Team Marks: ${teamMarksTotal || 0} / ${teamTotal}</strong>
+                        </div>
+                    `;
+                } else {
+                    const value = evalData.teamMarks || '';
+                    readOnlyFormHTML += `
+                        <div class="form-group">
+                            <label style="color: var(--text-secondary); font-weight: 500;">Team Marks</label>
+                            <input type="text" class="form-input" 
+                                   value="${value || 'Not entered'}" 
+                                   readonly 
+                                   style="background: #f3f4f6; cursor: not-allowed; color: var(--text-primary);">
+                        </div>
+                    `;
+                }
+                
+                // Team comments
+                readOnlyFormHTML += `
+                            <div class="form-group">
+                                <label style="color: var(--text-secondary); font-weight: 500;">Team Comments</label>
+                                <div style="padding: 0.75rem; background: white; border: 1px solid var(--border-color); border-radius: 6px; min-height: 100px;">
+                                    ${evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>' && evalData.teamComments.trim() !== '<p></p>' ? 
+                                        `<div class="formatted-content">${evalData.teamComments}</div>` : 
+                                        '<span style="color: var(--text-secondary); font-style: italic;">No comments entered</span>'
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="evaluation-section" style="margin-top: 1.5rem;">
+                            <h4><i class="fas fa-user"></i> Individual Evaluations</h4>
+                `;
+                
+                // Individual evaluations
+                if (members.length === 0) {
+                    readOnlyFormHTML += `<p style="color: var(--text-secondary); font-style: italic;">No team members found.</p>`;
+                } else {
+                    members.forEach((member, index) => {
+                        const userId = member.userId || member.ktuid;
+                        const memberEval = evalData.individualEvaluations?.[userId] || {};
+                        
+                        readOnlyFormHTML += `
+                            <div class="individual-eval-card" style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: white;">
+                                <h5 style="margin-bottom: 0.75rem;">${this.escapeHtml(member.name || member.ktuid || 'Unknown')}</h5>
+                        `;
+                        
+                        if (individualParams.length > 0) {
+                            individualParams.forEach((param, paramIdx) => {
+                                const value = memberEval.marksData?.[param.name] || '';
+                                readOnlyFormHTML += `
+                                    <div class="form-group">
+                                        <label style="color: var(--text-secondary); font-weight: 500;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                        <input type="text" class="form-input" 
+                                               value="${value || 'Not entered'}" 
+                                               readonly 
+                                               style="background: #f3f4f6; cursor: not-allowed; color: var(--text-primary);">
+                                    </div>
+                                `;
+                            });
+                            const individualMarksTotal = memberEval.marks || (Object.values(memberEval.marksData || {}).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                            readOnlyFormHTML += `
+                                <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.85rem;">
+                                    <strong>Total Individual Marks: ${individualMarksTotal || 0} / ${individualTotal}</strong>
+                                </div>
+                            `;
+                        } else {
+                            const value = memberEval.marks || '';
+                            readOnlyFormHTML += `
+                                <div class="form-group">
+                                    <label style="color: var(--text-secondary); font-weight: 500;">Individual Marks</label>
+                                    <input type="text" class="form-input" 
+                                           value="${value || 'Not entered'}" 
+                                           readonly 
+                                           style="background: #f3f4f6; cursor: not-allowed; color: var(--text-primary);">
+                                </div>
+                            `;
+                        }
+                        
+                        readOnlyFormHTML += `
+                                <div class="form-group">
+                                    <label style="color: var(--text-secondary); font-weight: 500;">Comments</label>
+                                    <div style="padding: 0.75rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; min-height: 80px;">
+                                        ${memberEval.comments && memberEval.comments.trim() !== '' && memberEval.comments.trim() !== '<p><br></p>' && memberEval.comments.trim() !== '<p></p>' ? 
+                                            `<div class="formatted-content">${memberEval.comments}</div>` : 
+                                            '<span style="color: var(--text-secondary); font-style: italic;">No comments entered</span>'
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                
+                readOnlyFormHTML += `
+                        </div>
+                        
+                        <div class="form-actions" style="margin-top: 2rem; display: flex; gap: 1rem;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('evaluator-form-container').style.display = 'none'">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                formContainer.innerHTML = readOnlyFormHTML;
+                return;
+            }
+            
+            // Load existing evaluator entry
+            const evaluatorEntryRef = doc(collection(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries'), this.currentUser.uid);
+            const evaluatorEntryDoc = await getDoc(evaluatorEntryRef);
+            const evalData = evaluatorEntryDoc.exists() ? evaluatorEntryDoc.data() : {};
+            
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const members = teamData.members || [];
+            
+            // Build form HTML (similar to admin evaluation form)
+            let formHTML = `
+                <div class="evaluation-form">
+                    <h3 style="margin-bottom: 1rem;">Evaluation for: ${this.escapeHtml(teamData.groupName || 'Unknown Team')}</h3>
+                    ${(stage.evaluationStartDate || stage.evaluationEndDate) ? `
+                        <div style="margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--bg-color); border-radius: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                            <i class="fas fa-calendar"></i> Evaluation Period: 
+                            <strong>
+                                ${stage.evaluationStartDate ? new Date(stage.evaluationStartDate).toLocaleDateString() : 'Not set'} 
+                                ${stage.evaluationStartDate && stage.evaluationEndDate ? ' - ' : ''}
+                                ${stage.evaluationEndDate ? new Date(stage.evaluationEndDate).toLocaleDateString() : ''}
+                            </strong>
+                        </div>
+                    ` : ''}
+                    <div class="evaluation-section">
+                        <h4><i class="fas fa-users"></i> Team Evaluation
+                            ${teamTotal > 0 ? `<span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
+                        </h4>
+            `;
+            
+            // Team marks
+            if (teamParams.length > 0) {
+                teamParams.forEach((param, idx) => {
+                    const value = evalData.teamMarksData?.[param.name] || '';
+                    formHTML += `
+                        <div class="form-group">
+                            <label for="evaluator-team-param-${idx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                            <input type="number" id="evaluator-team-param-${idx}" class="form-input" 
+                                   min="0" max="${param.maxMarks}" step="0.1" value="${value}" 
+                                   placeholder="Enter marks">
+                        </div>
+                    `;
+                });
+                // Add total display
+                const teamMarksTotal = evalData.teamMarks || (Object.values(evalData.teamMarksData || {}).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                formHTML += `
+                    <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.9rem;">
+                        <strong>Total Team Marks: <span id="evaluator-team-marks-total">${teamMarksTotal || 0}</span> / ${teamTotal}</strong>
+                    </div>
+                `;
+            } else {
+                const value = evalData.teamMarks || '';
+                formHTML += `
+                    <div class="form-group">
+                        <label for="evaluator-team-marks">Team Marks</label>
+                        <input type="number" id="evaluator-team-marks" class="form-input" 
+                               min="0" step="0.1" value="${value}" 
+                               placeholder="Enter team marks">
+                    </div>
+                `;
+            }
+            
+            // Team comments
+            formHTML += `
+                        <div class="form-group">
+                            <label for="evaluator-team-comments">Team Comments</label>
+                            <div id="evaluator-team-comments-editor" style="min-height: 150px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="evaluation-section" style="margin-top: 1.5rem;">
+                        <h4><i class="fas fa-user"></i> Individual Evaluations</h4>
+            `;
+            
+            // Individual evaluations
+            members.forEach((member, index) => {
+                const userId = member.userId || member.ktuid;
+                const memberEval = evalData.individualEvaluations?.[userId] || {};
+                
+                formHTML += `
+                    <div class="individual-eval-card" style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <h5>${this.escapeHtml(member.name || member.ktuid || 'Unknown')}</h5>
+                `;
+                
+                if (individualParams.length > 0) {
+                    individualParams.forEach((param, paramIdx) => {
+                        const value = memberEval.marksData?.[param.name] || '';
+                        formHTML += `
+                            <div class="form-group">
+                                <label for="evaluator-individual-param-${index}-${paramIdx}">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                <input type="number" id="evaluator-individual-param-${index}-${paramIdx}" class="form-input" 
+                                       min="0" max="${param.maxMarks}" step="0.1" value="${value}" 
+                                       placeholder="Enter marks">
+                            </div>
+                        `;
+                    });
+                    // Add total display
+                    const individualMarksTotal = memberEval.marks || (Object.values(memberEval.marksData || {}).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                    formHTML += `
+                        <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.85rem;">
+                            <strong>Total Individual Marks: <span id="evaluator-individual-marks-total-${index}">${individualMarksTotal || 0}</span> / ${individualTotal}</strong>
+                        </div>
+                    `;
+                } else {
+                    const value = memberEval.marks || '';
+                    formHTML += `
+                        <div class="form-group">
+                            <label for="evaluator-individual-marks-${index}">Individual Marks</label>
+                            <input type="number" id="evaluator-individual-marks-${index}" class="form-input" 
+                                   min="0" step="0.1" value="${value}" 
+                                   placeholder="Enter individual marks">
+                        </div>
+                    `;
+                }
+                
+                formHTML += `
+                        <div class="form-group">
+                            <label for="evaluator-individual-comments-${index}">Comments</label>
+                            <div id="evaluator-individual-comments-editor-${index}" style="min-height: 100px;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            formHTML += `
+                    </div>
+                    
+                    <div class="form-actions" style="margin-top: 2rem; display: flex; gap: 1rem;">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('evaluator-form-container').style.display = 'none'">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="app.saveEvaluatorData('${teamId}', '${stageIndex}')">
+                            <i class="fas fa-save"></i> Save Evaluation
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            formContainer.innerHTML = formHTML;
+            
+            // Wait a bit for DOM to be ready before initializing Quill editors
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Initialize Quill editors
+            if (!this.quillEditors) {
+                this.quillEditors = {};
+            }
+            
+            // Team comments editor
+            const teamCommentsEditorEl = document.getElementById('evaluator-team-comments-editor');
+            if (teamCommentsEditorEl) {
+                const teamCommentsEditor = new Quill('#evaluator-team-comments-editor', {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            ['bold', 'italic', 'underline'],
+                            ['link'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }]
+                        ]
+                    }
+                });
+                if (evalData.teamComments) {
+                    teamCommentsEditor.root.innerHTML = evalData.teamComments;
+                }
+                this.quillEditors['evaluator-team-comments'] = teamCommentsEditor;
+            }
+            
+            // Individual comments editors
+            members.forEach((member, index) => {
+                const userId = member.userId || member.ktuid;
+                const memberEval = evalData.individualEvaluations?.[userId] || {};
+                
+                const individualEditorEl = document.getElementById(`evaluator-individual-comments-editor-${index}`);
+                if (individualEditorEl) {
+                    const individualEditor = new Quill(`#evaluator-individual-comments-editor-${index}`, {
+                        theme: 'snow',
+                        modules: {
+                            toolbar: [
+                                ['bold', 'italic', 'underline'],
+                                ['link'],
+                                [{ 'list': 'ordered'}, { 'list': 'bullet' }]
+                            ]
+                        }
+                    });
+                    if (memberEval.comments) {
+                        individualEditor.root.innerHTML = memberEval.comments;
+                    }
+                    this.quillEditors[`evaluator-individual-comments-${index}`] = individualEditor;
+                }
+            });
+            
+            // Add event listeners to calculate totals dynamically for parameter-based marks
+            if (teamParams.length > 0) {
+                teamParams.forEach((param, idx) => {
+                    const input = document.getElementById(`evaluator-team-param-${idx}`);
+                    if (input) {
+                        input.addEventListener('input', () => {
+                            let total = 0;
+                            teamParams.forEach((p, i) => {
+                                const inp = document.getElementById(`evaluator-team-param-${i}`);
+                                if (inp) {
+                                    total += parseFloat(inp.value) || 0;
+                                }
+                            });
+                            const totalEl = document.getElementById('evaluator-team-marks-total');
+                            if (totalEl) {
+                                totalEl.textContent = total;
+                            }
+                        });
+                    }
+                });
+            }
+            
+            if (individualParams.length > 0) {
+                members.forEach((member, index) => {
+                    const userId = member.userId || member.ktuid;
+                    individualParams.forEach((param, paramIdx) => {
+                        const input = document.getElementById(`evaluator-individual-param-${index}-${paramIdx}`);
+                        if (input) {
+                            input.addEventListener('input', () => {
+                                let total = 0;
+                                individualParams.forEach((p, i) => {
+                                    const inp = document.getElementById(`evaluator-individual-param-${index}-${i}`);
+                                    if (inp) {
+                                        total += parseFloat(inp.value) || 0;
+                                    }
+                                });
+                                const totalEl = document.getElementById(`evaluator-individual-marks-total-${index}`);
+                                if (totalEl) {
+                                    totalEl.textContent = total;
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+            
+            // Load evaluation stages dropdown for evaluator
+            await this.loadEvaluatorStagesDropdown();
+        } catch (error) {
+            console.error('Error loading evaluator form:', error);
+            alert('Error loading evaluation form. Please try again.');
+        }
+    },
+    
+    async loadEvaluatorStagesDropdown() {
+        const dropdown = document.getElementById('evaluator-stage-select');
+        if (!dropdown) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            dropdown.innerHTML = '<option value="">-- Select a stage --</option>';
+            stages.forEach((stage, index) => {
+                dropdown.innerHTML += `<option value="${index}">${this.escapeHtml(stage.name)}</option>`;
+            });
+        } catch (error) {
+            console.error('Error loading evaluation stages:', error);
+        }
+    },
+    
+    async saveEvaluatorData(teamId, stageIndex) {
+        // Check if evaluation is marked as complete
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (stage && stage.evaluationComplete === true) {
+                alert('This evaluation has been marked as complete by the administrator. You cannot enter new marks.');
+                return;
+            }
+        } catch (error) {
+            console.error('Error checking evaluation status:', error);
+        }
+        
+        // Reuse the same saveEvaluationData function which now handles evaluators
+        await this.saveEvaluationData(teamId, stageIndex);
+        // Reload teams list to update status
+        await this.loadTeamsForEvaluator();
+        // Show success message
+        alert('Evaluation saved successfully!');
     },
     
     // Report Generation Functions
@@ -14452,14 +15453,17 @@ const app = {
                 
                 html += `
                     <div class="module-column" data-module-id="${module.id}" style="background: white; border-radius: 12px; padding: 1rem; border: 2px solid ${moduleColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0;">
-                            <div style="flex: 1;">
-                                <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
-                                    <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
-                                </h4>
-                                ${module.description ? `<p style="margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.85rem;">${this.escapeHtml(module.description)}</p>` : ''}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-shrink: 0; cursor: pointer;" onclick="app.toggleModuleCollapse('${module.id}')">
+                            <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-chevron-down module-collapse-icon" id="module-collapse-icon-${module.id}" style="transition: transform 0.2s; color: ${moduleColor};"></i>
+                                <div style="flex: 1;">
+                                    <h4 style="margin: 0; color: ${moduleColor}; font-size: 1rem; font-weight: 600;">
+                                        <i class="fas fa-layer-group"></i> ${this.escapeHtml(module.name)}
+                                    </h4>
+                                    ${module.description ? `<p style="margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.85rem;">${this.escapeHtml(module.description)}</p>` : ''}
+                                </div>
                             </div>
-                            <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: center;">
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: center;" onclick="event.stopPropagation();">
                                 <div style="display: flex; flex-direction: column; gap: 0.25rem;">
                                     <button type="button" class="btn btn-sm" onclick="app.moveModuleUp('${module.id}')" ${moduleIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed; padding: 2px 6px; font-size: 0.7rem;"' : 'style="padding: 2px 6px; font-size: 0.7rem;"'} title="Move module up">
                                         <i class="fas fa-chevron-up"></i>
@@ -14479,6 +15483,7 @@ const app = {
                                 </div>
                             </div>
                         </div>
+                        <div class="module-content" id="module-content-${module.id}" style="display: flex; flex-direction: column;">
                         ${moduleBacklogs.length > 0 ? `
                         <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 8px; flex-shrink: 0;">
                             <div style="flex: 1; text-align: center;">
@@ -14509,6 +15514,7 @@ const app = {
                 }
                 
                 html += `
+                        </div>
                         </div>
                     </div>
                 `;
@@ -15379,6 +16385,29 @@ const app = {
         } catch (error) {
             console.error('Error deleting module:', error);
             alert('Error deleting module. Please try again.');
+        }
+    },
+    
+    toggleModuleCollapse(moduleId) {
+        const contentEl = document.getElementById(`module-content-${moduleId}`);
+        const iconEl = document.getElementById(`module-collapse-icon-${moduleId}`);
+        
+        if (!contentEl || !iconEl) return;
+        
+        const isCollapsed = contentEl.style.display === 'none' || contentEl.style.display === '';
+        
+        if (isCollapsed) {
+            // Expand
+            contentEl.style.display = 'flex';
+            iconEl.classList.remove('fa-chevron-right');
+            iconEl.classList.add('fa-chevron-down');
+            iconEl.style.transform = 'rotate(0deg)';
+        } else {
+            // Collapse
+            contentEl.style.display = 'none';
+            iconEl.classList.remove('fa-chevron-down');
+            iconEl.classList.add('fa-chevron-right');
+            iconEl.style.transform = 'rotate(0deg)';
         }
     },
     
