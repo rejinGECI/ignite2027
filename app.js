@@ -15586,6 +15586,26 @@ const app = {
     
     // ========== SCHEDULE FUNCTIONS ==========
     
+    // Helper function to get color based on days remaining
+    getDaysRemainingColor(daysUntil, isPast, isToday) {
+        if (isPast) {
+            return { bg: '#f3f4f6', text: '#6b7280', border: '#d1d5db' }; // Gray for past
+        }
+        if (isToday) {
+            return { bg: '#fef3c7', text: '#92400e', border: '#fbbf24' }; // Yellow for today
+        }
+        if (daysUntil <= 3) {
+            return { bg: '#fee2e2', text: '#991b1b', border: '#ef4444' }; // Red for urgent (0-3 days)
+        }
+        if (daysUntil <= 7) {
+            return { bg: '#fed7aa', text: '#9a3412', border: '#f97316' }; // Orange for warning (4-7 days)
+        }
+        if (daysUntil <= 14) {
+            return { bg: '#fef3c7', text: '#854d0e', border: '#eab308' }; // Yellow for attention (8-14 days)
+        }
+        return { bg: '#d1fae5', text: '#065f46', border: '#10b981' }; // Green for good (15+ days)
+    },
+    
     async loadSchedule() {
         const container = document.getElementById('schedule-content');
         const statusContainer = document.getElementById('schedule-submission-status');
@@ -15716,8 +15736,8 @@ const app = {
                     </div>
                     
                     ${processedDates.length > 0 ? `
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); color: white;">
-                            <h4 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;">
+                            <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
                                 <i class="fas fa-calendar-check"></i> Important Dates
                             </h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
@@ -15730,24 +15750,25 @@ const app = {
                                     const isPast = dateOnly < today;
                                     const isToday = dateOnly.getTime() === today.getTime();
                                     const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                    const colors = this.getDaysRemainingColor(daysUntil, isPast, isToday);
                                     
                                     return `
-                                        <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                        <div style="background: ${colors.bg}; border-radius: 8px; padding: 1rem; border: 2px solid ${colors.border};">
                                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                                <h5 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
+                                                <h5 style="margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
                                                 ${isToday ? `
-                                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
                                                 ` : isPast ? `
-                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
                                                 ` : `
-                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
                                                 `}
                                             </div>
-                                            <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                            <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
                                                 <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                                             </p>
                                             ${dateItem.description ? `
-                                                <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
                                             ` : ''}
                                         </div>
                                     `;
@@ -15873,6 +15894,7 @@ const app = {
             if (schedule) {
                 const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
                 const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                const importantDateTitle = schedule.importantDateTitle || null;
                 
                 html += `
                     <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${moduleColor};">
@@ -15885,6 +15907,11 @@ const app = {
                                     <span><i class="fas fa-calendar-check"></i> ${startDate.toLocaleDateString()}</span>
                                     <span><i class="fas fa-calendar-times"></i> ${endDate.toLocaleDateString()}</span>
                                     <span><i class="fas fa-tasks"></i> ${moduleBacklogs.length} tasks</span>
+                                    ${importantDateTitle ? `
+                                        <span style="color: #059669; font-weight: 600;">
+                                            <i class="fas fa-calendar-star"></i> Review: ${this.escapeHtml(importantDateTitle)}
+                                        </span>
+                                    ` : ''}
                                 </div>
                             </div>
                             <button type="button" class="btn btn-sm" onclick="app.deleteSchedule('${schedule.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
@@ -15906,6 +15933,7 @@ const app = {
                 if (backlog) {
                     const startDate = schedule.startDate?.toDate ? schedule.startDate.toDate() : new Date(schedule.startDate);
                     const endDate = schedule.endDate?.toDate ? schedule.endDate.toDate() : new Date(schedule.endDate);
+                    const importantDateTitle = schedule.importantDateTitle || null;
                     const priorityColors = {
                         low: '#6b7280',
                         medium: '#3b82f6',
@@ -15924,6 +15952,11 @@ const app = {
                                     <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.9rem; color: var(--text-secondary);">
                                         <span><i class="fas fa-calendar-check"></i> ${startDate.toLocaleDateString()}</span>
                                         <span><i class="fas fa-calendar-times"></i> ${endDate.toLocaleDateString()}</span>
+                                        ${importantDateTitle ? `
+                                            <span style="color: #059669; font-weight: 600;">
+                                                <i class="fas fa-calendar-star"></i> Review: ${this.escapeHtml(importantDateTitle)}
+                                            </span>
+                                        ` : ''}
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-sm" onclick="app.deleteSchedule('${schedule.id}')" style="padding: 4px 8px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer;">
@@ -16019,62 +16052,110 @@ const app = {
         minDate.setDate(minDate.getDate() - 7);
         maxDate.setDate(maxDate.getDate() + 7);
         
-        // Calculate days
-        const daysDiff = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
-        const dayWidth = Math.max(30, Math.min(50, 1200 / daysDiff));
+        // Normalize dates to start of day for consistent calculations
+        minDate.setHours(0, 0, 0, 0);
+        maxDate.setHours(0, 0, 0, 0);
         
-        // Build Gantt chart
+        // Calculate total days (inclusive of both start and end dates)
+        // We need to include both minDate and maxDate, so we add 1
+        const totalDays = Math.floor((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const dayWidth = Math.max(30, Math.min(50, 1200 / totalDays));
+        const totalTimelineWidth = totalDays * dayWidth;
+        
+        // Build Gantt chart with synchronized scrolling
+        // Use a single scrollable container that wraps both header and rows
         let html = `
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                <div style="display: flex; gap: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; position: sticky; top: 0; z-index: 10;">
-                    <div style="min-width: 200px; font-weight: 600; color: var(--text-primary);">Task/Module</div>
-                    <div style="flex: 1; position: relative; min-height: 40px;">
-                        <div style="display: flex; position: absolute; width: 100%; height: 100%;">
+                <div style="overflow-x: auto; overflow-y: visible;" id="gantt-scroll-container">
+                    <div style="min-width: ${200 + totalTimelineWidth}px;">
+                        <!-- Date Header Row -->
+                        <div style="display: flex; gap: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; position: sticky; top: 0; z-index: 10;">
+                            <div style="min-width: 200px; width: 200px; flex-shrink: 0; font-weight: 600; color: var(--text-primary);">Task/Module</div>
+                            <div style="display: flex; width: ${totalTimelineWidth}px; min-width: ${totalTimelineWidth}px; height: 100%;">
         `;
         
-        // Date headers
-        const currentDate = new Date(minDate);
-        while (currentDate <= maxDate) {
+        // Date headers - generate exactly totalDays number of days
+        // Start from minDate and generate one header for each day
+        const headerDate = new Date(minDate);
+        headerDate.setHours(0, 0, 0, 0);
+        
+        for (let i = 0; i < totalDays; i++) {
+            const currentDate = new Date(headerDate);
+            currentDate.setDate(headerDate.getDate() + i);
+            currentDate.setHours(0, 0, 0, 0); // Ensure normalized
+            
             const isToday = currentDate.toDateString() === today.toDateString();
             html += `
-                <div style="width: ${dayWidth}px; border-right: 1px solid #e5e7eb; text-align: center; padding: 0.5rem 0.25rem; font-size: 0.75rem; ${isToday ? 'background: #dbeafe; font-weight: 600;' : ''}">
+                <div style="width: ${dayWidth}px; min-width: ${dayWidth}px; max-width: ${dayWidth}px; flex-shrink: 0; border-right: 1px solid #e5e7eb; text-align: center; padding: 0.5rem 0.25rem; font-size: 0.75rem; ${isToday ? 'background: #dbeafe; font-weight: 600;' : ''}">
                     <div style="color: ${isToday ? '#3b82f6' : 'var(--text-secondary)'};">${currentDate.getDate()}</div>
                     <div style="color: ${isToday ? '#3b82f6' : 'var(--text-secondary)'}; font-size: 0.65rem;">${currentDate.toLocaleDateString('en-US', { month: 'short' })}</div>
                 </div>
             `;
-            currentDate.setDate(currentDate.getDate() + 1);
         }
         
         html += `
+                            </div>
                         </div>
-                    </div>
-                </div>
         `;
         
         // Task rows
         scheduledItems.forEach((item, index) => {
-            const startOffset = Math.ceil((item.startDate - minDate) / (1000 * 60 * 60 * 24));
-            const duration = Math.ceil((item.endDate - item.startDate) / (1000 * 60 * 60 * 24)) + 1;
-            const barWidth = duration * dayWidth;
-            const leftOffset = startOffset * dayWidth;
+            // Normalize dates to start of day for consistent calculations
+            const itemStartDate = new Date(item.startDate);
+            itemStartDate.setHours(0, 0, 0, 0);
+            const itemEndDate = new Date(item.endDate);
+            itemEndDate.setHours(0, 0, 0, 0);
+            
+            // Calculate days from minDate to startDate (0-indexed, so day 0 is minDate)
+            // This gives us which day column the bar should start in
+            const millisecondsPerDay = 1000 * 60 * 60 * 24;
+            const daysFromMinToStart = (itemStartDate.getTime() - minDate.getTime()) / millisecondsPerDay;
+            const startOffsetDays = Math.floor(daysFromMinToStart);
+            
+            // Calculate duration including both start and end dates (inclusive)
+            // If start and end are the same day, duration is 1 day
+            // We add 1 because we want to include both the start and end day
+            const daysFromStartToEnd = (itemEndDate.getTime() - itemStartDate.getTime()) / millisecondsPerDay;
+            const durationDays = Math.floor(daysFromStartToEnd) + 1;
+            
+            // Calculate bar position and width in pixels
+            // Position: start at the beginning of the start day column (left edge of that day)
+            const leftOffset = startOffsetDays * dayWidth;
+            
+            // Width: span across all days from start to end (inclusive)
+            // The bar should extend from the start of the first day to the end of the last day
+            // So if duration is 5 days, the bar should be 5 * dayWidth pixels wide
+            const barWidth = durationDays * dayWidth;
+            
+            // Calculate final position and width, ensuring they stay within timeline bounds
+            // The bar should start at leftOffset and have width barWidth
+            // But we need to ensure it doesn't exceed the timeline width
+            const finalLeftOffset = Math.max(0, Math.min(leftOffset, totalTimelineWidth));
+            const maxBarWidth = totalTimelineWidth - finalLeftOffset;
+            const finalBarWidth = Math.min(barWidth, maxBarWidth);
             
             html += `
-                <div style="display: flex; gap: 1rem; padding: 0.75rem 1rem; background: ${index % 2 === 0 ? 'white' : '#f8f9fa'}; border-radius: 6px; align-items: center;">
-                    <div style="min-width: 200px; font-weight: 500; color: var(--text-primary);">
-                        ${item.type === 'module' ? '<i class="fas fa-layer-group"></i>' : '<i class="fas fa-tasks"></i>'} 
-                        ${this.escapeHtml(item.name)}
-                        ${item.taskCount ? ` <span style="color: var(--text-secondary); font-size: 0.85rem;">(${item.taskCount} tasks)</span>` : ''}
-                    </div>
-                    <div style="flex: 1; position: relative; height: 32px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
-                        <div style="position: absolute; left: ${leftOffset}px; width: ${barWidth}px; height: 100%; background: ${item.color}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" title="${item.startDate.toLocaleDateString()} - ${item.endDate.toLocaleDateString()}">
-                            ${duration} day${duration !== 1 ? 's' : ''}
+                        <!-- Task Row -->
+                        <div style="display: flex; gap: 1rem; padding: 0.75rem 1rem; background: ${index % 2 === 0 ? 'white' : '#f8f9fa'}; border-radius: 6px; align-items: center;">
+                            <div style="min-width: 200px; width: 200px; flex-shrink: 0; font-weight: 500; color: var(--text-primary);">
+                                ${item.type === 'module' ? '<i class="fas fa-layer-group"></i>' : '<i class="fas fa-tasks"></i>'} 
+                                ${this.escapeHtml(item.name)}
+                                ${item.taskCount ? ` <span style="color: var(--text-secondary); font-size: 0.85rem;">(${item.taskCount} tasks)</span>` : ''}
+                            </div>
+                            <div style="position: relative; height: 32px; width: ${totalTimelineWidth}px; min-width: ${totalTimelineWidth}px; background: #f1f5f9; border-radius: 4px; overflow: visible;">
+                                <div style="position: absolute; left: ${finalLeftOffset}px; width: ${finalBarWidth}px; height: 100%; background: ${item.color}; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" title="${itemStartDate.toLocaleDateString()} - ${itemEndDate.toLocaleDateString()}">
+                                    ${durationDays} day${durationDays !== 1 ? 's' : ''}
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
             `;
         });
         
-        html += '</div>';
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
         container.innerHTML = html;
     },
     
@@ -16123,6 +16204,25 @@ const app = {
                 assignments[data.backlogId] = data.moduleId;
             });
             
+            // Load existing schedules to disable already-scheduled items
+            const schedulesQuery = query(
+                collection(window.firebaseDb, 'productBacklogSchedules'),
+                where('teamId', '==', team.id)
+            );
+            const schedulesSnapshot = await getDocs(schedulesQuery);
+            const scheduledModuleIds = new Set();
+            const scheduledBacklogIds = new Set();
+            
+            schedulesSnapshot.forEach(doc => {
+                const schedule = doc.data();
+                if (schedule.moduleId) {
+                    scheduledModuleIds.add(schedule.moduleId);
+                }
+                if (schedule.backlogId) {
+                    scheduledBacklogIds.add(schedule.backlogId);
+                }
+            });
+            
             // Populate module dropdown
             const moduleSelect = document.getElementById('schedule-module');
             if (moduleSelect) {
@@ -16130,7 +16230,10 @@ const app = {
                 modules.forEach(module => {
                     const moduleBacklogs = backlogs.filter(b => assignments[b.id] === module.id);
                     if (moduleBacklogs.length > 0) {
-                        moduleSelect.innerHTML += `<option value="${module.id}">${this.escapeHtml(module.name)} (${moduleBacklogs.length} tasks)</option>`;
+                        const isScheduled = scheduledModuleIds.has(module.id);
+                        const disabledAttr = isScheduled ? 'disabled' : '';
+                        const scheduledText = isScheduled ? ' (Already Scheduled)' : '';
+                        moduleSelect.innerHTML += `<option value="${module.id}" ${disabledAttr}>${this.escapeHtml(module.name)} (${moduleBacklogs.length} tasks)${scheduledText}</option>`;
                     }
                 });
             }
@@ -16140,8 +16243,52 @@ const app = {
             if (taskSelect) {
                 taskSelect.innerHTML = '<option value="">Select a task...</option>';
                 backlogs.forEach(backlog => {
-                    taskSelect.innerHTML += `<option value="${backlog.id}">${this.escapeHtml(backlog.task || 'No task')}</option>`;
+                    const isScheduled = scheduledBacklogIds.has(backlog.id);
+                    const disabledAttr = isScheduled ? 'disabled' : '';
+                    const scheduledText = isScheduled ? ' (Already Scheduled)' : '';
+                    taskSelect.innerHTML += `<option value="${backlog.id}" ${disabledAttr}>${this.escapeHtml(backlog.task || 'No task')}${scheduledText}</option>`;
                 });
+            }
+            
+            // Load and populate important dates dropdown
+            const importantDateSelect = document.getElementById('schedule-important-date');
+            if (importantDateSelect) {
+                importantDateSelect.innerHTML = '<option value="">Select a review date...</option>';
+                try {
+                    const importantDatesDoc = await getDoc(doc(window.firebaseDb, 'settings', 'schedule'));
+                    const importantDatesData = importantDatesDoc.exists() ? importantDatesDoc.data() : null;
+                    const importantDates = importantDatesData && importantDatesData.importantDates ? importantDatesData.importantDates : [];
+                    
+                    if (Array.isArray(importantDates) && importantDates.length > 0) {
+                        // Process and sort dates
+                        const processedDates = importantDates.map(dateItem => {
+                            let date;
+                            if (dateItem.date?.toDate) {
+                                date = dateItem.date.toDate();
+                            } else if (dateItem.date instanceof Date) {
+                                date = dateItem.date;
+                            } else if (typeof dateItem.date === 'string') {
+                                date = new Date(dateItem.date);
+                            } else if (dateItem.date?.seconds) {
+                                date = new Date(dateItem.date.seconds * 1000);
+                            } else {
+                                date = new Date(dateItem.date);
+                            }
+                            return { ...dateItem, date };
+                        });
+                        
+                        // Sort by date
+                        processedDates.sort((a, b) => a.date - b.date);
+                        
+                        // Add options to dropdown
+                        processedDates.forEach(dateItem => {
+                            const dateStr = dateItem.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                            importantDateSelect.innerHTML += `<option value="${this.escapeHtml(dateItem.name || '')}">${this.escapeHtml(dateItem.name || 'Important Date')} - ${dateStr}</option>`;
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading important dates:', error);
+                }
             }
             
             // Reset form
@@ -16150,6 +16297,9 @@ const app = {
             document.getElementById('schedule-task').value = '';
             document.getElementById('schedule-start-date').value = '';
             document.getElementById('schedule-end-date').value = '';
+            if (importantDateSelect) {
+                importantDateSelect.value = '';
+            }
             this.onScheduleTypeChange();
             
             modal.style.display = 'flex';
@@ -16188,6 +16338,7 @@ const app = {
         const taskId = document.getElementById('schedule-task').value;
         const startDate = document.getElementById('schedule-start-date').value;
         const endDate = document.getElementById('schedule-end-date').value;
+        const importantDateTitle = document.getElementById('schedule-important-date').value;
         
         if (!startDate || !endDate) {
             alert('Please select both start and end dates.');
@@ -16206,6 +16357,12 @@ const app = {
         
         if (type === 'task' && !taskId) {
             alert('Please select a task.');
+            return;
+        }
+        
+        // Validate review date is selected (mandatory)
+        if (!importantDateTitle || importantDateTitle.trim() === '') {
+            alert('Please select a review date (Important Date). This field is required.');
             return;
         }
         
@@ -16237,6 +16394,7 @@ const app = {
                 teamId: team.id,
                 startDate: new Date(startDate + 'T00:00:00'),
                 endDate: new Date(endDate + 'T23:59:59'),
+                importantDateTitle: importantDateTitle.trim(), // Always required now
                 createdAt: serverTimestamp(),
                 createdBy: this.currentUser.uid
             };
@@ -16776,8 +16934,8 @@ const app = {
                     ` : ''}
                     
                     ${processedDates.length > 0 ? `
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); color: white;">
-                            <h4 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;">
+                            <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
                                 <i class="fas fa-calendar-check"></i> Important Dates
                             </h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
@@ -16790,24 +16948,25 @@ const app = {
                                     const isPast = dateOnly < today;
                                     const isToday = dateOnly.getTime() === today.getTime();
                                     const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                    const colors = this.getDaysRemainingColor(daysUntil, isPast, isToday);
                                     
                                     return `
-                                        <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                        <div style="background: ${colors.bg}; border-radius: 8px; padding: 1rem; border: 2px solid ${colors.border};">
                                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                                <h5 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
+                                                <h5 style="margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h5>
                                                 ${isToday ? `
-                                                    <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
                                                 ` : isPast ? `
-                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
                                                 ` : `
-                                                    <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                    <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
                                                 `}
                                             </div>
-                                            <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                            <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
                                                 <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                                             </p>
                                             ${dateItem.description ? `
-                                                <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
                                             ` : ''}
                                         </div>
                                     `;
@@ -17225,8 +17384,8 @@ const app = {
                 <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
                 
                 ${processedDates.length > 0 ? `
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; border: 1px solid #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <h2 style="margin: 0 0 1rem 0; color: #111827; display: flex; align-items: center; gap: 0.5rem;">
                             <i class="fas fa-calendar-check"></i> Important Dates
                         </h2>
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
@@ -17239,24 +17398,25 @@ const app = {
                                 const isPast = dateOnly < today;
                                 const isToday = dateOnly.getTime() === today.getTime();
                                 const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                const colors = this.getDaysRemainingColor(daysUntil, isPast, isToday);
                                 
                                 return `
-                                    <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                    <div style="background: ${colors.bg}; border-radius: 8px; padding: 1rem; border: 2px solid ${colors.border};">
                                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                            <h3 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
+                                            <h3 style="margin: 0; color: #111827; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
                                             ${isToday ? `
-                                                <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
                                             ` : isPast ? `
-                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
                                             ` : `
-                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
                                             `}
                                         </div>
-                                        <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                        <p style="margin: 0 0 0.5rem 0; color: #64748b; font-size: 0.9rem; font-weight: 500;">
                                             <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                                         </p>
                                         ${dateItem.description ? `
-                                            <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                            <p style="margin: 0; color: #64748b; font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
                                         ` : ''}
                                     </div>
                                 `;
@@ -17347,8 +17507,8 @@ const app = {
                 <p style="color: #64748b; margin-bottom: 30px;">Generated on: ${new Date().toLocaleDateString()}</p>
                 
                 ${processedDates.length > 0 ? `
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                        <h2 style="margin: 0 0 1rem 0; color: white; display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 30px; border: 1px solid #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <h2 style="margin: 0 0 1rem 0; color: #111827; display: flex; align-items: center; gap: 0.5rem;">
                             <i class="fas fa-calendar-check"></i> Important Dates
                         </h2>
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
@@ -17361,24 +17521,25 @@ const app = {
                                 const isPast = dateOnly < today;
                                 const isToday = dateOnly.getTime() === today.getTime();
                                 const daysUntil = Math.ceil((dateOnly - today) / (1000 * 60 * 60 * 24));
+                                const colors = this.getDaysRemainingColor(daysUntil, isPast, isToday);
                                 
                                 return `
-                                    <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border-radius: 8px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+                                    <div style="background: ${colors.bg}; border-radius: 8px; padding: 1rem; border: 2px solid ${colors.border};">
                                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                            <h3 style="margin: 0; color: white; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
+                                            <h3 style="margin: 0; color: #111827; font-size: 1rem; font-weight: 600;">${this.escapeHtml(dateItem.name || 'Important Date')}</h3>
                                             ${isToday ? `
-                                                <span style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">TODAY</span>
                                             ` : isPast ? `
-                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">PAST</span>
                                             ` : `
-                                                <span style="background: rgba(255, 255, 255, 0.3); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
+                                                <span style="background: ${colors.border}; color: ${colors.text}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span>
                                             `}
                                         </div>
-                                        <p style="margin: 0 0 0.5rem 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-weight: 500;">
+                                        <p style="margin: 0 0 0.5rem 0; color: #64748b; font-size: 0.9rem; font-weight: 500;">
                                             <i class="fas fa-calendar"></i> ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                                         </p>
                                         ${dateItem.description ? `
-                                            <p style="margin: 0; color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
+                                            <p style="margin: 0; color: #64748b; font-size: 0.85rem; line-height: 1.4;">${this.escapeHtml(dateItem.description)}</p>
                                         ` : ''}
                                     </div>
                                 `;
@@ -18960,10 +19121,11 @@ const app = {
                 return nameA.localeCompare(nameB);
             });
             
-            // Get user stories
+            // Get user stories - only approved ones for PPT
             const storiesQuery = query(
                 collection(window.firebaseDb, 'userStories'),
-                where('teamId', '==', team.id)
+                where('teamId', '==', team.id),
+                where('approved', '==', true)
             );
             const storiesSnapshot = await getDocs(storiesQuery);
             const userStories = [];
@@ -18989,10 +19151,11 @@ const app = {
                 return dateB - dateA; // Fallback to newest first
             });
             
-            // Get product backlogs
+            // Get product backlogs - only approved ones for PPT
             const backlogQuery = query(
                 collection(window.firebaseDb, 'productBacklog'),
-                where('teamId', '==', team.id)
+                where('teamId', '==', team.id),
+                where('approved', '==', true)
             );
             const backlogSnapshot = await getDocs(backlogQuery);
             const productBacklogs = [];
@@ -19028,24 +19191,26 @@ const app = {
                 where('teamId', '==', team.id)
             );
             const modulesSnapshot = await getDocs(modulesQuery);
-            const modules = [];
+            const allModules = [];
             modulesSnapshot.forEach(doc => {
-                modules.push({ id: doc.id, ...doc.data() });
+                allModules.push({ id: doc.id, ...doc.data() });
             });
             
-            // Sort modules by sortOrder
-            modules.forEach((module, index) => {
+            // Initialize sortOrder for modules that don't have it (matching web portal logic)
+            allModules.forEach((module, index) => {
                 if (module.sortOrder === undefined || module.sortOrder === null) {
                     module.sortOrder = index;
                 }
             });
-            modules.sort((a, b) => {
+            
+            // Sort modules by sortOrder if available, otherwise by creation date (newest first) - matching web portal
+            allModules.sort((a, b) => {
                 if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                     return a.sortOrder - b.sortOrder;
                 }
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
-                return dateB - dateA; // Fallback to newest first
+                return dateB - dateA; // Fallback to newest first (matching web portal)
             });
             
             // Get card sorting assignments with sortOrder
@@ -19097,16 +19262,42 @@ const app = {
                 });
             });
             
-            // Get schedules
-            const schedulesQuery = query(
-                collection(window.firebaseDb, 'productBacklogSchedules'),
-                where('teamId', '==', team.id)
-            );
-            const schedulesSnapshot = await getDocs(schedulesQuery);
-            const schedules = [];
-            schedulesSnapshot.forEach(doc => {
-                schedules.push({ id: doc.id, ...doc.data() });
-            });
+            // Filter modules to only include those that have tasks assigned (matching web portal behavior)
+            // Also attach backlogs to each module
+            const modules = allModules
+                .filter(module => {
+                    // Only include modules that have at least one backlog assigned
+                    return backlogsByModule[module.id] && backlogsByModule[module.id].length > 0;
+                })
+                .map(module => ({
+                    ...module,
+                    backlogs: backlogsByModule[module.id] || []
+                }));
+            
+            // Get schedules - only if guide approval is given
+            let schedules = [];
+            try {
+                // Check if schedule is verified by guide
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                const scheduleVerified = planningData && planningData.scheduleVerified === true;
+                
+                // Only fetch schedules if they have been verified by guide
+                if (scheduleVerified) {
+                    const schedulesQuery = query(
+                        collection(window.firebaseDb, 'productBacklogSchedules'),
+                        where('teamId', '==', team.id)
+                    );
+                    const schedulesSnapshot = await getDocs(schedulesQuery);
+                    schedulesSnapshot.forEach(doc => {
+                        schedules.push({ id: doc.id, ...doc.data() });
+                    });
+                }
+            } catch (error) {
+                console.warn('Error loading schedules:', error);
+                // If there's an error, don't include schedules (safer approach)
+                schedules = [];
+            }
             
             // Get guide name
             let guideName = team.guideName || 'Not assigned';
@@ -19240,7 +19431,7 @@ const app = {
                     id: m.id,
                     name: m.name || '',
                     description: m.description || '',
-                    backlogs: (backlogsByModule[m.id] || []).map(b => ({
+                    backlogs: m.backlogs.map(b => ({
                         id: b.id,
                         task: b.task || '',
                         priority: b.priority || 'medium',
@@ -19949,6 +20140,77 @@ const app = {
                 });
             }
             
+            // Card Sorting Introduction Card (after product backlog section)
+            if (data.cardSortingModules && data.cardSortingModules.length > 0) {
+                const cardSortingIntroSlide = pptx.addSlide();
+                cardSortingIntroSlide.background = { color: colors.light };
+                cardSortingIntroSlide.addShape(pptx.ShapeType.rect, {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 0.6,
+                    fill: { color: colors.primary },
+                    line: { color: colors.primary, width: 0 }
+                });
+                cardSortingIntroSlide.addText('Card Sorting', {
+                    x: 0.5,
+                    y: 0.1,
+                    w: 9,
+                    h: 0.4,
+                    fontSize: 36,
+                    bold: true,
+                    color: 'FFFFFF',
+                    fontFace: 'Arial'
+                });
+                
+                // Add summary information
+                const totalModules = data.cardSortingModules.length;
+                const totalTasks = data.cardSortingModules.reduce((sum, m) => sum + (m.backlogs?.length || 0), 0);
+                
+                cardSortingIntroSlide.addShape(pptx.ShapeType.roundRect, {
+                    x: 1,
+                    y: 1.5,
+                    w: 8,
+                    h: 1.5,
+                    fill: { color: 'FFFFFF' },
+                    line: { color: colors.primary, width: 2 },
+                    rectRadius: 0.1
+                });
+                
+                cardSortingIntroSlide.addText(`Total Modules: ${totalModules}`, {
+                    x: 1.5,
+                    y: 1.7,
+                    w: 7,
+                    h: 0.4,
+                    fontSize: 20,
+                    bold: true,
+                    color: colors.text,
+                    fontFace: 'Arial'
+                });
+                
+                cardSortingIntroSlide.addText(`Total Tasks: ${totalTasks}`, {
+                    x: 1.5,
+                    y: 2.2,
+                    w: 7,
+                    h: 0.4,
+                    fontSize: 20,
+                    bold: true,
+                    color: colors.text,
+                    fontFace: 'Arial'
+                });
+                
+                cardSortingIntroSlide.addText('The following section shows the card sorting modules and their associated tasks.', {
+                    x: 1,
+                    y: 3.5,
+                    w: 8,
+                    h: 0.6,
+                    fontSize: 14,
+                    color: colors.textLight,
+                    fontFace: 'Arial',
+                    italic: true
+                });
+            }
+            
             // Card Sorting section - always show if modules exist
             if (data.cardSortingModules && data.cardSortingModules.length > 0) {
                 const cardSortingSlide = pptx.addSlide();
@@ -20105,12 +20367,24 @@ const app = {
                 // Prepare schedule data with dates
                 const scheduleItems = data.schedules.map(schedule => {
                     let scheduleName = '';
+                    let isValid = false;
+                    
                     if (schedule.moduleId) {
                         const module = data.cardSortingModules.find(m => m.id === schedule.moduleId);
-                        scheduleName = module ? `${module.name} (Module)` : 'Module';
+                        if (module && module.name && module.name.trim() !== '' && module.name.toLowerCase() !== 'module') {
+                            scheduleName = `${module.name} (Module)`;
+                            isValid = true;
+                        }
                     } else if (schedule.backlogId) {
                         const backlog = data.productBacklogs.find(b => b.id === schedule.backlogId);
-                        scheduleName = backlog ? backlog.task : 'Task';
+                        if (backlog && backlog.task && backlog.task.trim() !== '') {
+                            scheduleName = backlog.task;
+                            isValid = true;
+                        }
+                    }
+                    
+                    if (!isValid) {
+                        return null; // Return null for invalid items
                     }
                     
                     const startDate = schedule.startDate instanceof Date 
@@ -20126,20 +20400,37 @@ const app = {
                         endDate: endDate,
                         duration: schedule.duration || 0
                     };
-                }).filter(item => item.name); // Filter out items without names
+                }).filter(item => item !== null && item.name && item.name.trim() !== ''); // Filter out null and invalid items
                 
                 if (scheduleItems.length > 0) {
-                    // Calculate date range
-                    const allDates = scheduleItems.flatMap(item => [item.startDate, item.endDate]);
+                    // Calculate date range - normalize all dates to start of day
+                    const allDates = scheduleItems.flatMap(item => {
+                        const start = new Date(item.startDate);
+                        start.setHours(0, 0, 0, 0);
+                        const end = new Date(item.endDate);
+                        end.setHours(23, 59, 59, 999); // End of day
+                        return [start, end];
+                    });
+                    
                     const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
                     const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
                     
-                    // Add some padding to the date range
-                    const dateRange = maxDate.getTime() - minDate.getTime();
-                    const padding = dateRange * 0.1; // 10% padding
-                    const chartStartDate = new Date(minDate.getTime() - padding);
-                    const chartEndDate = new Date(maxDate.getTime() + padding);
-                    const totalDays = Math.ceil((chartEndDate.getTime() - chartStartDate.getTime()) / (1000 * 60 * 60 * 24));
+                    // Normalize to start/end of day
+                    minDate.setHours(0, 0, 0, 0);
+                    maxDate.setHours(23, 59, 59, 999);
+                    
+                    // Add small padding (7 days before and after) for better visualization
+                    const paddingDays = 7;
+                    const chartStartDate = new Date(minDate);
+                    chartStartDate.setDate(chartStartDate.getDate() - paddingDays);
+                    chartStartDate.setHours(0, 0, 0, 0);
+                    
+                    const chartEndDate = new Date(maxDate);
+                    chartEndDate.setDate(chartEndDate.getDate() + paddingDays);
+                    chartEndDate.setHours(23, 59, 59, 999);
+                    
+                    // Calculate total days (inclusive)
+                    const totalDays = Math.ceil((chartEndDate.getTime() - chartStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
                     
                     // Gantt chart dimensions
                     const chartLeft = 2.5; // Left margin for task names
@@ -20189,34 +20480,49 @@ const app = {
                             line: { color: colors.textLight, width: 1 }
                         });
                         
-                        // Draw date axis labels (show 5-7 date markers)
-                        const numMarkers = Math.min(7, Math.max(5, Math.ceil(totalDays / 7)));
+                        // Draw date axis labels - show dates at regular intervals
+                        // Calculate interval based on total days
+                        const daysInterval = Math.max(1, Math.ceil(totalDays / 8)); // Show about 8-9 date markers
+                        const numMarkers = Math.ceil(totalDays / daysInterval);
+                        
                         for (let i = 0; i <= numMarkers; i++) {
-                            const date = new Date(chartStartDate.getTime() + (chartEndDate.getTime() - chartStartDate.getTime()) * (i / numMarkers));
-                            const xPos = chartLeft + (chartWidth * (i / numMarkers));
-                            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            const daysOffset = i * daysInterval;
+                            const date = new Date(chartStartDate);
+                            date.setDate(chartStartDate.getDate() + daysOffset);
+                            date.setHours(0, 0, 0, 0);
                             
-                            // Draw vertical line (using thin rectangle)
-                            scheduleSlide.addShape(pptx.ShapeType.rect, {
-                                x: xPos - 0.01,
-                                y: chartTop,
-                                w: 0.02,
-                                h: chartHeight,
-                                fill: { color: colors.textLight },
-                                line: { color: colors.textLight, width: 0 }
-                            });
+                            // Calculate position based on actual time range (matching bar calculation)
+                            const totalTimeRange = chartEndDate.getTime() - chartStartDate.getTime();
+                            const timeOffset = date.getTime() - chartStartDate.getTime();
+                            const positionRatio = timeOffset / totalTimeRange;
+                            const xPos = chartLeft + (chartWidth * Math.max(0, Math.min(1, positionRatio)));
                             
-                            // Add date label
-                            scheduleSlide.addText(dateStr, {
-                                x: xPos - 0.3,
-                                y: chartTop - 0.3,
-                                w: 0.6,
-                                h: 0.2,
-                                fontSize: 10,
-                                color: colors.textLight,
-                                fontFace: 'Arial',
-                                align: 'center'
-                            });
+                            // Only show marker if it's within chart bounds
+                            if (xPos >= chartLeft && xPos <= chartLeft + chartWidth) {
+                                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                
+                                // Draw vertical line (using thin rectangle)
+                                scheduleSlide.addShape(pptx.ShapeType.rect, {
+                                    x: xPos - 0.01,
+                                    y: chartTop,
+                                    w: 0.02,
+                                    h: chartHeight,
+                                    fill: { color: colors.textLight },
+                                    line: { color: colors.textLight, width: 0 }
+                                });
+                                
+                                // Add date label
+                                scheduleSlide.addText(dateStr, {
+                                    x: xPos - 0.3,
+                                    y: chartTop - 0.3,
+                                    w: 0.6,
+                                    h: 0.2,
+                                    fontSize: 10,
+                                    color: colors.textLight,
+                                    fontFace: 'Arial',
+                                    align: 'center'
+                                });
+                            }
                         }
                         
                         // Draw Gantt bars for each schedule item on this slide
@@ -20225,10 +20531,21 @@ const app = {
                             const yPos = chartTop + 0.1 + (localIndex * barSpacing);
                             
                             // Calculate bar position and width
-                            const startOffset = (item.startDate.getTime() - chartStartDate.getTime()) / (chartEndDate.getTime() - chartStartDate.getTime());
-                            const endOffset = (item.endDate.getTime() - chartStartDate.getTime()) / (chartEndDate.getTime() - chartStartDate.getTime());
-                            const barX = chartLeft + (chartWidth * startOffset);
-                            const barWidth = chartWidth * (endOffset - startOffset);
+                            // Normalize dates to start/end of day for accurate calculation
+                            const itemStart = new Date(item.startDate);
+                            itemStart.setHours(0, 0, 0, 0);
+                            const itemEnd = new Date(item.endDate);
+                            itemEnd.setHours(23, 59, 59, 999);
+                            
+                            // Calculate position as fraction of total timeline
+                            const totalTimeRange = chartEndDate.getTime() - chartStartDate.getTime();
+                            const startOffset = (itemStart.getTime() - chartStartDate.getTime()) / totalTimeRange;
+                            const endOffset = (itemEnd.getTime() - chartStartDate.getTime()) / totalTimeRange;
+                            
+                            // Calculate bar position and width
+                            const barX = chartLeft + (chartWidth * Math.max(0, Math.min(1, startOffset)));
+                            const barEndX = chartLeft + (chartWidth * Math.max(0, Math.min(1, endOffset)));
+                            const barWidth = Math.max(0.05, barEndX - barX); // Minimum width for visibility
                             
                             // Draw task name on the left
                             scheduleSlide.addText(item.name, {
@@ -20603,9 +20920,9 @@ if (typeof window.app.showCreateTeamModal !== 'function') {
 function initializeApp() {
     if (document.readyState === 'loading') {
         // DOM is still loading, wait for DOMContentLoaded
-document.addEventListener('DOMContentLoaded', () => {
-    app.init();
-    app.setupCSVUpload();
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+            app.setupCSVUpload();
         });
     } else {
         // DOM is already loaded, initialize immediately
