@@ -20211,108 +20211,76 @@ const app = {
                 });
             }
             
-            // Card Sorting section - always show if modules exist
+            // Card Sorting section - each module gets its own slide (like product backlog)
             if (data.cardSortingModules && data.cardSortingModules.length > 0) {
-                const cardSortingSlide = pptx.addSlide();
-                cardSortingSlide.background = { color: colors.light };
-                cardSortingSlide.addShape(pptx.ShapeType.rect, {
-                    x: 0,
-                    y: 0,
-                    w: 10,
-                    h: 0.6,
-                    fill: { color: colors.warning },
-                    line: { color: colors.warning, width: 0 }
-                });
-                cardSortingSlide.addText('Card Sorting - Modules', {
-                    x: 0.5,
-                    y: 0.1,
-                    w: 9,
-                    h: 0.4,
-                    fontSize: 32,
-                    bold: true,
-                    color: 'FFFFFF',
-                    fontFace: 'Arial'
-                });
-                
-                let moduleY = 1;
-                let currentModuleSlide = cardSortingSlide;
-                
                 data.cardSortingModules.forEach((module, moduleIndex) => {
-                    if (moduleY > 5.5) {
-                        currentModuleSlide = pptx.addSlide();
-                        currentModuleSlide.background = { color: colors.light };
-                        currentModuleSlide.addShape(pptx.ShapeType.rect, {
-                            x: 0,
-                            y: 0,
-                            w: 10,
-                            h: 0.6,
-                            fill: { color: colors.warning },
-                            line: { color: colors.warning, width: 0 }
-                        });
-                        currentModuleSlide.addText('Card Sorting - Modules (continued)', {
-                            x: 0.5,
-                            y: 0.1,
-                            w: 9,
-                            h: 0.4,
-                            fontSize: 32,
-                            bold: true,
-                            color: 'FFFFFF',
-                            fontFace: 'Arial'
-                        });
-                        moduleY = 1;
-                    }
-                    
-                    // Module header
-                    currentModuleSlide.addShape(pptx.ShapeType.roundRect, {
-                        x: 0.5,
-                        y: moduleY,
-                        w: 9,
+                    // Create a new slide for each module - always start fresh at top
+                    const moduleSlide = pptx.addSlide();
+                    moduleSlide.background = { color: colors.light };
+                    moduleSlide.addShape(pptx.ShapeType.rect, {
+                        x: 0,
+                        y: 0,
+                        w: 10,
                         h: 0.6,
-                        fill: { color: 'FFFFFF' },
-                        line: { color: colors.warning, width: 2 },
-                        rectRadius: 0.1
+                        fill: { color: colors.warning },
+                        line: { color: colors.warning, width: 0 }
                     });
-                    currentModuleSlide.addText(`${moduleIndex + 1}. ${module.name}`, {
-                        x: 0.6,
-                        y: moduleY + 0.1,
-                        w: 8.8,
+                    moduleSlide.addText(`Module ${moduleIndex + 1}: ${module.name}`, {
+                        x: 0.5,
+                        y: 0.1,
+                        w: 9,
                         h: 0.4,
-                        fontSize: 22,
+                        fontSize: 28,
                         bold: true,
-                        color: colors.text,
+                        color: 'FFFFFF',
                         fontFace: 'Arial'
                     });
-                    moduleY += 0.7;
                     
+                    // Start module content at top of slide (after header)
+                    let moduleY = 1;
+                    
+                    // Module description
                     if (module.description) {
-                        currentModuleSlide.addText(module.description, {
-                            x: 0.8,
+                        moduleSlide.addShape(pptx.ShapeType.roundRect, {
+                            x: 0.5,
                             y: moduleY,
-                            w: 8.5,
+                            w: 9,
+                            h: 0.6,
+                            fill: { color: 'FFFFFF' },
+                            line: { color: colors.warning, width: 2 },
+                            rectRadius: 0.1
+                        });
+                        moduleSlide.addText(module.description, {
+                            x: 0.6,
+                            y: moduleY + 0.1,
+                            w: 8.8,
                             h: 0.4,
                             fontSize: 14,
-                            color: colors.textLight,
+                            color: colors.text,
                             fontFace: 'Arial'
                         });
-                        moduleY += 0.5;
+                        moduleY += 0.8;
                     }
                     
                     // Tasks in module
                     if (module.backlogs && module.backlogs.length > 0) {
-                        currentModuleSlide.addText(`Tasks (${module.backlogs.length}):`, {
-                            x: 0.8,
+                        moduleSlide.addText('Tasks:', {
+                            x: 0.5,
                             y: moduleY,
-                            w: 8.5,
+                            w: 9,
                             h: 0.3,
-                            fontSize: 14,
+                            fontSize: 16,
                             bold: true,
-                            color: colors.textLight,
+                            color: colors.primary,
                             fontFace: 'Arial'
                         });
                         moduleY += 0.4;
                         
+                        let currentModuleSlide = moduleSlide;
                         module.backlogs.forEach((backlog, backlogIndex) => {
-                            if (moduleY > 5.5) {
+                            // Check if item will fit - use more of the slide (up to 6.5)
+                            if (moduleY > 6.5) {
+                                // Create new slide for tasks - start from top
                                 currentModuleSlide = pptx.addSlide();
                                 currentModuleSlide.background = { color: colors.light };
                                 currentModuleSlide.addShape(pptx.ShapeType.rect, {
@@ -20333,7 +20301,7 @@ const app = {
                                     color: 'FFFFFF',
                                     fontFace: 'Arial'
                                 });
-                                moduleY = 1;
+                                moduleY = 1; // Start from top
                             }
                             
                             currentModuleSlide.addShape(pptx.ShapeType.roundRect, {
@@ -20357,8 +20325,6 @@ const app = {
                             moduleY += 0.6;
                         });
                     }
-                    
-                    moduleY += 0.3;
                 });
             }
             
