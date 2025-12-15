@@ -94,12 +94,56 @@ const app = {
     allProgressStudents: null,
     currentEditingMembers: [],
     isCreatingGuide: false,
+    // Cache for frequently accessed Firebase documents
+    _cache: {
+        settings: null,
+        settingsTimestamp: null,
+        userData: null,
+        userDataTimestamp: null,
+        cacheTimeout: 30000 // 30 seconds cache
+    },
     timer: {
         duration: 20 * 60, // 20 minutes (1200 seconds)
         remaining: 20 * 60,
         interval: null,
         isRunning: false,
         isPaused: false
+    },
+    // Cache for frequently accessed Firebase documents
+    _cache: {
+        settings: {},
+        settingsTimestamps: {},
+        cacheTimeout: 30000 // 30 seconds cache
+    },
+    
+    // Helper function to get cached settings
+    async getCachedSettings(settingsId = 'miniproject') {
+        const now = Date.now();
+        const cached = this._cache.settings[settingsId];
+        const timestamp = this._cache.settingsTimestamps[settingsId];
+        
+        // Return cached if still valid
+        if (cached && timestamp && (now - timestamp) < this._cache.cacheTimeout) {
+            return cached;
+        }
+        
+        // Fetch fresh data
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', settingsId));
+            const data = settingsDoc.exists() ? settingsDoc.data() : null;
+            this._cache.settings[settingsId] = data;
+            this._cache.settingsTimestamps[settingsId] = now;
+            return data;
+        } catch (error) {
+            console.error(`Error loading settings ${settingsId}:`, error);
+            return cached || null; // Return cached data if available, even if expired
+        }
+    },
+    
+    // Clear settings cache (call after updates)
+    clearSettingsCache(settingsId = 'miniproject') {
+        delete this._cache.settings[settingsId];
+        delete this._cache.settingsTimestamps[settingsId];
     },
     
     init: function() {
@@ -3686,6 +3730,9 @@ const app = {
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
+            // Clear cache after update
+            this.clearSettingsCache('miniproject');
+            
             await this.updateMiniProjectVisibility();
             alert(enabled ? 'Mini Project module enabled!' : 'Mini Project module disabled!');
         } catch (error) {
@@ -3963,8 +4010,9 @@ const app = {
     
     async loadEvaluationStages() {
         try {
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            // Use cached settings
+            const settingsData = await this.getCachedSettings('miniproject');
+            const stages = settingsData ? (settingsData.evaluationStages || []) : [];
             
             const container = document.getElementById('evaluation-stages-list');
             if (!container) return;
@@ -4376,6 +4424,9 @@ const app = {
                 await updateDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
                     evaluationStages: stages
                 });
+                
+                // Clear cache after update
+                this.clearSettingsCache('miniproject');
             }
         } catch (error) {
             console.error('Error toggling PPT requirement:', error);
@@ -5052,9 +5103,9 @@ const app = {
         if (!container) return;
         
         try {
-            // Load evaluation stages
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            // Load evaluation stages (using cache)
+            const settingsData = await this.getCachedSettings('miniproject');
+            const stages = settingsData ? (settingsData.evaluationStages || []) : [];
             
             // Get guide's email to match teams
             const guideEmail = this.currentUser.email;
@@ -5083,42 +5134,105 @@ const app = {
                 }
             });
             
-            // Load evaluation data and approved problem statements for all teams
-            const teamsWithEvaluations = await Promise.all(teams.map(async (team) => {
-                const evaluations = {};
+            // OPTIMIZATION: Batch all Firebase reads
+            // 1. Batch all evaluation document reads
+            const evaluationDocRefs = [];
+            const evaluationMap = new Map(); // Map: "teamId_stageIndex" -> team/stage info
+            teams.forEach(team => {
                 for (let i = 0; i < stages.length; i++) {
-                    try {
-                        const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${i}`));
-                        if (evalDoc.exists()) {
-                            evaluations[i] = evalDoc.data();
+                    const docId = `${team.id}_${i}`;
+                    evaluationDocRefs.push(doc(window.firebaseDb, 'evaluations', docId));
+                    evaluationMap.set(docId, { teamId: team.id, stageIndex: i, team });
+                }
+            });
+            
+            // Batch read all evaluation documents at once
+            const evaluationDocs = await Promise.all(
+                evaluationDocRefs.map(ref => getDoc(ref).catch(err => {
+                    console.error(`Error loading evaluation ${ref.id}:`, err);
+                    return null;
+                }))
+            );
+            
+            // 2. Batch load all approved problem statements in one query
+            const teamIds = teams.map(t => t.id);
+            let problemStatementsMap = new Map();
+            try {
+                // Query all approved problem statements for all teams at once
+                // Note: Firestore 'in' query limit is 10, so we need to batch if more than 10 teams
+                if (teamIds.length > 0) {
+                    if (teamIds.length <= 10) {
+                        // Single query if 10 or fewer teams
+                        const problemStatementsQuery = query(
+                            collection(window.firebaseDb, 'problemStatements'),
+                            where('teamId', 'in', teamIds),
+                            where('approved', '==', true)
+                        );
+                        const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
+                        problemStatementsSnapshot.forEach(doc => {
+                            const data = doc.data();
+                            const teamId = data.teamId;
+                            if (!problemStatementsMap.has(teamId)) {
+                                problemStatementsMap.set(teamId, {
+                                    id: doc.id,
+                                    ...data
+                                });
+                            }
+                        });
+                    } else {
+                        // Batch queries if more than 10 teams (Firestore 'in' limit is 10)
+                        const batches = [];
+                        for (let i = 0; i < teamIds.length; i += 10) {
+                            batches.push(teamIds.slice(i, i + 10));
                         }
-                    } catch (error) {
-                        console.error(`Error loading evaluation for team ${team.id}, stage ${i}:`, error);
+                        const problemStatementsResults = await Promise.all(
+                            batches.map(batch => {
+                                const problemStatementsQuery = query(
+                                    collection(window.firebaseDb, 'problemStatements'),
+                                    where('teamId', 'in', batch),
+                                    where('approved', '==', true)
+                                );
+                                return getDocs(problemStatementsQuery);
+                            })
+                        );
+                        problemStatementsResults.forEach(snapshot => {
+                            snapshot.forEach(doc => {
+                                const data = doc.data();
+                                const teamId = data.teamId;
+                                if (!problemStatementsMap.has(teamId)) {
+                                    problemStatementsMap.set(teamId, {
+                                        id: doc.id,
+                                        ...data
+                                    });
+                                }
+                            });
+                        });
                     }
                 }
-                
-                // Load approved problem statement for this team
-                let approvedProblemStatement = null;
-                try {
-                    const problemStatementsQuery = query(
-                        collection(window.firebaseDb, 'problemStatements'),
-                        where('teamId', '==', team.id),
-                        where('approved', '==', true)
-                    );
-                    const problemStatementsSnapshot = await getDocs(problemStatementsQuery);
-                    if (!problemStatementsSnapshot.empty) {
-                        // Get the first approved problem statement
-                        const approvedPS = problemStatementsSnapshot.docs[0];
-                        approvedProblemStatement = {
-                            id: approvedPS.id,
-                            ...approvedPS.data()
-                        };
+            } catch (error) {
+                console.error('Error loading problem statements:', error);
+            }
+            
+            // Process results and group by team
+            const evaluationsByTeam = new Map();
+            evaluationDocs.forEach((evalDoc, index) => {
+                if (evalDoc && evalDoc.exists()) {
+                    const docId = evaluationDocRefs[index].id;
+                    const info = evaluationMap.get(docId);
+                    if (info) {
+                        if (!evaluationsByTeam.has(info.teamId)) {
+                            evaluationsByTeam.set(info.teamId, {});
+                        }
+                        evaluationsByTeam.get(info.teamId)[info.stageIndex] = evalDoc.data();
                     }
-                } catch (error) {
-                    console.error(`Error loading approved problem statement for team ${team.id}:`, error);
                 }
-                
-                return { ...team, evaluations, approvedProblemStatement };
+            });
+            
+            // Combine teams with their evaluations and problem statements
+            const teamsWithEvaluations = teams.map(team => ({
+                ...team,
+                evaluations: evaluationsByTeam.get(team.id) || {},
+                approvedProblemStatement: problemStatementsMap.get(team.id) || null
             }));
             
             // Update stats
@@ -8109,9 +8223,40 @@ const app = {
     aggregateEvaluationMarks(allEvalData, studentUserId, studentKtuid) {
         if (!allEvalData || allEvalData.length === 0) return null;
         
-        // If only one evaluation, return it as-is
+        // If only one evaluation, recalculate marks from marksData to ensure correctness
+        // This fixes cases where marks were incorrectly calculated (e.g., divided by number of evaluators)
         if (allEvalData.length === 1) {
-            return allEvalData[0];
+            const singleEval = allEvalData[0];
+            const recalculatedEval = JSON.parse(JSON.stringify(singleEval)); // Deep copy
+            
+            // Recalculate individual evaluation marks from marksData
+            if (recalculatedEval.individualEvaluations) {
+                Object.keys(recalculatedEval.individualEvaluations).forEach(userId => {
+                    const individualEval = recalculatedEval.individualEvaluations[userId];
+                    if (individualEval.marksData && typeof individualEval.marksData === 'object') {
+                        // Recalculate total from marksData (sum of all parameter values)
+                        // This ensures the total is correct even if it was incorrectly calculated before
+                        const totalFromMarksData = Object.values(individualEval.marksData)
+                            .filter(v => v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v)) && parseFloat(v) > 0)
+                            .reduce((sum, v) => sum + parseFloat(v), 0);
+                        if (totalFromMarksData > 0) {
+                            individualEval.marks = totalFromMarksData;
+                        }
+                    }
+                });
+            }
+            
+            // Recalculate team marks from teamMarksData if available
+            if (recalculatedEval.teamMarksData && typeof recalculatedEval.teamMarksData === 'object') {
+                const totalFromTeamMarksData = Object.values(recalculatedEval.teamMarksData)
+                    .filter(v => v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v)) && parseFloat(v) > 0)
+                    .reduce((sum, v) => sum + parseFloat(v), 0);
+                if (totalFromTeamMarksData > 0) {
+                    recalculatedEval.teamMarks = totalFromTeamMarksData;
+                }
+            }
+            
+            return recalculatedEval;
         }
         
         // Aggregate team marks (average only from evaluators who entered marks)
@@ -8124,14 +8269,19 @@ const app = {
         const individualEvaluationsMap = {};
         
         allEvalData.forEach(evalData => {
-            // Aggregate team marks - only include if evaluator entered marks
-            if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
-                teamMarksValues.push(parseFloat(evalData.teamMarks) || 0);
+            // Aggregate team marks - only include if evaluator entered marks > 0
+            if (evalData.teamMarks !== null && evalData.teamMarks !== undefined && parseFloat(evalData.teamMarks) > 0) {
+                teamMarksValues.push(parseFloat(evalData.teamMarks));
             }
             
-            // Aggregate team marks data (parameter-based)
-            if (evalData.teamMarksData) {
-                teamMarksDataValues.push(evalData.teamMarksData);
+            // Aggregate team marks data (parameter-based) - only if it has actual values
+            if (evalData.teamMarksData && typeof evalData.teamMarksData === 'object') {
+                const hasTeamMarksData = Object.values(evalData.teamMarksData).some(v => 
+                    v !== null && v !== undefined && !isNaN(parseFloat(v)) && parseFloat(v) > 0
+                );
+                if (hasTeamMarksData) {
+                    teamMarksDataValues.push(evalData.teamMarksData);
+                }
             }
             
             // Get team comments (use the first non-empty one or combine them)
@@ -8148,41 +8298,98 @@ const app = {
                 Object.keys(evalData.individualEvaluations).forEach(userId => {
                     const individualEval = evalData.individualEvaluations[userId];
                     
-                    // Only include if evaluator actually entered marks (not null/undefined/0 when absent)
-                    if (individualEval.marks !== null && individualEval.marks !== undefined && !individualEval.isAbsent) {
-                        if (!individualEvaluationsMap[userId]) {
-                            individualEvaluationsMap[userId] = {
-                                marks: [],
-                                marksData: [],
-                                comments: [],
-                                studentName: individualEval.studentName,
-                                ktuid: individualEval.ktuid,
-                                isAbsent: individualEval.isAbsent || false
-                            };
+                    // Check if evaluator has marks or marksData (not just comments)
+                    // Be very strict - only count if there are actual numeric values > 0
+                    const hasMarks = individualEval.marks !== null && 
+                                     individualEval.marks !== undefined && 
+                                     !individualEval.isAbsent && 
+                                     parseFloat(individualEval.marks) > 0;
+                    
+                    // Check marksData - must have at least one parameter with value > 0
+                    let hasMarksData = false;
+                    let validMarksDataEntries = 0;
+                    if (individualEval.marksData && typeof individualEval.marksData === 'object') {
+                        const marksDataKeys = Object.keys(individualEval.marksData);
+                        if (marksDataKeys.length > 0) {
+                            // Count how many parameters have actual values > 0
+                            validMarksDataEntries = marksDataKeys.filter(key => {
+                                const value = individualEval.marksData[key];
+                                return value !== null && 
+                                       value !== undefined && 
+                                       value !== '' &&
+                                       !isNaN(parseFloat(value)) && 
+                                       parseFloat(value) > 0;
+                            }).length;
+                            hasMarksData = validMarksDataEntries > 0;
+                        }
+                    }
+                    
+                    // Initialize the map entry if it doesn't exist (for comments)
+                    if (!individualEvaluationsMap[userId]) {
+                        individualEvaluationsMap[userId] = {
+                            marks: [],
+                            marksData: [],
+                            comments: [],
+                            studentName: individualEval.studentName,
+                            ktuid: individualEval.ktuid,
+                            isAbsent: individualEval.isAbsent || false
+                        };
+                    }
+                    
+                    // Handle absent status
+                    if (individualEval.isAbsent) {
+                        individualEvaluationsMap[userId].isAbsent = true;
+                    }
+                    
+                    // CRITICAL: Only include marks/marksData in aggregation if evaluator actually entered marks
+                    // This ensures evaluators who only added comments are NOT counted in the average
+                    // Evaluators must have either hasMarks OR hasMarksData to be included in mark calculations
+                    if (hasMarks || hasMarksData) {
+                        // Only add marks if they exist and are > 0
+                        if (hasMarks) {
+                            individualEvaluationsMap[userId].marks.push(parseFloat(individualEval.marks));
                         }
                         
-                        individualEvaluationsMap[userId].marks.push(parseFloat(individualEval.marks) || 0);
-                        
-                        if (individualEval.marksData) {
-                            individualEvaluationsMap[userId].marksData.push(individualEval.marksData);
+                        // Only add marksData if it has actual values > 0
+                        if (hasMarksData && validMarksDataEntries > 0) {
+                            // Filter out any zero/null/empty values from marksData before adding
+                            // This ensures only evaluators who actually entered marks are included
+                            const filteredMarksData = {};
+                            Object.keys(individualEval.marksData).forEach(key => {
+                                const value = individualEval.marksData[key];
+                                // Only include if value is a valid number > 0
+                                if (value !== null && 
+                                    value !== undefined && 
+                                    value !== '' &&
+                                    !isNaN(parseFloat(value)) && 
+                                    parseFloat(value) > 0) {
+                                    filteredMarksData[key] = parseFloat(value);
+                                }
+                            });
+                            
+                            // Double-check: Only add if we have at least one parameter with a value > 0
+                            // This prevents empty objects from being added to the array
+                            const hasValidValues = Object.keys(filteredMarksData).length > 0 && 
+                                                  Object.values(filteredMarksData).some(v => parseFloat(v) > 0);
+                            if (hasValidValues) {
+                                individualEvaluationsMap[userId].marksData.push(filteredMarksData);
+                            }
                         }
-                        
-                        if (individualEval.comments && individualEval.comments.trim()) {
+                    }
+                    
+                    // CRITICAL: Always include comments from ALL evaluators
+                    // This includes evaluators who only added comments (no marks)
+                    // Comments should be displayed even if evaluator didn't enter marks
+                    if (individualEval.comments) {
+                        const commentText = typeof individualEval.comments === 'string' 
+                            ? individualEval.comments.trim() 
+                            : '';
+                        // Include comments even if they're just HTML tags (from Quill editor)
+                        if (commentText && 
+                            commentText !== '<p><br></p>' && 
+                            commentText !== '<p></p>' && 
+                            commentText !== '<br>') {
                             individualEvaluationsMap[userId].comments.push(individualEval.comments);
-                        }
-                    } else if (individualEval.isAbsent) {
-                        // Mark as absent if any evaluator marked as absent
-                        if (!individualEvaluationsMap[userId]) {
-                            individualEvaluationsMap[userId] = {
-                                marks: [],
-                                marksData: [],
-                                comments: [],
-                                studentName: individualEval.studentName,
-                                ktuid: individualEval.ktuid,
-                                isAbsent: true
-                            };
-                        } else {
-                            individualEvaluationsMap[userId].isAbsent = true;
                         }
                     }
                 });
@@ -8204,61 +8411,116 @@ const app = {
             paramNames.forEach(paramName => {
                 const paramValues = [];
                 teamMarksDataValues.forEach(data => {
-                    if (data[paramName] !== null && data[paramName] !== undefined) {
-                        paramValues.push(parseFloat(data[paramName]) || 0);
+                    // Only include if value is > 0 (exclude zeros and nulls)
+                    const value = data[paramName];
+                    if (value !== null && value !== undefined && !isNaN(parseFloat(value)) && parseFloat(value) > 0) {
+                        paramValues.push(parseFloat(value));
                     }
                 });
                 
+                // Only average if we have values from evaluators who actually entered marks
                 if (paramValues.length > 0) {
                     teamMarksData[paramName] = paramValues.reduce((sum, v) => sum + v, 0) / paramValues.length;
                 }
             });
         }
         
-        // Calculate average individual marks for each student
-        const aggregatedIndividualEvaluations = {};
-        Object.keys(individualEvaluationsMap).forEach(userId => {
-            const studentData = individualEvaluationsMap[userId];
-            
-            // Calculate average marks (only from evaluators who entered marks)
-            const avgMarks = studentData.marks.length > 0
-                ? studentData.marks.reduce((sum, m) => sum + m, 0) / studentData.marks.length
-                : 0;
-            
-            // Aggregate marks data (average parameter values)
-            const aggregatedMarksData = {};
-            if (studentData.marksData.length > 0) {
-                const paramNames = new Set();
-                studentData.marksData.forEach(data => {
-                    Object.keys(data).forEach(param => paramNames.add(param));
+            // Calculate average individual marks for each student
+            const aggregatedIndividualEvaluations = {};
+            Object.keys(individualEvaluationsMap).forEach(userId => {
+                const studentData = individualEvaluationsMap[userId];
+                
+                // Aggregate marks data (average parameter values) - only from evaluators who entered marks
+                const aggregatedMarksData = {};
+                let totalFromMarksData = 0;
+                
+                // Only process marksData if we have entries from evaluators who actually entered marks
+                // Filter out any empty marksData objects first - be very strict
+                const validMarksData = studentData.marksData.filter(data => {
+                    if (!data || typeof data !== 'object') return false;
+                    const keys = Object.keys(data);
+                    if (keys.length === 0) return false;
+                    // Must have at least one parameter with a value > 0
+                    const hasValidValue = keys.some(key => {
+                        const value = data[key];
+                        return value !== null && 
+                               value !== undefined && 
+                               value !== '' &&
+                               !isNaN(parseFloat(value)) && 
+                               parseFloat(value) > 0;
+                    });
+                    return hasValidValue;
                 });
                 
-                paramNames.forEach(paramName => {
-                    const paramValues = [];
-                    studentData.marksData.forEach(data => {
-                        if (data[paramName] !== null && data[paramName] !== undefined) {
-                            paramValues.push(parseFloat(data[paramName]) || 0);
-                        }
+                if (validMarksData.length > 0) {
+                    // Collect all parameter names from valid marksData entries only
+                    const paramNames = new Set();
+                    validMarksData.forEach(data => {
+                        Object.keys(data).forEach(param => {
+                            // Only include parameters that have actual values > 0
+                            if (data[param] !== null && data[param] !== undefined && parseFloat(data[param]) > 0) {
+                                paramNames.add(param);
+                            }
+                        });
                     });
                     
-                    if (paramValues.length > 0) {
-                        aggregatedMarksData[paramName] = paramValues.reduce((sum, v) => sum + v, 0) / paramValues.length;
-                    }
-                });
-            }
-            
-            // Combine comments
-            const combinedComments = studentData.comments.join('\n\n');
-            
-            aggregatedIndividualEvaluations[userId] = {
-                marks: studentData.isAbsent ? 0 : avgMarks,
-                marksData: Object.keys(aggregatedMarksData).length > 0 ? aggregatedMarksData : undefined,
-                comments: combinedComments || '',
-                studentName: studentData.studentName,
-                ktuid: studentData.ktuid,
-                isAbsent: studentData.isAbsent
-            };
-        });
+                    paramNames.forEach(paramName => {
+                        const paramValues = [];
+                        // Only iterate through valid marksData entries (those with actual marks)
+                        validMarksData.forEach(data => {
+                            // Only include if the value is actually set (not null/undefined/0 when no marks entered)
+                            const value = data[paramName];
+                            if (value !== null && value !== undefined && parseFloat(value) > 0) {
+                                paramValues.push(parseFloat(value));
+                            }
+                        });
+                        
+                        // Only average if we have values from evaluators who actually entered marks
+                        // The denominator (paramValues.length) will only count evaluators who entered marks for this parameter
+                        // This ensures evaluators who only added comments are NOT included in the average
+                        if (paramValues.length > 0) {
+                            aggregatedMarksData[paramName] = paramValues.reduce((sum, v) => sum + v, 0) / paramValues.length;
+                            totalFromMarksData += aggregatedMarksData[paramName];
+                        }
+                    });
+                }
+                
+                // Calculate average marks (only from evaluators who entered marks)
+                // Only count evaluators who actually provided marks, not those who only added comments
+                let avgMarks = 0;
+                if (studentData.marks.length > 0) {
+                    // Average only from evaluators who entered marks
+                    avgMarks = studentData.marks.reduce((sum, m) => sum + m, 0) / studentData.marks.length;
+                }
+                
+                // CRITICAL FIX: If we have aggregated marksData, use the SUM of averaged parameters
+                // NOT the average of totals. This ensures correct calculation when only some evaluators entered marks.
+                // Example: If 1 evaluator gave Presentation:5, Q&A:5, total should be 10 (not 5)
+                if (totalFromMarksData > 0) {
+                    // totalFromMarksData is already the sum of averaged parameters
+                    // This is correct - it's the sum of (average of each parameter)
+                    avgMarks = totalFromMarksData;
+                } else if (studentData.marks.length > 0) {
+                    // If no marksData but we have total marks, average those
+                    // But only count evaluators who actually entered marks
+                    avgMarks = studentData.marks.reduce((sum, m) => sum + m, 0) / studentData.marks.length;
+                }
+                
+                // Combine comments (from ALL evaluators, including those who only added comments)
+                // This ensures comments are always displayed, even if evaluator didn't enter marks
+                const combinedComments = studentData.comments.filter(c => c && c.trim()).join('\n\n');
+                
+                // Always include in final result if student has marks OR comments
+                // This ensures students with only comments still appear, but with marks = 0
+                aggregatedIndividualEvaluations[userId] = {
+                    marks: studentData.isAbsent ? 0 : avgMarks,
+                    marksData: Object.keys(aggregatedMarksData).length > 0 ? aggregatedMarksData : undefined,
+                    comments: combinedComments || '',
+                    studentName: studentData.studentName,
+                    ktuid: studentData.ktuid,
+                    isAbsent: studentData.isAbsent
+                };
+            });
         
         // Build aggregated evaluation data
         const aggregatedData = {
@@ -8333,54 +8595,59 @@ const app = {
                 return;
             }
             
-            // Load evaluation stages
-            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
-            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            // Load evaluation stages (using cache)
+            const settingsData = await this.getCachedSettings('miniproject');
+            const stages = settingsData ? (settingsData.evaluationStages || []) : [];
             
-            // Load all evaluations for this team
-            // Query all evaluation documents that might exist for this team (in case multiple evaluators created separate docs)
+            // Get student's individual evaluation data (studentKtuid already declared above)
+            const studentUserId = this.currentUser.uid;
+            
+            // OPTIMIZATION: Batch load all evaluation documents at once
+            const evaluationDocRefs = stages.map((_, i) => 
+                doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`)
+            );
+            
+            // Batch read all evaluation documents in parallel
+            const evaluationDocs = await Promise.all(
+                evaluationDocRefs.map(ref => 
+                    getDoc(ref).catch(err => {
+                        console.error(`Error loading evaluation ${ref.id}:`, err);
+                        return null;
+                    })
+                )
+            );
+            
+            // Process evaluation documents
             const evaluations = {};
             for (let i = 0; i < stages.length; i++) {
-                try {
-                    // First, try to query for all evaluation documents for this team+stage
-                    // (in case evaluations are stored per evaluator with teamId and stageIndex fields)
-                    let allEvalData = [];
+                const evalDoc = evaluationDocs[i];
+                if (evalDoc && evalDoc.exists()) {
+                    const evalData = evalDoc.data();
+                    // Check if there are multiple evaluation documents by querying
+                    let allEvalData = [evalData];
+                    
                     try {
+                        // Try to query for additional evaluation documents (in case stored per evaluator)
                         const evalQuery = query(
                             collection(window.firebaseDb, 'evaluations'),
                             where('teamId', '==', studentTeam.id),
                             where('stageIndex', '==', i)
                         );
                         const evalSnapshot = await getDocs(evalQuery);
-                        if (evalSnapshot.docs.length > 0) {
+                        if (evalSnapshot.docs.length > 1) {
+                            // Multiple documents found, aggregate them
                             allEvalData = evalSnapshot.docs.map(doc => doc.data());
+                            evaluations[i] = this.aggregateEvaluationMarks(allEvalData, studentUserId, studentKtuid);
+                        } else {
+                            // Single document, use it directly
+                            evaluations[i] = evalData;
                         }
                     } catch (queryError) {
-                        // Query might fail if there's no index or if evaluations don't have teamId/stageIndex fields
-                        // Fall back to single document approach
-                        console.log('Query approach failed, trying single document');
+                        // Query failed (no index or fields don't exist), use single document
+                        evaluations[i] = evalData;
                     }
-                    
-                    // If no documents found via query, try the single document approach
-                    if (allEvalData.length === 0) {
-                        const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
-                        if (evalDoc.exists()) {
-                            allEvalData = [evalDoc.data()];
-                        }
-                    }
-                    
-                    // Aggregate marks from all evaluators (only count those who entered marks)
-                    if (allEvalData.length > 0) {
-                        evaluations[i] = this.aggregateEvaluationMarks(allEvalData, studentUserId, studentKtuid);
-                    }
-                } catch (error) {
-                    console.error(`Error loading evaluation for stage ${i}:`, error);
                 }
             }
-            
-            // Get student's individual evaluation data
-            // studentKtuid already declared above
-            const studentUserId = this.currentUser.uid;
             
             // Store team ID for problem statements
             this.currentStudentTeamId = studentTeam.id;
@@ -8573,7 +8840,10 @@ const app = {
                                                                 </div>
                                                             </div>
                                                         ` : ''}
-                                                        ${studentEval?.comments ? `
+                                                        ${studentEval?.comments && studentEval.comments.trim() && 
+                                                          studentEval.comments.trim() !== '<p><br></p>' && 
+                                                          studentEval.comments.trim() !== '<p></p>' && 
+                                                          studentEval.comments.trim() !== '<br>' ? `
                                                             <div class="comments-section">
                                                                 <div class="comments-label"><i class="fas fa-comment"></i> Individual Comments</div>
                                                                 <div class="comments-text formatted-content">${studentEval.comments}</div>
@@ -10643,44 +10913,66 @@ const app = {
             const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
             const teamsSnapshot = await getDocs(teamsQuery);
             
-            const teams = [];
-            for (const teamDoc of teamsSnapshot.docs) {
+            // OPTIMIZATION: Batch all Firebase reads instead of individual queries per team
+            const validTeams = [];
+            const teamIds = [];
+            teamsSnapshot.forEach(teamDoc => {
                 const team = { id: teamDoc.id, ...teamDoc.data() };
-                if (team.deleted) continue;
-                
-                // Load project planning status
-                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
-                const planningData = planningDoc.exists() ? planningDoc.data() : null;
-                
-                // Count users and user stories
-                const usersQuery = query(
-                    collection(window.firebaseDb, 'projectUsers'),
-                    where('teamId', '==', team.id)
-                );
-                const usersSnapshot = await getDocs(usersQuery);
-                const usersCount = usersSnapshot.size;
-                
-                const storiesQuery = query(
-                    collection(window.firebaseDb, 'userStories'),
-                    where('teamId', '==', team.id)
-                );
-                const storiesSnapshot = await getDocs(storiesQuery);
-                const storiesCount = storiesSnapshot.size;
-                
-                // Count product backlog
-                const backlogQuery = query(
-                    collection(window.firebaseDb, 'productBacklog'),
-                    where('teamId', '==', team.id)
-                );
-                const backlogSnapshot = await getDocs(backlogQuery);
-                const backlogCount = backlogSnapshot.size;
-                
-                team.planningData = planningData;
-                team.usersCount = usersCount;
-                team.storiesCount = storiesCount;
-                team.backlogCount = backlogCount;
-                teams.push(team);
-            }
+                if (!team.deleted) {
+                    validTeams.push(team);
+                    teamIds.push(team.id);
+                }
+            });
+            
+            // Batch load all project planning documents at once
+            const planningDocRefs = teamIds.map(id => doc(window.firebaseDb, 'projectPlanning', id));
+            const planningDocs = await Promise.all(
+                planningDocRefs.map(ref => getDoc(ref).catch(() => null))
+            );
+            const planningDataMap = new Map();
+            planningDocs.forEach((doc, index) => {
+                if (doc && doc.exists()) {
+                    planningDataMap.set(teamIds[index], doc.data());
+                }
+            });
+            
+            // Batch load all users, stories, and backlog counts
+            // Use Promise.all to query all teams' data in parallel
+            const [usersSnapshots, storiesSnapshots, backlogSnapshots] = await Promise.all([
+                // Load all users for all teams
+                Promise.all(teamIds.map(teamId => {
+                    const usersQuery = query(
+                        collection(window.firebaseDb, 'projectUsers'),
+                        where('teamId', '==', teamId)
+                    );
+                    return getDocs(usersQuery).catch(() => ({ size: 0, docs: [] }));
+                })),
+                // Load all user stories for all teams
+                Promise.all(teamIds.map(teamId => {
+                    const storiesQuery = query(
+                        collection(window.firebaseDb, 'userStories'),
+                        where('teamId', '==', teamId)
+                    );
+                    return getDocs(storiesQuery).catch(() => ({ size: 0, docs: [] }));
+                })),
+                // Load all product backlog for all teams
+                Promise.all(teamIds.map(teamId => {
+                    const backlogQuery = query(
+                        collection(window.firebaseDb, 'productBacklog'),
+                        where('teamId', '==', teamId)
+                    );
+                    return getDocs(backlogQuery).catch(() => ({ size: 0, docs: [] }));
+                }))
+            ]);
+            
+            // Combine all data
+            const teams = validTeams.map((team, index) => {
+                team.planningData = planningDataMap.get(team.id) || null;
+                team.usersCount = usersSnapshots[index]?.size || 0;
+                team.storiesCount = storiesSnapshots[index]?.size || 0;
+                team.backlogCount = backlogSnapshots[index]?.size || 0;
+                return team;
+            });
             
             if (teams.length === 0) {
                 container.innerHTML = '<p class="empty-state">No teams found.</p>';
