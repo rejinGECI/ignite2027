@@ -8104,6 +8104,183 @@ const app = {
         return tmp.textContent || tmp.innerText || '';
     },
     
+    // Aggregate evaluation marks from multiple evaluators
+    // Only includes evaluators who actually entered marks
+    aggregateEvaluationMarks(allEvalData, studentUserId, studentKtuid) {
+        if (!allEvalData || allEvalData.length === 0) return null;
+        
+        // If only one evaluation, return it as-is
+        if (allEvalData.length === 1) {
+            return allEvalData[0];
+        }
+        
+        // Aggregate team marks (average only from evaluators who entered marks)
+        const teamMarksValues = [];
+        const teamMarksDataValues = [];
+        let teamComments = '';
+        let teamMarksData = {};
+        
+        // Aggregate individual evaluations
+        const individualEvaluationsMap = {};
+        
+        allEvalData.forEach(evalData => {
+            // Aggregate team marks - only include if evaluator entered marks
+            if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+                teamMarksValues.push(parseFloat(evalData.teamMarks) || 0);
+            }
+            
+            // Aggregate team marks data (parameter-based)
+            if (evalData.teamMarksData) {
+                teamMarksDataValues.push(evalData.teamMarksData);
+            }
+            
+            // Get team comments (use the first non-empty one or combine them)
+            if (evalData.teamComments && evalData.teamComments.trim()) {
+                if (!teamComments) {
+                    teamComments = evalData.teamComments;
+                } else {
+                    teamComments += '\n\n' + evalData.teamComments;
+                }
+            }
+            
+            // Aggregate individual evaluations
+            if (evalData.individualEvaluations) {
+                Object.keys(evalData.individualEvaluations).forEach(userId => {
+                    const individualEval = evalData.individualEvaluations[userId];
+                    
+                    // Only include if evaluator actually entered marks (not null/undefined/0 when absent)
+                    if (individualEval.marks !== null && individualEval.marks !== undefined && !individualEval.isAbsent) {
+                        if (!individualEvaluationsMap[userId]) {
+                            individualEvaluationsMap[userId] = {
+                                marks: [],
+                                marksData: [],
+                                comments: [],
+                                studentName: individualEval.studentName,
+                                ktuid: individualEval.ktuid,
+                                isAbsent: individualEval.isAbsent || false
+                            };
+                        }
+                        
+                        individualEvaluationsMap[userId].marks.push(parseFloat(individualEval.marks) || 0);
+                        
+                        if (individualEval.marksData) {
+                            individualEvaluationsMap[userId].marksData.push(individualEval.marksData);
+                        }
+                        
+                        if (individualEval.comments && individualEval.comments.trim()) {
+                            individualEvaluationsMap[userId].comments.push(individualEval.comments);
+                        }
+                    } else if (individualEval.isAbsent) {
+                        // Mark as absent if any evaluator marked as absent
+                        if (!individualEvaluationsMap[userId]) {
+                            individualEvaluationsMap[userId] = {
+                                marks: [],
+                                marksData: [],
+                                comments: [],
+                                studentName: individualEval.studentName,
+                                ktuid: individualEval.ktuid,
+                                isAbsent: true
+                            };
+                        } else {
+                            individualEvaluationsMap[userId].isAbsent = true;
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Calculate average team marks (only from evaluators who entered marks)
+        const avgTeamMarks = teamMarksValues.length > 0 
+            ? teamMarksValues.reduce((sum, m) => sum + m, 0) / teamMarksValues.length 
+            : null;
+        
+        // Aggregate team marks data (average parameter values)
+        if (teamMarksDataValues.length > 0) {
+            const paramNames = new Set();
+            teamMarksDataValues.forEach(data => {
+                Object.keys(data).forEach(param => paramNames.add(param));
+            });
+            
+            paramNames.forEach(paramName => {
+                const paramValues = [];
+                teamMarksDataValues.forEach(data => {
+                    if (data[paramName] !== null && data[paramName] !== undefined) {
+                        paramValues.push(parseFloat(data[paramName]) || 0);
+                    }
+                });
+                
+                if (paramValues.length > 0) {
+                    teamMarksData[paramName] = paramValues.reduce((sum, v) => sum + v, 0) / paramValues.length;
+                }
+            });
+        }
+        
+        // Calculate average individual marks for each student
+        const aggregatedIndividualEvaluations = {};
+        Object.keys(individualEvaluationsMap).forEach(userId => {
+            const studentData = individualEvaluationsMap[userId];
+            
+            // Calculate average marks (only from evaluators who entered marks)
+            const avgMarks = studentData.marks.length > 0
+                ? studentData.marks.reduce((sum, m) => sum + m, 0) / studentData.marks.length
+                : 0;
+            
+            // Aggregate marks data (average parameter values)
+            const aggregatedMarksData = {};
+            if (studentData.marksData.length > 0) {
+                const paramNames = new Set();
+                studentData.marksData.forEach(data => {
+                    Object.keys(data).forEach(param => paramNames.add(param));
+                });
+                
+                paramNames.forEach(paramName => {
+                    const paramValues = [];
+                    studentData.marksData.forEach(data => {
+                        if (data[paramName] !== null && data[paramName] !== undefined) {
+                            paramValues.push(parseFloat(data[paramName]) || 0);
+                        }
+                    });
+                    
+                    if (paramValues.length > 0) {
+                        aggregatedMarksData[paramName] = paramValues.reduce((sum, v) => sum + v, 0) / paramValues.length;
+                    }
+                });
+            }
+            
+            // Combine comments
+            const combinedComments = studentData.comments.join('\n\n');
+            
+            aggregatedIndividualEvaluations[userId] = {
+                marks: studentData.isAbsent ? 0 : avgMarks,
+                marksData: Object.keys(aggregatedMarksData).length > 0 ? aggregatedMarksData : undefined,
+                comments: combinedComments || '',
+                studentName: studentData.studentName,
+                ktuid: studentData.ktuid,
+                isAbsent: studentData.isAbsent
+            };
+        });
+        
+        // Build aggregated evaluation data
+        const aggregatedData = {
+            teamId: allEvalData[0].teamId,
+            stageIndex: allEvalData[0].stageIndex,
+            teamComments: teamComments,
+            individualEvaluations: aggregatedIndividualEvaluations,
+            updatedAt: allEvalData[allEvalData.length - 1].updatedAt, // Use most recent
+            updatedBy: allEvalData[allEvalData.length - 1].updatedBy
+        };
+        
+        if (avgTeamMarks !== null) {
+            aggregatedData.teamMarks = avgTeamMarks;
+        }
+        
+        if (Object.keys(teamMarksData).length > 0) {
+            aggregatedData.teamMarksData = teamMarksData;
+        }
+        
+        return aggregatedData;
+    },
+    
     // Student Mini Project View
     async loadStudentMiniProject() {
         if (this.isAdmin || this.userRole === 'guide') return;
@@ -8161,12 +8338,40 @@ const app = {
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             
             // Load all evaluations for this team
+            // Query all evaluation documents that might exist for this team (in case multiple evaluators created separate docs)
             const evaluations = {};
             for (let i = 0; i < stages.length; i++) {
                 try {
-                    const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
-                    if (evalDoc.exists()) {
-                        evaluations[i] = evalDoc.data();
+                    // First, try to query for all evaluation documents for this team+stage
+                    // (in case evaluations are stored per evaluator with teamId and stageIndex fields)
+                    let allEvalData = [];
+                    try {
+                        const evalQuery = query(
+                            collection(window.firebaseDb, 'evaluations'),
+                            where('teamId', '==', studentTeam.id),
+                            where('stageIndex', '==', i)
+                        );
+                        const evalSnapshot = await getDocs(evalQuery);
+                        if (evalSnapshot.docs.length > 0) {
+                            allEvalData = evalSnapshot.docs.map(doc => doc.data());
+                        }
+                    } catch (queryError) {
+                        // Query might fail if there's no index or if evaluations don't have teamId/stageIndex fields
+                        // Fall back to single document approach
+                        console.log('Query approach failed, trying single document');
+                    }
+                    
+                    // If no documents found via query, try the single document approach
+                    if (allEvalData.length === 0) {
+                        const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
+                        if (evalDoc.exists()) {
+                            allEvalData = [evalDoc.data()];
+                        }
+                    }
+                    
+                    // Aggregate marks from all evaluators (only count those who entered marks)
+                    if (allEvalData.length > 0) {
+                        evaluations[i] = this.aggregateEvaluationMarks(allEvalData, studentUserId, studentKtuid);
                     }
                 } catch (error) {
                     console.error(`Error loading evaluation for stage ${i}:`, error);
