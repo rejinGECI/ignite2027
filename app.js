@@ -12734,6 +12734,204 @@ const app = {
         }
     },
     
+    // Initialize drag and drop for product backlogs in guide view
+    initializeGuideProductBacklogDragDrop(teamId) {
+        const cards = document.querySelectorAll('#approve-product-backlog-content .product-backlog-card');
+        const containers = document.querySelectorAll('#approve-product-backlog-content .product-backlog-sortable-container');
+        
+        if (containers.length === 0 || cards.length === 0) return;
+        
+        let draggedCard = null;
+        let draggedUserStoryId = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        const createDropIndicator = () => {
+            const indicator = document.createElement('div');
+            indicator.className = 'product-backlog-drop-indicator';
+            indicator.style.cssText = 'height: 3px; background: #3b82f6; margin: 0.5rem 0; border-radius: 2px; opacity: 0; transition: opacity 0.2s;';
+            return indicator;
+        };
+        
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                draggedUserStoryId = card.dataset.userStoryId;
+                e.dataTransfer.setData('text/plain', card.dataset.backlogId);
+                e.dataTransfer.effectAllowed = 'move';
+                card.style.opacity = '0.5';
+                card.style.transform = 'rotate(2deg) scale(1.05)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+                card.style.zIndex = '1000';
+                
+                // Create drop indicator
+                dropIndicator = createDropIndicator();
+            });
+            
+            card.addEventListener('dragend', (e) => {
+                card.style.opacity = '1';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+                card.style.zIndex = '';
+                
+                // Remove all drop indicators
+                document.querySelectorAll('#approve-product-backlog-content .product-backlog-drop-indicator').forEach(ind => ind.remove());
+                
+                draggedCard = null;
+                draggedUserStoryId = null;
+                dropIndicator = null;
+            });
+            
+            // Handle drag over for sorting within same user story
+            card.addEventListener('dragover', (e) => {
+                if (!draggedCard || !dropIndicator) return;
+                
+                const cardUserStoryId = card.dataset.userStoryId;
+                
+                // Only allow sorting within the same user story
+                if (draggedUserStoryId && cardUserStoryId === draggedUserStoryId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    // Get the container for this user story
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (!container) return;
+                    
+                    // Remove all existing indicators in this container
+                    container.querySelectorAll('.product-backlog-drop-indicator').forEach(ind => {
+                        if (ind !== dropIndicator) {
+                            ind.remove();
+                        }
+                    });
+                    
+                    // Insert indicator above or below the card
+                    if (mouseY < midpoint) {
+                        // Insert above
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        card.parentElement.insertBefore(dropIndicator, card);
+                    } else {
+                        // Insert below
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        if (card.nextSibling) {
+                            card.parentElement.insertBefore(dropIndicator, card.nextSibling);
+                        } else {
+                            card.parentElement.appendChild(dropIndicator);
+                        }
+                    }
+                    
+                    dropIndicator.style.opacity = '1';
+                }
+            });
+            
+            card.addEventListener('dragleave', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (container) {
+                        const indicator = container.querySelector('.product-backlog-drop-indicator');
+                        if (indicator && indicator !== dropIndicator) {
+                            indicator.style.opacity = '0';
+                        }
+                    }
+                }
+            });
+            
+            // Handle drop for sorting within same user story
+            card.addEventListener('drop', async (e) => {
+                if (!draggedCard) return;
+                
+                const cardUserStoryId = card.dataset.userStoryId;
+                
+                // Only handle sorting within the same user story
+                if (draggedUserStoryId && cardUserStoryId === draggedUserStoryId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const backlogId = e.dataTransfer.getData('text/plain');
+                    const targetBacklogId = card.dataset.backlogId;
+                    
+                    if (backlogId === targetBacklogId) return;
+                    
+                    // Remove drop indicator
+                    document.querySelectorAll('#approve-product-backlog-content .product-backlog-drop-indicator').forEach(ind => ind.remove());
+                    
+                    // Get the container for this user story
+                    const container = card.closest('.product-backlog-sortable-container');
+                    if (!container) return;
+                    
+                    // Get all cards in this user story group
+                    const allCards = Array.from(container.querySelectorAll('.product-backlog-card'));
+                    
+                    // Find the drop position
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const insertBefore = mouseY < midpoint;
+                    
+                    // Reorder cards array
+                    const draggedIndex = allCards.findIndex(c => c.dataset.backlogId === backlogId);
+                    const targetIndex = allCards.findIndex(c => c.dataset.backlogId === targetBacklogId);
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                        // Remove dragged card from array
+                        const [dragged] = allCards.splice(draggedIndex, 1);
+                        
+                        // Calculate new index
+                        let newIndex;
+                        if (draggedIndex < targetIndex) {
+                            // Moving down
+                            newIndex = insertBefore ? targetIndex - 1 : targetIndex;
+                        } else {
+                            // Moving up
+                            newIndex = insertBefore ? targetIndex : targetIndex + 1;
+                        }
+                        
+                        // Clamp to valid range
+                        newIndex = Math.max(0, Math.min(newIndex, allCards.length));
+                        
+                        // Insert at new position
+                        allCards.splice(newIndex, 0, dragged);
+                        
+                        // Update sortOrder for all backlogs in this user story
+                        await this.updateGuideProductBacklogSortOrder(teamId, cardUserStoryId, allCards.map(c => c.dataset.backlogId));
+                    }
+                }
+            });
+        });
+    },
+    
+    // Update sortOrder for product backlogs within a user story (guide version)
+    async updateGuideProductBacklogSortOrder(teamId, userStoryId, backlogIds) {
+        try {
+            // Update sortOrder for each backlog in the new order
+            const updates = backlogIds.map((backlogId, index) => {
+                return updateDoc(doc(window.firebaseDb, 'productBacklog', backlogId), {
+                    sortOrder: index,
+                    updatedAt: serverTimestamp()
+                });
+            });
+            
+            await Promise.all(updates);
+            
+            // Reload the modal to show new order
+            await this.showApproveProductBacklogModal(teamId);
+        } catch (error) {
+            console.error('Error updating product backlog sort order:', error);
+            alert('Error updating product backlog order. Please try again.');
+        }
+    },
+    
     // Show add product backlog modal
     async showAddProductBacklogModal() {
         const modal = document.getElementById('add-product-backlog-modal');
@@ -13769,12 +13967,23 @@ const app = {
                 backlogs.push(backlog);
             });
             
-            // Sort by user name, then by user story
+            // Initialize sortOrder for backlogs that don't have it
+            backlogs.forEach((backlog, index) => {
+                if (backlog.sortOrder === undefined || backlog.sortOrder === null) {
+                    backlog.sortOrder = index;
+                }
+            });
+            
+            // Sort by user name, then by user story, then by sortOrder
             backlogs.sort((a, b) => {
                 const userCompare = (a.userName || '').localeCompare(b.userName || '');
                 if (userCompare !== 0) return userCompare;
                 const storyCompare = (a.storyText || '').localeCompare(b.storyText || '');
                 if (storyCompare !== 0) return storyCompare;
+                // Within same user story, sort by sortOrder
+                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                    return a.sortOrder - b.sortOrder;
+                }
                 return 0;
             });
             
@@ -13842,7 +14051,7 @@ const app = {
                             <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">
                                 ${this.escapeHtml(storyText)}
                             </p>
-                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div class="product-backlog-sortable-container" data-user-story-id="${items[0]?.userStoryId || ''}" style="display: flex; flex-direction: column; gap: 0.75rem;">
                     `;
                     
                     items.forEach((backlog, itemIndex) => {
@@ -13853,8 +14062,11 @@ const app = {
                         const statusText = isApproved ? 'Approved' : (isRejected ? 'Rejected' : 'Pending');
                         
                         html += `
-                            <div style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${statusColor};">
-                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <div class="product-backlog-card" draggable="true" data-backlog-id="${backlog.id}" data-user-story-id="${backlog.userStoryId}" style="padding: 1rem; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); border-left: 4px solid ${statusColor}; cursor: move; position: relative; transition: all 0.2s;">
+                                <div style="position: absolute; left: 0.5rem; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.75rem; cursor: move; user-select: none; z-index: 10;" title="Drag to reorder">
+                                    <i class="fas fa-grip-vertical"></i>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; padding-left: 1.5rem;">
                                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                         <span style="padding: 3px 8px; background: ${priorityColors[backlog.priority] || priorityColors.medium}15; color: ${priorityColors[backlog.priority] || priorityColors.medium}; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
                                             ${backlog.priority || 'medium'}
@@ -13910,6 +14122,9 @@ const app = {
             }
             
             content.innerHTML = html;
+            
+            // Initialize drag and drop for product backlogs in guide view
+            this.initializeGuideProductBacklogDragDrop(teamId);
             
             // Show/hide buttons
             if (pendingBacklogs.length > 0) {
