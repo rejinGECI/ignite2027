@@ -4094,8 +4094,86 @@ const app = {
                     displayDiv.style.display = 'none';
                 }
             }
+            
+            // Load problem statement presentation status
+            await this.loadProblemStatementPresentationStatus();
         } catch (error) {
             console.error('Error loading admin settings:', error);
+        }
+    },
+    
+    async loadProblemStatementPresentationStatus() {
+        if (!this.isAdmin) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
+            const isOver = settingsDoc.exists() && settingsDoc.data().presentationOver === true;
+            
+            const checkbox = document.getElementById('problem-statement-presentation-over');
+            if (checkbox) {
+                checkbox.checked = isOver;
+            }
+        } catch (error) {
+            console.error('Error loading problem statement presentation status:', error);
+        }
+    },
+    
+    async toggleProblemStatementPresentation() {
+        if (!this.isAdmin) {
+            alert('Only administrators can change this setting.');
+            return;
+        }
+        
+        const checkbox = document.getElementById('problem-statement-presentation-over');
+        const statusDiv = document.getElementById('problem-statement-presentation-status');
+        
+        if (!checkbox) return;
+        
+        const isOver = checkbox.checked;
+        
+        try {
+            const settingsRef = doc(window.firebaseDb, 'settings', 'problemStatement');
+            const settingsDoc = await getDoc(settingsRef);
+            
+            if (settingsDoc.exists()) {
+                await updateDoc(settingsRef, {
+                    presentationOver: isOver,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: this.currentUser.uid
+                });
+            } else {
+                await setDoc(settingsRef, {
+                    presentationOver: isOver,
+                    createdAt: serverTimestamp(),
+                    createdBy: this.currentUser.uid,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: this.currentUser.uid
+                });
+            }
+            
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="csv-success" style="margin-top: 0.5rem;">
+                    <strong>Setting updated!</strong> Problem statement presentation is now ${isOver ? 'marked as over' : 'active'}.
+                </div>`;
+                setTimeout(() => {
+                    if (statusDiv) statusDiv.innerHTML = '';
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error updating problem statement presentation status:', error);
+            alert('Error updating setting. Please try again.');
+            // Revert checkbox
+            checkbox.checked = !isOver;
+        }
+    },
+    
+    async isProblemStatementPresentationOver() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
+            return settingsDoc.exists() && settingsDoc.data().presentationOver === true;
+        } catch (error) {
+            console.error('Error checking problem statement presentation status:', error);
+            return false; // Default to false if error
         }
     },
     
@@ -8531,6 +8609,9 @@ const app = {
             // Load approved problem statement
             await this.loadApprovedProblemStatement(studentTeam.id);
             
+            // Check if problem statement presentation is over
+            const presentationOver = await this.isProblemStatementPresentationOver();
+            
             // Load project planning (always load, even if no approved problem statement yet)
             // This allows students to prepare user stories in advance
             await this.loadUsers();
@@ -8580,14 +8661,25 @@ const app = {
                     
                     <!-- Problem Statement Section -->
                     <div class="problem-statements-section" style="margin-top: 2rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                            <h3 class="section-title"><i class="fas fa-file-alt"></i> Problem Statements</h3>
-                            <button type="button" class="btn btn-primary" onclick="app.showProblemStatementModal()">
-                                <i class="fas fa-plus"></i> Add Problem Statement
-                            </button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer; padding: 0.75rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);" onclick="app.toggleProblemStatementsSection()">
+                            <h3 class="section-title" style="margin: 0;"><i class="fas fa-file-alt"></i> Problem Statements</h3>
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                ${presentationOver ? `
+                                    <span style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                        <i class="fas fa-lock"></i> Presentation Over
+                                    </span>
+                                ` : `
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); app.showProblemStatementModal()">
+                                        <i class="fas fa-plus"></i> Add Problem Statement
+                                    </button>
+                                `}
+                                <i class="fas fa-chevron-down" id="problem-statements-chevron" style="transition: transform 0.3s;"></i>
+                            </div>
                         </div>
-                        <div id="problem-statements-list" class="problem-statements-list">
-                            <p class="empty-state">Loading problem statements...</p>
+                        <div id="problem-statements-list-container" style="display: none;">
+                            <div id="problem-statements-list" class="problem-statements-list">
+                                <p class="empty-state">Loading problem statements...</p>
+                            </div>
                         </div>
                     </div>
                         
@@ -8794,7 +8886,14 @@ const app = {
     },
     
     // Problem Statement Functions
-    showProblemStatementModal() {
+    async showProblemStatementModal() {
+        // Check if problem statement presentation is over
+        const presentationOver = await this.isProblemStatementPresentationOver();
+        if (presentationOver) {
+            alert('Problem statement presentation is over. You cannot add new problem statements.');
+            return;
+        }
+        
         const modal = document.getElementById('problem-statement-modal');
         if (!modal) return;
         
@@ -8894,6 +8993,17 @@ const app = {
         } catch (error) {
             console.error('Error saving problem statement:', error);
             alert('Error saving problem statement. Please try again.');
+        }
+    },
+    
+    toggleProblemStatementsSection() {
+        const container = document.getElementById('problem-statements-list-container');
+        const chevron = document.getElementById('problem-statements-chevron');
+        
+        if (container && chevron) {
+            const isVisible = container.style.display !== 'none';
+            container.style.display = isVisible ? 'none' : 'block';
+            chevron.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
         }
     },
     
@@ -14364,8 +14474,18 @@ const app = {
             `;
             
             // Right side: Modules Grid
+            const addModuleButtonDisabled = (isSubmitted || isVerified) ? 'disabled style="opacity: 0.6; cursor: not-allowed;"' : '';
             html += `
-                <div style="flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h4 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
+                            <i class="fas fa-layer-group"></i> Modules
+                        </h4>
+                        <button type="button" class="btn btn-primary" id="add-module-btn" onclick="app.showAddModuleModal()" ${addModuleButtonDisabled}>
+                            <i class="fas fa-plus"></i> Add Module
+                        </button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; align-items: start;">
             `;
             
             // Module columns - sorted by sortOrder
@@ -14482,6 +14602,7 @@ const app = {
             });
             
             html += `
+                    </div>
                 </div>
             </div>
             `;
@@ -15083,14 +15204,37 @@ const app = {
         }
     },
     
-    showAddModuleModal(moduleId = null) {
-        const modal = document.getElementById('add-module-modal');
-        const title = document.getElementById('add-module-modal-title');
-        const nameInput = document.getElementById('module-name');
-        const descInput = document.getElementById('module-description');
-        const colorInput = document.getElementById('module-color');
-        
-        if (!modal) return;
+    async showAddModuleModal(moduleId = null) {
+        try {
+            // Check if card sorting is submitted or verified
+            const team = await this.getUserTeam();
+            if (team) {
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+                const planningData = planningDoc.exists() ? planningDoc.data() : null;
+                const isSubmitted = planningData && planningData.cardSortingSubmitted === true;
+                const isVerified = planningData && planningData.cardSortingVerified === true;
+                
+                if (isSubmitted || isVerified) {
+                    alert('Card sorting has been submitted/verified. You cannot add or edit modules.');
+                    return;
+                }
+            }
+            
+            const modal = document.getElementById('add-module-modal');
+            const title = document.getElementById('add-module-modal-title');
+            const nameInput = document.getElementById('module-name');
+            const descInput = document.getElementById('module-description');
+            const colorInput = document.getElementById('module-color');
+            
+            if (!modal) {
+                console.error('Add module modal not found in DOM');
+                return;
+            }
+            
+            if (!title || !nameInput || !descInput || !colorInput) {
+                console.error('Modal elements not found:', { title: !!title, nameInput: !!nameInput, descInput: !!descInput, colorInput: !!colorInput });
+                return;
+            }
         
         if (moduleId) {
             // Edit mode - load module data
@@ -15115,7 +15259,11 @@ const app = {
             colorInput.value = '#3b82f6';
         }
         
-        modal.style.display = 'flex';
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error showing add module modal:', error);
+            alert('Error opening module modal. Please try again.');
+        }
     },
     
     closeAddModuleModal() {
