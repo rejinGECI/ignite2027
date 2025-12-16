@@ -9958,7 +9958,7 @@ const app = {
     // Switch project planning tab
     async switchProjectPlanningTab(tabName) {
         // Hide all tabs
-        document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #card-sorting-tab, #design-tab, #schedule-tab').forEach(tab => {
+        document.querySelectorAll('#user-stories-tab, #product-backlog-tab, #card-sorting-tab, #design-tab, #schedule-tab, #documentation-tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
@@ -19280,6 +19280,15 @@ const app = {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
             }
             
+            // Check if PptxGenJS is loaded, wait a bit if needed
+            if (typeof window.PptxGenJS === 'undefined') {
+                // Wait a bit for the script to load (in case of slow network)
+                await new Promise(resolve => setTimeout(resolve, 200));
+                if (typeof window.PptxGenJS === 'undefined') {
+                    throw new Error('PptxGenJS library is not loaded. Please refresh the page and try again.');
+                }
+            }
+            
             const data = await this.collectProjectData();
             
             // Debug: Log collected data
@@ -19291,7 +19300,7 @@ const app = {
             });
             
             // Create new presentation with modern theme
-            const pptx = new PptxGenJS();
+            const pptx = new window.PptxGenJS();
             pptx.layout = 'LAYOUT_WIDE';
             
             // Define modern color scheme
@@ -20102,107 +20111,259 @@ const app = {
                 });
             }
             
-            // Schedule section
+            // Schedule section - Gantt Chart
             if (data.schedules && data.schedules.length > 0) {
-                const scheduleSlide = pptx.addSlide();
-                scheduleSlide.background = { color: colors.light };
-                scheduleSlide.addShape(pptx.ShapeType.rect, {
-                    x: 0,
-                    y: 0,
-                    w: 10,
-                    h: 0.6,
-                    fill: { color: colors.accent },
-                    line: { color: colors.accent, width: 0 }
-                });
-                scheduleSlide.addText('Project Schedule', {
-                    x: 0.5,
-                    y: 0.1,
-                    w: 9,
-                    h: 0.4,
-                    fontSize: 32,
-                    bold: true,
-                    color: 'FFFFFF',
-                    fontFace: 'Arial'
+                // Process schedules similar to renderGanttChart
+                const scheduledItems = [];
+                const schedulesObj = {};
+                
+                // Convert schedules array to object format
+                data.schedules.forEach(schedule => {
+                    const key = schedule.moduleId ? `module_${schedule.moduleId}` : `task_${schedule.backlogId}`;
+                    schedulesObj[key] = schedule;
                 });
                 
-                let scheduleY = 1;
-                let currentScheduleSlide = scheduleSlide;
+                // Get module schedules
+                if (data.cardSortingModules) {
+                    data.cardSortingModules.forEach(module => {
+                        const scheduleKey = `module_${module.id}`;
+                        const schedule = schedulesObj[scheduleKey];
+                        if (schedule) {
+                            let startDate = schedule.startDate;
+                            let endDate = schedule.endDate;
+                            
+                            // Convert Firestore Timestamp to Date if needed
+                            if (startDate && startDate.toDate) {
+                                startDate = startDate.toDate();
+                            } else if (startDate && !(startDate instanceof Date)) {
+                                startDate = new Date(startDate);
+                            }
+                            if (endDate && endDate.toDate) {
+                                endDate = endDate.toDate();
+                            } else if (endDate && !(endDate instanceof Date)) {
+                                endDate = new Date(endDate);
+                            }
+                            
+                            if (startDate && endDate) {
+                                startDate.setHours(0, 0, 0, 0);
+                                endDate.setHours(0, 0, 0, 0);
+                                
+                                scheduledItems.push({
+                                    id: schedule.id,
+                                    name: module.name,
+                                    type: 'module',
+                                    startDate: startDate,
+                                    endDate: endDate,
+                                    color: module.color || '#3b82f6',
+                                    taskCount: module.backlogs ? module.backlogs.length : 0
+                                });
+                            }
+                        }
+                    });
+                }
                 
-                data.schedules.forEach((schedule, scheduleIndex) => {
-                    if (scheduleY > 5.5) {
-                        currentScheduleSlide = pptx.addSlide();
-                        currentScheduleSlide.background = { color: colors.light };
-                        currentScheduleSlide.addShape(pptx.ShapeType.rect, {
-                            x: 0,
-                            y: 0,
-                            w: 10,
-                            h: 0.6,
-                            fill: { color: colors.accent },
-                            line: { color: colors.accent, width: 0 }
+                // Get individual task schedules
+                Object.keys(schedulesObj).forEach(key => {
+                    if (key.startsWith('task_')) {
+                        const schedule = schedulesObj[key];
+                        const backlogId = schedule.backlogId;
+                        const backlog = data.productBacklogs ? data.productBacklogs.find(b => b.id === backlogId) : null;
+                        
+                        if (backlog) {
+                            let startDate = schedule.startDate;
+                            let endDate = schedule.endDate;
+                            
+                            // Convert Firestore Timestamp to Date if needed
+                            if (startDate && startDate.toDate) {
+                                startDate = startDate.toDate();
+                            } else if (startDate && !(startDate instanceof Date)) {
+                                startDate = new Date(startDate);
+                            }
+                            if (endDate && endDate.toDate) {
+                                endDate = endDate.toDate();
+                            } else if (endDate && !(endDate instanceof Date)) {
+                                endDate = new Date(endDate);
+                            }
+                            
+                            if (startDate && endDate) {
+                                startDate.setHours(0, 0, 0, 0);
+                                endDate.setHours(0, 0, 0, 0);
+                                
+                                const priorityColors = {
+                                    low: '#6b7280',
+                                    medium: '#3b82f6',
+                                    high: '#f59e0b',
+                                    critical: '#ef4444'
+                                };
+                                
+                                scheduledItems.push({
+                                    id: schedule.id,
+                                    name: backlog.task || 'No task',
+                                    type: 'task',
+                                    startDate: startDate,
+                                    endDate: endDate,
+                                    color: priorityColors[backlog.priority] || priorityColors.medium
+                                });
+                            }
+                        }
+                    }
+                });
+                
+                if (scheduledItems.length > 0) {
+                    // Calculate date range
+                    let minDate = new Date(Math.min(...scheduledItems.map(item => item.startDate.getTime())));
+                    let maxDate = new Date(Math.max(...scheduledItems.map(item => item.endDate.getTime())));
+                    
+                    // Add some padding
+                    minDate.setDate(minDate.getDate() - 7);
+                    maxDate.setDate(maxDate.getDate() + 7);
+                    
+                    // Calculate total days
+                    const daysDiff = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+                    
+                    // Create Gantt chart slide
+                    const scheduleSlide = pptx.addSlide();
+                    scheduleSlide.background = { color: colors.light };
+                    scheduleSlide.addShape(pptx.ShapeType.rect, {
+                        x: 0,
+                        y: 0,
+                        w: 10,
+                        h: 0.6,
+                        fill: { color: colors.accent },
+                        line: { color: colors.accent, width: 0 }
+                    });
+                    scheduleSlide.addText('Project Schedule - Gantt Chart', {
+                        x: 0.5,
+                        y: 0.1,
+                        w: 9,
+                        h: 0.4,
+                        fontSize: 32,
+                        bold: true,
+                        color: 'FFFFFF',
+                        fontFace: 'Arial'
+                    });
+                    
+                    // Gantt chart area
+                    const chartStartY = 1.2;
+                    const chartHeight = 5.5;
+                    const labelWidth = 2.5;
+                    const chartWidth = 7;
+                    const rowHeight = 0.4;
+                    const maxRows = Math.floor(chartHeight / rowHeight);
+                    
+                    // Draw chart background
+                    scheduleSlide.addShape(pptx.ShapeType.rect, {
+                        x: labelWidth + 0.5,
+                        y: chartStartY,
+                        w: chartWidth,
+                        h: chartHeight,
+                        fill: { color: '#f1f5f9' },
+                        line: { color: '#e5e7eb', width: 1 }
+                    });
+                    
+                    // Draw timeline grid lines (weekly)
+                    const weeks = Math.ceil(daysDiff / 7);
+                    for (let i = 0; i <= weeks; i++) {
+                        const xPos = labelWidth + 0.5 + (i / weeks) * chartWidth;
+                        scheduleSlide.addShape(pptx.ShapeType.line, {
+                            x: xPos,
+                            y: chartStartY,
+                            w: 0,
+                            h: chartHeight,
+                            line: { color: '#cbd5e1', width: 1, dashType: 'dash' }
                         });
-                        currentScheduleSlide.addText('Project Schedule (continued)', {
-                            x: 0.5,
-                            y: 0.1,
-                            w: 9,
-                            h: 0.4,
-                            fontSize: 32,
-                            bold: true,
-                            color: 'FFFFFF',
+                    }
+                    
+                    // Draw timeline labels (month/week markers)
+                    const currentDate = new Date(minDate);
+                    let weekIndex = 0;
+                    while (currentDate <= maxDate && weekIndex < 8) {
+                        const xPos = labelWidth + 0.5 + (weekIndex / Math.min(weeks, 8)) * chartWidth;
+                        const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        scheduleSlide.addText(dateStr, {
+                            x: xPos - 0.3,
+                            y: chartStartY - 0.25,
+                            w: 0.6,
+                            h: 0.2,
+                            fontSize: 10,
+                            color: colors.textLight,
                             fontFace: 'Arial'
                         });
-                        scheduleY = 1;
+                        currentDate.setDate(currentDate.getDate() + 7);
+                        weekIndex++;
                     }
                     
-                    // Find module or backlog name
-                    let scheduleName = '';
-                    if (schedule.moduleId) {
-                        const module = data.cardSortingModules.find(m => m.id === schedule.moduleId);
-                        scheduleName = module ? `${module.name} (Module)` : 'Module';
-                    } else if (schedule.backlogId) {
-                        const backlog = data.productBacklogs.find(b => b.id === schedule.backlogId);
-                        scheduleName = backlog ? backlog.task : 'Task';
+                    // Draw Gantt bars
+                    scheduledItems.slice(0, maxRows).forEach((item, index) => {
+                        const rowY = chartStartY + (index * rowHeight) + 0.05;
+                        
+                        // Task/Module label
+                        scheduleSlide.addText(
+                            `${item.type === 'module' ? '📦' : '✓'} ${item.name.substring(0, 25)}${item.name.length > 25 ? '...' : ''}${item.taskCount ? ` (${item.taskCount})` : ''}`,
+                            {
+                                x: 0.5,
+                                y: rowY,
+                                w: labelWidth - 0.1,
+                                h: rowHeight - 0.1,
+                                fontSize: 11,
+                                color: colors.text,
+                                fontFace: 'Arial',
+                                valign: 'middle'
+                            }
+                        );
+                        
+                        // Calculate bar position and width
+                        const startOffset = Math.ceil((item.startDate - minDate) / (1000 * 60 * 60 * 24));
+                        const duration = Math.ceil((item.endDate - item.startDate) / (1000 * 60 * 60 * 24)) + 1;
+                        const barWidth = (duration / daysDiff) * chartWidth;
+                        const barX = labelWidth + 0.5 + (startOffset / daysDiff) * chartWidth;
+                        
+                        // Draw Gantt bar
+                        const hexColor = item.color.replace('#', '');
+                        scheduleSlide.addShape(pptx.ShapeType.roundRect, {
+                            x: barX,
+                            y: rowY + 0.02,
+                            w: Math.max(0.1, barWidth),
+                            h: rowHeight - 0.04,
+                            fill: { color: hexColor },
+                            line: { color: hexColor, width: 1 },
+                            rectRadius: 0.02
+                        });
+                        
+                        // Add duration text on bar if there's space
+                        if (barWidth > 0.3) {
+                            scheduleSlide.addText(`${duration}d`, {
+                                x: barX + 0.05,
+                                y: rowY + 0.05,
+                                w: barWidth - 0.1,
+                                h: rowHeight - 0.1,
+                                fontSize: 9,
+                                bold: true,
+                                color: 'FFFFFF',
+                                fontFace: 'Arial',
+                                valign: 'middle',
+                                align: 'center'
+                            });
+                        }
+                    });
+                    
+                    // Add legend if there are more items
+                    if (scheduledItems.length > maxRows) {
+                        scheduleSlide.addText(
+                            `* Showing first ${maxRows} of ${scheduledItems.length} scheduled items`,
+                            {
+                                x: 0.5,
+                                y: 6.8,
+                                w: 9,
+                                h: 0.3,
+                                fontSize: 10,
+                                italic: true,
+                                color: colors.textLight,
+                                fontFace: 'Arial'
+                            }
+                        );
                     }
-                    
-                    currentScheduleSlide.addShape(pptx.ShapeType.roundRect, {
-                        x: 0.5,
-                        y: scheduleY,
-                        w: 9,
-                        h: 0.8,
-                        fill: { color: 'FFFFFF' },
-                        line: { color: colors.accent, width: 2 },
-                        rectRadius: 0.1
-                    });
-                    
-                    currentScheduleSlide.addText(scheduleName, {
-                        x: 0.6,
-                        y: scheduleY + 0.1,
-                        w: 8.8,
-                        h: 0.3,
-                        fontSize: 18,
-                        bold: true,
-                        color: colors.text,
-                        fontFace: 'Arial'
-                    });
-                    
-                    const startDateStr = schedule.startDate && typeof schedule.startDate.toLocaleDateString === 'function' 
-                        ? schedule.startDate.toLocaleDateString() 
-                        : (schedule.startDate ? new Date(schedule.startDate).toLocaleDateString() : 'N/A');
-                    const endDateStr = schedule.endDate && typeof schedule.endDate.toLocaleDateString === 'function' 
-                        ? schedule.endDate.toLocaleDateString() 
-                        : (schedule.endDate ? new Date(schedule.endDate).toLocaleDateString() : 'N/A');
-                    const scheduleDetails = `Start: ${startDateStr} | End: ${endDateStr} | Duration: ${schedule.duration || 0} day(s)`;
-                    currentScheduleSlide.addText(scheduleDetails, {
-                        x: 0.6,
-                        y: scheduleY + 0.45,
-                        w: 8.8,
-                        h: 0.25,
-                        fontSize: 14,
-                        color: colors.textLight,
-                        fontFace: 'Arial'
-                    });
-                    
-                    scheduleY += 1;
-                });
+                }
             }
             
             // Thank you slide

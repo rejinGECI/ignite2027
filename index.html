@@ -1095,6 +1095,9 @@ Bob Johnson,GHI789</pre>
                             <button class="tab-btn" data-tab="schedule" onclick="app.switchProjectPlanningTab('schedule')">
                                 <i class="fas fa-calendar-alt"></i> Schedule
                             </button>
+                            <button class="tab-btn" data-tab="documentation" onclick="app.switchProjectPlanningTab('documentation')">
+                                <i class="fas fa-file-alt"></i> Documentation
+                            </button>
                         </div>
                         
                         <!-- User Stories Tab -->
@@ -1186,6 +1189,24 @@ Bob Johnson,GHI789</pre>
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Documentation Tab -->
+                        <div id="documentation-tab" class="admin-tab-content">
+                            <div class="project-planning-section">
+                                <h3><i class="fas fa-file-alt"></i> Project Documentation</h3>
+                                <div style="padding: 2rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+                                    <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">Generate comprehensive project documentation in PPT or PDF format.</p>
+                                    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                                        <button type="button" class="btn btn-primary" id="generate-ppt-btn" onclick="app.generateProjectPPT()" style="min-width: 200px;">
+                                            <i class="fas fa-file-powerpoint"></i> Generate PPT
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" id="generate-pdf-btn" onclick="app.generateProjectPDF()" style="min-width: 200px;">
+                                            <i class="fas fa-file-pdf"></i> Generate PDF
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1214,6 +1235,9 @@ Bob Johnson,GHI789</pre>
                         </button>
                         <button class="tab-btn" data-tab="schedule" onclick="app.switchProjectPlanningTab('schedule')">
                             <i class="fas fa-calendar-alt"></i> Schedule
+                        </button>
+                        <button class="tab-btn" data-tab="documentation" onclick="app.switchProjectPlanningTab('documentation')">
+                            <i class="fas fa-file-alt"></i> Documentation
                         </button>
                     </div>
                     
@@ -1303,6 +1327,24 @@ Bob Johnson,GHI789</pre>
                             <h3><i class="fas fa-calendar-alt"></i> Schedule Management</h3>
                             <div id="schedule-content">
                                 <p class="empty-state">Schedule management coming soon...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Documentation Tab -->
+                    <div id="documentation-tab" class="admin-tab-content">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-file-alt"></i> Project Documentation</h3>
+                            <div style="padding: 2rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+                                <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">Generate comprehensive project documentation in PPT or PDF format.</p>
+                                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-primary" id="generate-ppt-btn" onclick="app.generateProjectPPT()" style="min-width: 200px;">
+                                        <i class="fas fa-file-powerpoint"></i> Generate PPT
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="generate-pdf-btn" onclick="app.generateProjectPDF()" style="min-width: 200px;">
+                                        <i class="fas fa-file-pdf"></i> Generate PDF
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1674,6 +1716,8 @@ Bob Johnson,GHI789</pre>
         </main>
     </div>
 
+    <!-- PptxGenJS for PPT generation - Load before app.js -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs/dist/pptxgen.bundle.js"></script>
     <script type="module" src="./app.js"></script>
     <script>
         // Password visibility toggle function
