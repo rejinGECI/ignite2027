@@ -11642,10 +11642,14 @@ const app = {
                             </div>
                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 ${isVerified ? `
-                                    <span style="padding: 6px 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
-                                        <i class="fas fa-check-circle"></i> Stories Verified
-                                    </span>
+                                    <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
+                                        <i class="fas fa-redo"></i> Re-verify Stories
+                                    </button>
                                 ` : isSubmitted ? `
+                                    <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
+                                        <i class="fas fa-clipboard-check"></i> Review Stories
+                                    </button>
+                                ` : (team.stories && team.stories.length > 0) ? `
                                     <button type="button" class="btn btn-primary" onclick="app.showApproveUserStoriesModal('${team.id}')">
                                         <i class="fas fa-clipboard-check"></i> Review Stories
                                     </button>
@@ -14474,14 +14478,13 @@ const app = {
             `;
             
             // Right side: Modules Grid
-            const addModuleButtonDisabled = (isSubmitted || isVerified) ? 'disabled style="opacity: 0.6; cursor: not-allowed;"' : '';
             html += `
                 <div style="flex: 1;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <h4 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
                             <i class="fas fa-layer-group"></i> Modules
                         </h4>
-                        <button type="button" class="btn btn-primary" id="add-module-btn" onclick="app.showAddModuleModal()" ${addModuleButtonDisabled}>
+                        <button type="button" class="btn btn-primary" id="add-module-btn" onclick="app.showAddModuleModal()">
                             <i class="fas fa-plus"></i> Add Module
                         </button>
                     </div>
@@ -15206,20 +15209,6 @@ const app = {
     
     async showAddModuleModal(moduleId = null) {
         try {
-            // Check if card sorting is submitted or verified
-            const team = await this.getUserTeam();
-            if (team) {
-                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
-                const planningData = planningDoc.exists() ? planningDoc.data() : null;
-                const isSubmitted = planningData && planningData.cardSortingSubmitted === true;
-                const isVerified = planningData && planningData.cardSortingVerified === true;
-                
-                if (isSubmitted || isVerified) {
-                    alert('Card sorting has been submitted/verified. You cannot add or edit modules.');
-                    return;
-                }
-            }
-            
             const modal = document.getElementById('add-module-modal');
             const title = document.getElementById('add-module-modal-title');
             const nameInput = document.getElementById('module-name');
@@ -15235,30 +15224,30 @@ const app = {
                 console.error('Modal elements not found:', { title: !!title, nameInput: !!nameInput, descInput: !!descInput, colorInput: !!colorInput });
                 return;
             }
-        
-        if (moduleId) {
-            // Edit mode - load module data
-            title.innerHTML = '<i class="fas fa-edit"></i> Edit Module';
-            this.currentEditingModuleId = moduleId;
             
-            // Load module data
-            getDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId)).then(doc => {
-                if (doc.exists()) {
-                    const data = doc.data();
-                    nameInput.value = data.name || '';
-                    descInput.value = data.description || '';
-                    colorInput.value = data.color || '#3b82f6';
-                }
-            });
-        } else {
-            // Add mode
-            title.innerHTML = '<i class="fas fa-layer-group"></i> Add Module';
-            this.currentEditingModuleId = null;
-            nameInput.value = '';
-            descInput.value = '';
-            colorInput.value = '#3b82f6';
-        }
-        
+            if (moduleId) {
+                // Edit mode - load module data
+                title.innerHTML = '<i class="fas fa-edit"></i> Edit Module';
+                this.currentEditingModuleId = moduleId;
+                
+                // Load module data
+                getDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId)).then(doc => {
+                    if (doc.exists()) {
+                        const data = doc.data();
+                        nameInput.value = data.name || '';
+                        descInput.value = data.description || '';
+                        colorInput.value = data.color || '#3b82f6';
+                    }
+                });
+            } else {
+                // Add mode
+                title.innerHTML = '<i class="fas fa-layer-group"></i> Add Module';
+                this.currentEditingModuleId = null;
+                nameInput.value = '';
+                descInput.value = '';
+                colorInput.value = '#3b82f6';
+            }
+            
             modal.style.display = 'flex';
         } catch (error) {
             console.error('Error showing add module modal:', error);
