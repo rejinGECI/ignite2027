@@ -3706,6 +3706,12 @@ body.mobile-menu-open {
     transform: translateY(-1px);
 }
 
+/* Ensure placeholder doesn't show when input has a value */
+input:not(:placeholder-shown)::placeholder,
+textarea:not(:placeholder-shown)::placeholder {
+    opacity: 0;
+}
+
 .form-group input[type="text"]::placeholder,
 .form-group input[type="email"]::placeholder,
 .form-group input[type="password"]::placeholder,

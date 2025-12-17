@@ -339,6 +339,13 @@ const app = {
                 guideProjectPlanningNav.style.display = 'block';
             }
             
+            // Check if guide is assigned as evaluator for any stage
+            const isEvaluator = await this.checkIfGuideIsEvaluator();
+            const guideEvaluatorNav = document.getElementById('guide-evaluator-nav');
+            if (guideEvaluatorNav) {
+                guideEvaluatorNav.style.display = isEvaluator ? 'block' : 'none';
+            }
+            
             // Hide user info for guide
             const userInfoDiv = document.getElementById('user-info');
             if (userInfoDiv) {
@@ -1041,6 +1048,8 @@ const app = {
                     await this.loadAdminProjectPlanning();
                 } else if (pageId === 'guide-project-planning') {
                     await this.loadGuideProjectPlanning();
+                } else if (pageId === 'guide-evaluator') {
+                    await this.loadGuideEvaluatorPage();
                 } else if (pageId === 'miniproject') {
                     await this.loadStudentMiniProject();
         } else if (pageId === 'admin-dashboard') {
@@ -3712,6 +3721,9 @@ const app = {
         // Load evaluation stages
         await this.loadEvaluationStages();
         
+        // Load evaluator stage dropdown
+        await this.loadEvaluatorStageDropdown();
+        
         // Load team order settings
         await this.loadTeamOrderSettings();
         
@@ -4061,6 +4073,207 @@ const app = {
             }).join('');
         } catch (error) {
             console.error('Error loading evaluation stages:', error);
+        }
+    },
+    
+    // ========== EVALUATOR ASSIGNMENT FUNCTIONS ==========
+    
+    async loadEvaluatorStageDropdown() {
+        const stageSelect = document.getElementById('evaluator-stage-select');
+        if (!stageSelect) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            stageSelect.innerHTML = '<option value="">-- Select a stage --</option>';
+            stages.forEach((stage, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${index + 1}. ${stage.name || `Stage ${index + 1}`}`;
+                stageSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading evaluator stage dropdown:', error);
+        }
+    },
+    
+    async loadEvaluatorsForStage() {
+        const stageSelect = document.getElementById('evaluator-stage-select');
+        const assignmentSection = document.getElementById('evaluator-assignment-section');
+        const facultyList = document.getElementById('evaluator-faculty-list');
+        const statusDiv = document.getElementById('evaluator-assignment-status');
+        
+        if (!stageSelect || !assignmentSection || !facultyList) return;
+        
+        const stageIndex = stageSelect.value;
+        if (!stageIndex || stageIndex === '') {
+            assignmentSection.style.display = 'none';
+            if (statusDiv) statusDiv.innerHTML = '';
+            return;
+        }
+        
+        try {
+            assignmentSection.style.display = 'block';
+            facultyList.innerHTML = '<p class="empty-state" style="text-align: center; color: #666;">Loading faculty members...</p>';
+            
+            // Load all faculty members (users with role 'guide')
+            const facultyQuery = query(
+                collection(window.firebaseDb, 'users'),
+                where('role', '==', 'guide')
+            );
+            const facultySnapshot = await getDocs(facultyQuery);
+            
+            const faculty = [];
+            facultySnapshot.forEach(doc => {
+                const data = doc.data();
+                faculty.push({
+                    id: doc.id,
+                    name: data.name || data.username || 'Unknown',
+                    email: data.email || '',
+                    ...data
+                });
+            });
+            
+            // Sort faculty alphabetically by name
+            faculty.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            // Load existing evaluator assignments for this stage
+            const evaluatorAssignmentsDoc = await getDoc(
+                doc(window.firebaseDb, 'evaluatorAssignments', `stage_${stageIndex}`)
+            );
+            const assignedEvaluatorIds = evaluatorAssignmentsDoc.exists() 
+                ? (evaluatorAssignmentsDoc.data().evaluatorIds || [])
+                : [];
+            
+            if (faculty.length === 0) {
+                facultyList.innerHTML = '<p class="empty-state" style="text-align: center; color: #666;">No faculty members found. Please add guides first.</p>';
+                return;
+            }
+            
+            // Render faculty list with checkboxes
+            facultyList.innerHTML = faculty.map(facultyMember => {
+                const isAssigned = assignedEvaluatorIds.includes(facultyMember.id);
+                return `
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 8px; background: white; border: 1px solid #ddd; border-radius: 6px;">
+                        <input type="checkbox" 
+                               id="evaluator-${facultyMember.id}" 
+                               data-evaluator-id="${facultyMember.id}"
+                               ${isAssigned ? 'checked' : ''}
+                               style="cursor: pointer; width: 18px; height: 18px;">
+                        <label for="evaluator-${facultyMember.id}" style="flex: 1; cursor: pointer; margin: 0;">
+                            <div style="font-weight: 500; color: var(--text-primary);">${this.escapeHtml(facultyMember.name)}</div>
+                            ${facultyMember.email ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px;">${this.escapeHtml(facultyMember.email)}</div>` : ''}
+                        </label>
+                        ${isAssigned ? '<span style="padding: 4px 8px; background: #d1fae5; color: #065f46; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Assigned</span>' : ''}
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading evaluators for stage:', error);
+            facultyList.innerHTML = '<p class="error-message" style="text-align: center; color: #d32f2f;">Error loading faculty members. Please try again.</p>';
+        }
+    },
+    
+    async saveEvaluatorAssignments() {
+        const stageSelect = document.getElementById('evaluator-stage-select');
+        const statusDiv = document.getElementById('evaluator-assignment-status');
+        
+        if (!stageSelect) return;
+        
+        const stageIndex = stageSelect.value;
+        if (!stageIndex || stageIndex === '') {
+            alert('Please select an evaluation stage first.');
+            return;
+        }
+        
+        try {
+            // Get all checked evaluators
+            const checkboxes = document.querySelectorAll('#evaluator-faculty-list input[type="checkbox"]');
+            const selectedEvaluatorIds = [];
+            
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const evaluatorId = checkbox.getAttribute('data-evaluator-id');
+                    if (evaluatorId) {
+                        selectedEvaluatorIds.push(evaluatorId);
+                    }
+                }
+            });
+            
+            // Save to Firestore
+            const assignmentRef = doc(window.firebaseDb, 'evaluatorAssignments', `stage_${stageIndex}`);
+            await setDoc(assignmentRef, {
+                stageIndex: parseInt(stageIndex),
+                evaluatorIds: selectedEvaluatorIds,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            }, { merge: true });
+            
+            // Update UI
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="csv-success" style="margin-top: 0.5rem;">
+                    <strong>Success!</strong> Evaluator assignments saved for stage ${parseInt(stageIndex) + 1}. ${selectedEvaluatorIds.length} evaluator(s) assigned.
+                </div>`;
+            }
+            
+            // Reload the list to show updated status
+            await this.loadEvaluatorsForStage();
+            
+            // Clear status message after 3 seconds
+            setTimeout(() => {
+                if (statusDiv) statusDiv.innerHTML = '';
+            }, 3000);
+            
+        } catch (error) {
+            console.error('Error saving evaluator assignments:', error);
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="csv-error" style="margin-top: 0.5rem;">
+                    <strong>Error!</strong> Failed to save evaluator assignments. Please try again.
+                </div>`;
+            } else {
+                alert('Error saving evaluator assignments. Please try again.');
+            }
+        }
+    },
+    
+    // Utility function to check if a user is assigned as evaluator for a specific stage
+    async isEvaluatorForStage(evaluatorId, stageIndex) {
+        try {
+            const assignmentDoc = await getDoc(
+                doc(window.firebaseDb, 'evaluatorAssignments', `stage_${stageIndex}`)
+            );
+            
+            if (assignmentDoc.exists()) {
+                const evaluatorIds = assignmentDoc.data().evaluatorIds || [];
+                return evaluatorIds.includes(evaluatorId);
+            }
+            return false;
+        } catch (error) {
+            console.error('Error checking evaluator assignment:', error);
+            return false;
+        }
+    },
+    
+    // Utility function to get all evaluators for a specific stage
+    async getEvaluatorsForStage(stageIndex) {
+        try {
+            const assignmentDoc = await getDoc(
+                doc(window.firebaseDb, 'evaluatorAssignments', `stage_${stageIndex}`)
+            );
+            
+            if (assignmentDoc.exists()) {
+                return assignmentDoc.data().evaluatorIds || [];
+            }
+            return [];
+        } catch (error) {
+            console.error('Error getting evaluators for stage:', error);
+            return [];
         }
     },
     
@@ -5986,8 +6199,48 @@ const app = {
             }
             
             // Load existing evaluation data
-            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
-            const evalData = evalDoc.exists() ? evalDoc.data() : {};
+            // If current user is an evaluator, try to load from evaluatorEntries first
+            let evalData = {};
+            let teamComments = '';
+            
+            if (this.currentUser && this.currentUser.uid && this.userRole === 'guide') {
+                const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, stageIndex);
+                if (isEvaluator) {
+                    // Load from evaluatorEntries subcollection
+                    try {
+                        const evaluatorEntryDoc = await getDoc(
+                            doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries', this.currentUser.uid)
+                        );
+                        if (evaluatorEntryDoc.exists()) {
+                            const evaluatorData = evaluatorEntryDoc.data();
+                            evalData = {
+                                teamMarks: evaluatorData.teamMarks || null,
+                                teamMarksData: evaluatorData.teamMarksData || {},
+                                teamComments: evaluatorData.teamComments || evaluatorData.comments || '',
+                                individualEvaluations: evaluatorData.individualEvaluations || {}
+                            };
+                            teamComments = evalData.teamComments;
+                        }
+                    } catch (error) {
+                        console.warn('Error loading evaluator entry, falling back to main evaluation:', error);
+                    }
+                }
+            }
+            
+            // If no evaluator data found, load from main evaluation document
+            if (!evalData.teamMarks && !evalData.teamMarksData && Object.keys(evalData.individualEvaluations || {}).length === 0) {
+                const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+                if (evalDoc.exists()) {
+                    const mainEvalData = evalDoc.data();
+                    evalData = {
+                        teamMarks: mainEvalData.teamMarks || null,
+                        teamMarksData: mainEvalData.teamMarksData || {},
+                        teamComments: mainEvalData.teamComments || '',
+                        individualEvaluations: mainEvalData.individualEvaluations || {}
+                    };
+                    teamComments = evalData.teamComments;
+                }
+            }
             
             // Get mark parameters
             const teamParams = stage.teamMarkParams || [];
@@ -5997,7 +6250,9 @@ const app = {
             
             // Get existing evaluation marks (parameter-based or legacy)
             const teamMarksData = evalData.teamMarksData || {};
-            const teamMarksTotal = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            const teamMarksTotal = evalData.teamMarks !== null && evalData.teamMarks !== undefined 
+                ? evalData.teamMarks 
+                : (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
             
             // Build form HTML
             formContainer.innerHTML = `
@@ -6025,7 +6280,7 @@ const app = {
                                            min="0" max="${param.maxMarks}" 
                                            data-param-name="${this.escapeHtml(param.name)}"
                                            value="${teamMarksData[param.name] || ''}" 
-                                           placeholder="Enter marks"
+                                           ${teamMarksData[param.name] ? '' : 'placeholder="Enter marks"'}
                                            style="padding: 0.5rem; font-size: 0.9rem;">
                                 </div>
                             `).join('')}
@@ -6037,7 +6292,7 @@ const app = {
                                 <div class="form-group" style="flex: 1;">
                                     <label for="team-marks" style="font-size: 0.9rem; margin-bottom: 0.25rem;">Team Marks</label>
                                     <input type="number" id="team-marks" class="form-input" min="0" 
-                                           value="${teamMarksTotal || ''}" placeholder="Enter team marks"
+                                           value="${teamMarksTotal || ''}" ${teamMarksTotal ? '' : 'placeholder="Enter team marks"'}
                                            style="padding: 0.5rem; font-size: 0.9rem;">
                                 </div>
                             </div>
@@ -6088,7 +6343,7 @@ const app = {
                                                                data-param-name="${this.escapeHtml(param.name)}"
                                                                data-member-index="${index}"
                                                                value="${paramMarks}" 
-                                                               placeholder="Enter marks"
+                                                               ${paramMarks ? '' : 'placeholder="Enter marks"'}
                                                                style="padding: 0.5rem; font-size: 0.9rem;"
                                                                ${isAbsent ? 'disabled' : ''}>
                                                     </div>
@@ -6106,7 +6361,7 @@ const app = {
                                                            data-user-id="${member.userId || member.ktuid}"
                                                            data-member-index="${index}"
                                                            value="${memberEval.marks || ''}" 
-                                                           placeholder="Enter individual marks"
+                                                           ${memberEval.marks ? '' : 'placeholder="Enter individual marks"'}
                                                            style="padding: 0.5rem; font-size: 0.9rem;"
                                                            ${isAbsent ? 'disabled' : ''}>
                                                 </div>
@@ -6156,8 +6411,9 @@ const app = {
                 },
                 placeholder: 'Enter team evaluation comments...'
             });
-            if (evalData.teamComments) {
-                teamCommentsEditor.root.innerHTML = evalData.teamComments;
+            // Load existing team comments if available
+            if (teamComments) {
+                teamCommentsEditor.root.innerHTML = teamComments;
             }
             this.quillEditors['team-comments'] = teamCommentsEditor;
             
@@ -6408,10 +6664,364 @@ const app = {
             const evalRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`);
             await setDoc(evalRef, evalData, { merge: true });
             
+            // If current user is an evaluator, also save to evaluatorEntries subcollection
+            if (this.currentUser && this.currentUser.uid && this.userRole === 'guide') {
+                const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, stageIndex);
+                if (isEvaluator) {
+                    // Get evaluator info
+                    const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
+                    const userData = userDoc.exists() ? userDoc.data() : {};
+                    
+                    const evaluatorEntryRef = doc(
+                        window.firebaseDb,
+                        'evaluations',
+                        `${teamId}_${stageIndex}`,
+                        'evaluatorEntries',
+                        this.currentUser.uid
+                    );
+                    
+                    const evaluatorEntryData = {
+                        evaluatorId: this.currentUser.uid,
+                        evaluatorName: userData.name || userData.username || 'Unknown Evaluator',
+                        evaluatorEmail: this.currentUser.email || userData.email || '',
+                        teamId: teamId,
+                        stageIndex: parseInt(stageIndex),
+                        teamMarks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
+                        teamMarksData: Object.keys(teamMarksData).length > 0 ? teamMarksData : null,
+                        teamComments: teamComments || '',
+                        individualEvaluations: individualEvaluations,
+                        comments: teamComments || '', // For backward compatibility
+                        marks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
+                        timestamp: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    };
+                    
+                    await setDoc(evaluatorEntryRef, evaluatorEntryData, { merge: true });
+                    console.log('Saved to evaluatorEntries subcollection:', evaluatorEntryData);
+                }
+            }
+            
             alert('Evaluation data saved successfully!');
         } catch (error) {
             console.error('Error saving evaluation data:', error);
             alert('Error saving evaluation data. Please try again.');
+        }
+    },
+    
+    // ========== GUIDE EVALUATOR FUNCTIONS ==========
+    
+    async checkIfGuideIsEvaluator() {
+        if (!this.currentUser || !this.currentUser.uid || this.userRole !== 'guide') {
+            return false;
+        }
+        
+        try {
+            // Get all evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            // Check if guide is assigned as evaluator for any stage
+            for (let i = 0; i < stages.length; i++) {
+                const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, i);
+                if (isEvaluator) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (error) {
+            console.error('Error checking if guide is evaluator:', error);
+            return false;
+        }
+    },
+    
+    async loadGuideEvaluatorPage() {
+        if (!this.isGuide) return;
+        
+        // Load evaluation stages dropdown
+        await this.loadGuideEvaluatorStagesDropdown();
+    },
+    
+    async loadGuideEvaluatorStagesDropdown() {
+        const stageSelect = document.getElementById('guide-evaluator-stage-select');
+        if (!stageSelect) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            stageSelect.innerHTML = '<option value="">-- Select a stage --</option>';
+            
+            // Only show stages where this guide is assigned as evaluator
+            for (let i = 0; i < stages.length; i++) {
+                const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, i);
+                if (isEvaluator) {
+                    const option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = `${i + 1}. ${stages[i].name || `Stage ${i + 1}`}`;
+                    stageSelect.appendChild(option);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading guide evaluator stages dropdown:', error);
+        }
+    },
+    
+    async loadTeamsForGuideEvaluator() {
+        const stageSelect = document.getElementById('guide-evaluator-stage-select');
+        const teamsContainer = document.getElementById('guide-evaluator-teams-list-container');
+        const teamsList = document.getElementById('guide-evaluator-teams-list');
+        const formContainer = document.getElementById('guide-evaluator-form-container');
+        
+        if (!stageSelect || !teamsContainer || !teamsList) return;
+        
+        const stageIndex = stageSelect.value;
+        if (!stageIndex || stageIndex === '') {
+            teamsContainer.style.display = 'none';
+            formContainer.style.display = 'none';
+            return;
+        }
+        
+        // Verify that guide is evaluator for this stage
+        const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, stageIndex);
+        if (!isEvaluator) {
+            alert('You are not assigned as an evaluator for this stage.');
+            teamsContainer.style.display = 'none';
+            formContainer.style.display = 'none';
+            return;
+        }
+        
+        try {
+            teamsList.innerHTML = '<div class="loading-state">Loading teams...</div>';
+            teamsContainer.style.display = 'block';
+            formContainer.style.display = 'none';
+            
+            // Load all teams
+            const teamsSnapshot = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) {
+                    teams.push({ id: doc.id, ...data });
+                }
+            });
+            
+            if (teams.length === 0) {
+                teamsList.innerHTML = '<p class="empty-state">No teams found.</p>';
+                return;
+            }
+            
+            // Apply team order settings
+            const orderedTeams = await this.applyTeamOrder(teams);
+            
+            // Load existing evaluations to show status
+            const teamsWithStatus = await Promise.all(orderedTeams.map(async (team) => {
+                // Check if this evaluator has already submitted
+                let evaluatorSubmitted = false;
+                const evaluatorEntryDoc = await getDoc(
+                    doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`, 'evaluatorEntries', this.currentUser.uid)
+                );
+                evaluatorSubmitted = evaluatorEntryDoc.exists();
+                
+                return { ...team, evaluatorSubmitted };
+            }));
+            
+            teamsList.innerHTML = teamsWithStatus.map(team => `
+                <div class="eval-team-card" onclick="app.loadGuideEvaluatorForm('${team.id}', '${stageIndex}')" style="cursor: pointer;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0; color: var(--text-primary);">${this.escapeHtml(team.groupName || 'Unnamed Team')}</h4>
+                            ${team.guideName ? `<p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">Guide: ${this.escapeHtml(team.guideName)}</p>` : ''}
+                        </div>
+                        <div style="text-align: right;">
+                            ${team.evaluatorSubmitted ? `
+                                <span style="padding: 4px 12px; background: #d1fae5; color: #065f46; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">
+                                    <i class="fas fa-check-circle"></i> Submitted
+                                </span>
+                            ` : `
+                                <span style="padding: 4px 12px; background: #fef3c7; color: #92400e; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">
+                                    <i class="fas fa-edit"></i> Pending
+                                </span>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading teams for guide evaluator:', error);
+            teamsList.innerHTML = '<p class="error-message">Error loading teams. Please try again.</p>';
+        }
+    },
+    
+    async loadGuideEvaluatorForm(teamId, stageIndex) {
+        const formContainer = document.getElementById('guide-evaluator-form-container');
+        
+        if (!formContainer) return;
+        
+        if (!teamId || stageIndex === '') {
+            formContainer.style.display = 'none';
+            return;
+        }
+        
+        // Verify that guide is evaluator for this stage
+        const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, stageIndex);
+        if (!isEvaluator) {
+            alert('You are not assigned as an evaluator for this stage.');
+            return;
+        }
+        
+        // Temporarily store original container and create a temporary one
+        const originalContainerId = 'evaluation-form-container';
+        const originalContainer = document.getElementById(originalContainerId);
+        let tempContainer = null;
+        
+        if (originalContainer) {
+            // Store original display state
+            const originalDisplay = originalContainer.style.display;
+            originalContainer.style.display = 'none';
+        } else {
+            // Create temporary container if it doesn't exist
+            tempContainer = document.createElement('div');
+            tempContainer.id = originalContainerId;
+            tempContainer.style.display = 'none';
+            document.body.appendChild(tempContainer);
+        }
+        
+        try {
+            // Load the form using existing function (it uses evaluation-form-container)
+            await this.loadEvaluationForm(teamId, stageIndex);
+            
+            // Get the loaded form content
+            const loadedContainer = document.getElementById(originalContainerId);
+            if (loadedContainer) {
+                // Copy content to guide evaluator container
+                formContainer.innerHTML = loadedContainer.innerHTML;
+                
+                // Remove Generate Report button for evaluators
+                const reportBtn = formContainer.querySelector('button[onclick*="showReportGenerationOptions"]');
+                if (reportBtn) {
+                    reportBtn.remove();
+                }
+                
+                // Update save button to use guide evaluator save function
+                const saveBtn = formContainer.querySelector('button[onclick*="saveEvaluationData"]');
+                if (saveBtn) {
+                    saveBtn.setAttribute('onclick', `app.saveGuideEvaluatorData('${teamId}', '${stageIndex}')`);
+                }
+                
+                // Hide the original container
+                loadedContainer.style.display = 'none';
+            }
+            
+            formContainer.style.display = 'block';
+            
+            // Scroll to form
+            formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (error) {
+            console.error('Error loading guide evaluator form:', error);
+            alert('Error loading evaluation form. Please try again.');
+        } finally {
+            // Clean up temporary container if we created one
+            if (tempContainer && tempContainer.parentNode) {
+                tempContainer.parentNode.removeChild(tempContainer);
+            }
+        }
+    },
+    
+    async saveGuideEvaluatorData(teamId, stageIndex) {
+        // Verify that guide is evaluator for this stage
+        const isEvaluator = await this.isEvaluatorForStage(this.currentUser.uid, stageIndex);
+        if (!isEvaluator) {
+            alert('You are not assigned as an evaluator for this stage.');
+            return;
+        }
+        
+        // Use the same save function which now handles evaluatorEntries
+        await this.saveEvaluationData(teamId, stageIndex);
+        
+        // Reload teams list to update status
+        await this.loadTeamsForGuideEvaluator();
+    },
+    
+    // ========== EVALUATION DATA LOADING FUNCTIONS ==========
+    
+    // Load evaluator entries for a team and stage
+    async loadEvaluatorEntriesForTeam(teamId, stageIndex) {
+        try {
+            const evaluatorEntriesRef = collection(
+                window.firebaseDb,
+                'evaluations',
+                `${teamId}_${stageIndex}`,
+                'evaluatorEntries'
+            );
+            const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+            
+            const entries = [];
+            evaluatorEntriesSnapshot.forEach(doc => {
+                entries.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            
+            return entries;
+        } catch (error) {
+            console.error('Error loading evaluator entries:', error);
+            return [];
+        }
+    },
+    
+    // Load zeroth review presentation details for student
+    async loadZerothReviewPresentationDetails(teamId) {
+        try {
+            // Find zeroth review stage (usually stage index 0)
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (stages.length === 0) {
+                return null;
+            }
+            
+            const zerothStageIndex = 0;
+            const zerothStage = stages[zerothStageIndex];
+            
+            if (!zerothStage) {
+                return null;
+            }
+            
+            // Load evaluation data
+            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${zerothStageIndex}`));
+            let evalData = evalDoc.exists() ? evalDoc.data() : {};
+            
+            // Load evaluator entries
+            const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(teamId, zerothStageIndex);
+            
+            // Aggregate evaluator comments
+            const evaluatorTeamComments = evaluatorEntries
+                .filter(e => e.teamComments || e.comments)
+                .map(e => ({
+                    evaluatorName: e.evaluatorName || 'Unknown Evaluator',
+                    evaluatorEmail: e.evaluatorEmail || '',
+                    comment: e.teamComments || e.comments || '',
+                    timestamp: e.timestamp || e.updatedAt || null
+                }));
+            
+            // Get team marks
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            
+            return {
+                stageName: zerothStage.name,
+                stageIndex: zerothStageIndex,
+                teamMarks: teamMarks,
+                teamMarksData: teamMarksData,
+                teamComments: evalData.teamComments || '',
+                evaluatorTeamComments: evaluatorTeamComments,
+                evaluationDate: evalData.updatedAt || evalData.timestamp || null,
+                hasEvaluation: evalDoc.exists() || evaluatorEntries.length > 0
+            };
+        } catch (error) {
+            console.error('Error loading zeroth review presentation details:', error);
+            return null;
         }
     },
     
@@ -8580,13 +9190,78 @@ const app = {
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             
-            // Load all evaluations for this team
+            // Load all evaluations for this team (from main collection and evaluatorEntries)
             const evaluations = {};
             for (let i = 0; i < stages.length; i++) {
                 try {
+                    // Load main evaluation document
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
-                    if (evalDoc.exists()) {
-                        evaluations[i] = evalDoc.data();
+                    let evalData = evalDoc.exists() ? evalDoc.data() : {};
+                    
+                    // Load evaluator entries to aggregate comments
+                    const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
+                    
+                    // Merge evaluator entries data
+                    if (evaluatorEntries.length > 0) {
+                        // Aggregate team comments from all evaluators
+                        const evaluatorTeamComments = evaluatorEntries
+                            .filter(e => e.teamComments || e.comments)
+                            .map(e => ({
+                                evaluatorName: e.evaluatorName || 'Unknown Evaluator',
+                                comment: e.teamComments || e.comments || ''
+                            }));
+                        
+                        // Aggregate individual comments from all evaluators
+                        const aggregatedIndividualEvaluations = {};
+                        evaluatorEntries.forEach(evaluatorEntry => {
+                            if (evaluatorEntry.individualEvaluations) {
+                                Object.keys(evaluatorEntry.individualEvaluations).forEach(userId => {
+                                    if (!aggregatedIndividualEvaluations[userId]) {
+                                        aggregatedIndividualEvaluations[userId] = {
+                                            marks: null,
+                                            marksData: {},
+                                            comments: [],
+                                            isAbsent: false
+                                        };
+                                    }
+                                    const individualEval = evaluatorEntry.individualEvaluations[userId];
+                                    // Take marks from first evaluator that has marks
+                                    if (aggregatedIndividualEvaluations[userId].marks === null && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                        aggregatedIndividualEvaluations[userId].marks = individualEval.marks;
+                                    }
+                                    // Merge marksData (take first non-zero value for each parameter)
+                                    if (individualEval.marksData) {
+                                        Object.keys(individualEval.marksData).forEach(paramName => {
+                                            const paramValue = individualEval.marksData[paramName];
+                                            if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                                if (!aggregatedIndividualEvaluations[userId].marksData[paramName] || aggregatedIndividualEvaluations[userId].marksData[paramName] === 0) {
+                                                    aggregatedIndividualEvaluations[userId].marksData[paramName] = paramValue;
+                                                }
+                                            }
+                                        });
+                                    }
+                                    // Collect comments from all evaluators
+                                    if (individualEval.comments) {
+                                        aggregatedIndividualEvaluations[userId].comments.push({
+                                            evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                            comment: individualEval.comments
+                                        });
+                                    }
+                                    // Set absent status if any evaluator marked as absent
+                                    if (individualEval.isAbsent) {
+                                        aggregatedIndividualEvaluations[userId].isAbsent = true;
+                                    }
+                                });
+                            }
+                        });
+                        
+                        // Update evalData with aggregated evaluator comments
+                        evalData.evaluatorTeamComments = evaluatorTeamComments;
+                        evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
+                    }
+                    
+                    if (evalDoc.exists() || evaluatorEntries.length > 0) {
+                        evaluations[i] = evalData;
                     }
                 } catch (error) {
                     console.error(`Error loading evaluation for stage ${i}:`, error);
@@ -8724,9 +9399,38 @@ const app = {
                                         `;
                                     }
                                         
-                                        // Get student's individual evaluation
-                                        const studentEval = evalData.individualEvaluations?.[studentUserId] || 
-                                                           evalData.individualEvaluations?.[studentKtuid] || null;
+                                        // Get student's individual evaluation (from main eval or aggregated from evaluators)
+                                        let studentEval = evalData.individualEvaluations?.[studentUserId] || 
+                                                          evalData.individualEvaluations?.[studentKtuid] || null;
+                                        
+                                        // If we have aggregated individual evaluations, merge them
+                                        const aggregatedEval = evalData.aggregatedIndividualEvaluations?.[studentUserId] || 
+                                                              evalData.aggregatedIndividualEvaluations?.[studentKtuid] || null;
+                                        
+                                        if (aggregatedEval) {
+                                            // Merge aggregated data with existing eval
+                                            if (!studentEval) {
+                                                studentEval = {
+                                                    marks: aggregatedEval.marks,
+                                                    marksData: aggregatedEval.marksData,
+                                                    comments: '',
+                                                    isAbsent: aggregatedEval.isAbsent
+                                                };
+                                            } else {
+                                                // Merge marks if not already set
+                                                if (studentEval.marks === null || studentEval.marks === undefined) {
+                                                    studentEval.marks = aggregatedEval.marks;
+                                                }
+                                                // Merge marksData
+                                                if (aggregatedEval.marksData) {
+                                                    studentEval.marksData = { ...studentEval.marksData, ...aggregatedEval.marksData };
+                                                }
+                                                // Merge absent status
+                                                if (aggregatedEval.isAbsent) {
+                                                    studentEval.isAbsent = true;
+                                                }
+                                            }
+                                        }
                                         
                                         // Get team marks data (parameter-based or legacy)
                                         const teamMarksData = evalData.teamMarksData || {};
@@ -8762,10 +9466,24 @@ const app = {
                                                                 </div>
                                                             </div>
                                                         ` : ''}
-                                                        ${evalData.teamComments ? `
+                                                        ${evalData.teamComments || (evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) ? `
                                                             <div class="comments-section">
                                                                 <div class="comments-label"><i class="fas fa-comment"></i> Team Comments</div>
-                                                                <div class="comments-text formatted-content">${evalData.teamComments}</div>
+                                                                ${evalData.teamComments ? `
+                                                                    <div class="comments-text formatted-content">${evalData.teamComments}</div>
+                                                                ` : ''}
+                                                                ${evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0 ? `
+                                                                    <div class="evaluator-comments-list" style="margin-top: ${evalData.teamComments ? '1rem' : '0'};">
+                                                                        ${evalData.evaluatorTeamComments.map(evalComment => `
+                                                                            <div class="evaluator-comment-item" style="margin-bottom: 1rem; padding: 0.75rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                                                                                <div class="evaluator-name" style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                                    <i class="fas fa-user-tie"></i> ${this.escapeHtml(evalComment.evaluatorName)}
+                                                                                </div>
+                                                                                <div class="comments-text formatted-content" style="font-size: 0.9rem;">${evalComment.comment}</div>
+                                                                            </div>
+                                                                        `).join('')}
+                                                                    </div>
+                                                                ` : ''}
                                                             </div>
                                                         ` : ''}
                                                     </div>
@@ -8802,10 +9520,24 @@ const app = {
                                                                 </div>
                                                             </div>
                                                         ` : ''}
-                                                        ${studentEval?.comments ? `
+                                                        ${studentEval?.comments || (evalData.aggregatedIndividualEvaluations?.[studentUserId]?.comments?.length > 0 || evalData.aggregatedIndividualEvaluations?.[studentKtuid]?.comments?.length > 0) ? `
                                                             <div class="comments-section">
                                                                 <div class="comments-label"><i class="fas fa-comment"></i> Individual Comments</div>
-                                                                <div class="comments-text formatted-content">${studentEval.comments}</div>
+                                                                ${studentEval?.comments ? `
+                                                                    <div class="comments-text formatted-content">${studentEval.comments}</div>
+                                                                ` : ''}
+                                                                ${evalData.aggregatedIndividualEvaluations?.[studentUserId]?.comments?.length > 0 || evalData.aggregatedIndividualEvaluations?.[studentKtuid]?.comments?.length > 0 ? `
+                                                                    <div class="evaluator-comments-list" style="margin-top: ${studentEval?.comments ? '1rem' : '0'};">
+                                                                        ${(evalData.aggregatedIndividualEvaluations[studentUserId]?.comments || evalData.aggregatedIndividualEvaluations[studentKtuid]?.comments || []).map(evalComment => `
+                                                                            <div class="evaluator-comment-item" style="margin-bottom: 1rem; padding: 0.75rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid var(--primary-color);">
+                                                                                <div class="evaluator-name" style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                                    <i class="fas fa-user-tie"></i> ${this.escapeHtml(evalComment.evaluatorName)}
+                                                                                </div>
+                                                                                <div class="comments-text formatted-content" style="font-size: 0.9rem;">${evalComment.comment}</div>
+                                                                            </div>
+                                                                        `).join('')}
+                                                                    </div>
+                                                                ` : ''}
                                                             </div>
                                                         ` : ''}
                                                     </div>
