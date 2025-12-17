@@ -1182,8 +1182,14 @@ Bob Johnson,GHI789</pre>
                         <div id="card-sorting-tab" class="admin-tab-content">
                             <div class="project-planning-section">
                                 <h3><i class="fas fa-sort"></i> Card Sorting</h3>
+                                <div id="card-sorting-submission-status" style="margin-bottom: 1rem;"></div>
                                 <div id="card-sorting-content">
                                     <p class="empty-state">Card sorting management coming soon...</p>
+                                </div>
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                    <button type="button" class="btn btn-success" id="submit-card-sorting-btn" onclick="app.submitCardSortingForVerification()" style="display: none;">
+                                        <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1320,8 +1326,14 @@ Bob Johnson,GHI789</pre>
                     <div id="card-sorting-tab" class="admin-tab-content">
                         <div class="project-planning-section">
                             <h3><i class="fas fa-sort"></i> Card Sorting</h3>
+                            <div id="card-sorting-submission-status" style="margin-bottom: 1rem;"></div>
                             <div id="card-sorting-content">
                                 <p class="empty-state">Card sorting management coming soon...</p>
+                            </div>
+                            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" id="submit-card-sorting-btn" onclick="app.submitCardSortingForVerification()" style="display: none;">
+                                    <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1447,6 +1459,29 @@ Bob Johnson,GHI789</pre>
                         </button>
                         <button type="button" class="btn btn-primary" id="verify-product-backlog-btn" onclick="app.verifyProductBacklog()" style="display: none;">
                             <i class="fas fa-check-double"></i> Verify All Product Backlog
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Approve/Review Card Sorting Modal -->
+            <div id="approve-card-sorting-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) app.closeApproveCardSortingModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh;">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-sort"></i> Review Card Sorting</h2>
+                        <button type="button" class="modal-close" onclick="app.closeApproveCardSortingModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="overflow-y: auto;">
+                        <div id="approve-card-sorting-content">
+                            <!-- Content will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeApproveCardSortingModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="verify-card-sorting-btn" onclick="app.verifyCardSorting()" style="display: none;">
+                            <i class="fas fa-check-double"></i> Verify Card Sorting
                         </button>
                     </div>
                 </div>

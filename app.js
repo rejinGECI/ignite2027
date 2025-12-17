@@ -14547,9 +14547,27 @@ const app = {
     // ========== CARD SORTING FUNCTIONS ==========
     
     async loadCardSorting() {
-        const container = document.getElementById('card-sorting-content');
-        const statusContainer = document.getElementById('card-sorting-submission-status');
-        const submitBtn = document.getElementById('submit-card-sorting-btn');
+        // Find the active/visible card-sorting-tab by finding the visible page first
+        let tab = null;
+        const pages = document.querySelectorAll('.page');
+        for (const page of pages) {
+            const style = window.getComputedStyle(page);
+            if (style.display !== 'none') {
+                const foundTab = page.querySelector('#card-sorting-tab');
+                if (foundTab) {
+                    tab = foundTab;
+                    break;
+                }
+            }
+        }
+        // Fallback to first tab if no visible one found
+        if (!tab) {
+            tab = document.querySelector('#card-sorting-tab');
+        }
+        
+        const container = tab ? tab.querySelector('#card-sorting-content') : document.getElementById('card-sorting-content');
+        const statusContainer = tab ? tab.querySelector('#card-sorting-submission-status') : document.getElementById('card-sorting-submission-status');
+        const submitBtn = tab ? tab.querySelector('#submit-card-sorting-btn') : document.getElementById('submit-card-sorting-btn');
         
         if (!container) return;
         
@@ -16696,23 +16714,38 @@ const app = {
     // ========== CARD SORTING VERIFICATION FUNCTIONS (GUIDE) ==========
     
     async showApproveCardSortingModal(teamId) {
+        console.log('showApproveCardSortingModal called with teamId:', teamId);
         const modal = document.getElementById('approve-card-sorting-modal');
         const content = document.getElementById('approve-card-sorting-content');
         const verifyBtn = document.getElementById('verify-card-sorting-btn');
         
-        if (!modal || !content) return;
+        console.log('Modal elements found:', {
+            modal: !!modal,
+            content: !!content,
+            verifyBtn: !!verifyBtn
+        });
+        
+        if (!modal || !content) {
+            console.error('Modal or content element not found!', { modal: !!modal, content: !!content });
+            alert('Error: Modal elements not found. Please refresh the page.');
+            return;
+        }
         
         try {
+            console.log('Loading team data for teamId:', teamId);
             // Load team
             const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
             if (!teamDoc.exists()) {
+                console.error('Team document does not exist:', teamId);
                 alert('Team not found.');
                 return;
             }
             
             const team = { id: teamDoc.id, ...teamDoc.data() };
+            console.log('Team loaded:', team.groupName || team.id);
             
             // Load modules
+            console.log('Loading card sorting modules...');
             const modulesQuery = query(
                 collection(window.firebaseDb, 'cardSortingModules'),
                 where('teamId', '==', teamId)
@@ -16739,6 +16772,7 @@ const app = {
             });
             
             // Load product backlogs
+            console.log('Loading product backlogs...');
             const backlogQuery = query(
                 collection(window.firebaseDb, 'productBacklog'),
                 where('teamId', '==', teamId)
@@ -16748,8 +16782,10 @@ const app = {
             backlogSnapshot.forEach(doc => {
                 backlogs.push({ id: doc.id, ...doc.data() });
             });
+            console.log('Product backlogs loaded:', backlogs.length);
             
             // Load module assignments with sortOrder
+            console.log('Loading card sorting assignments...');
             const assignmentsQuery = query(
                 collection(window.firebaseDb, 'cardSortingAssignments'),
                 where('teamId', '==', teamId)
@@ -16765,6 +16801,7 @@ const app = {
                     sortOrder: data.sortOrder !== undefined && data.sortOrder !== null ? data.sortOrder : null
                 };
             });
+            console.log('Assignments loaded:', Object.keys(assignments).length);
             
             // Group backlogs by module and add sortOrder
             const backlogsByModule = {};
@@ -16802,10 +16839,16 @@ const app = {
             });
             
             // Load planning data
+            console.log('Loading planning data for team:', teamId);
             const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
             const planningData = planningDoc.exists() ? planningDoc.data() : null;
             const isVerified = planningData && planningData.cardSortingVerified === true;
             const verificationStatus = planningData ? planningData.cardSortingVerificationStatus : null;
+            console.log('Planning data loaded:', {
+                exists: planningDoc.exists(),
+                isVerified,
+                hasVerificationStatus: !!verificationStatus
+            });
             
             let html = `
                 <div style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -16911,69 +16954,97 @@ const app = {
             
             html += '</div>';
             
+            // Add verification status message if verified
+            if (isVerified && verificationStatus) {
+                html += `
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                            <i class="fas fa-check-circle"></i>
+                            <strong>Card Sorting Verified</strong>
+                        </div>
+                        ${verificationStatus.feedback ? `
+                            <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
+                        ` : ''}
+                        ${verificationStatus.verifiedAt ? `
+                            <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
+                                Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            console.log('Setting modal content HTML, length:', html.length);
             content.innerHTML = html;
+            console.log('Modal content set successfully');
             
             // Show verify button if it exists
             if (verifyBtn) {
+                console.log('Setting up verify button');
                 verifyBtn.style.display = 'inline-flex';
                 if (isVerified) {
                     verifyBtn.innerHTML = '<i class="fas fa-redo"></i> Re-verify Card Sorting';
                     verifyBtn.className = 'btn btn-success';
-                    
-                    // Add verification status message
-                    if (verificationStatus) {
-                        html += `
-                            <div style="margin-top: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
-                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
-                                    <i class="fas fa-check-circle"></i>
-                                    <strong>Card Sorting Verified</strong>
-                                </div>
-                                ${verificationStatus.feedback ? `
-                                    <p style="margin: 0; color: #047857; font-size: 0.9rem; white-space: pre-wrap;">${this.escapeHtml(verificationStatus.feedback)}</p>
-                                ` : ''}
-                                ${verificationStatus.verifiedAt ? `
-                                    <p style="margin: 0.5rem 0 0 0; color: #047857; font-size: 0.85rem;">
-                                        Verified on: ${verificationStatus.verifiedAt.toDate ? verificationStatus.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
-                                    </p>
-                                ` : ''}
-                            </div>
-                        `;
-                        content.innerHTML = html;
-                    }
+                    console.log('Verify button set to Re-verify mode');
                 } else {
                     verifyBtn.innerHTML = '<i class="fas fa-check-double"></i> Verify Card Sorting';
                     verifyBtn.className = 'btn btn-primary';
+                    console.log('Verify button set to Verify mode');
                 }
+            } else {
+                console.warn('Verify button element not found!');
             }
             
             // Store teamId for verify function
             modal.dataset.teamId = teamId;
             
+            console.log('Opening modal for team:', teamId);
             modal.style.display = 'flex';
         } catch (error) {
             console.error('Error loading card sorting for approval:', error);
+            console.error('Error stack:', error.stack);
             alert('Error loading card sorting. Please try again.');
         }
     },
     
     closeApproveCardSortingModal() {
+        console.log('closeApproveCardSortingModal called');
         const modal = document.getElementById('approve-card-sorting-modal');
-        if (modal) modal.style.display = 'none';
+        if (modal) {
+            modal.style.display = 'none';
+            console.log('Modal closed');
+        } else {
+            console.warn('Modal element not found when trying to close');
+        }
     },
     
     async verifyCardSorting() {
+        console.log('verifyCardSorting called');
         const modal = document.getElementById('approve-card-sorting-modal');
+        console.log('Modal element:', modal);
         const teamId = modal ? modal.dataset.teamId : null;
+        console.log('Team ID from modal:', teamId);
+        
         if (!teamId) {
+            console.error('Team ID not found in modal dataset');
             alert('Team ID not found. Please try again.');
             return;
         }
         
+        if (!this.currentUser || !this.currentUser.uid) {
+            console.error('Current user not found:', this.currentUser);
+            alert('User not authenticated. Please log in again.');
+            return;
+        }
+        
+        console.log('Prompting for feedback...');
         const feedback = prompt('Enter verification feedback (optional):');
+        console.log('Feedback entered:', feedback);
         
         try {
+            console.log('Updating Firestore with verification status...');
             const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
-            await setDoc(planningRef, {
+            const updateData = {
                 teamId: teamId,
                 cardSortingVerified: true,
                 cardSortingVerificationStatus: {
@@ -16982,13 +17053,22 @@ const app = {
                     feedback: feedback || ''
                 },
                 updatedAt: serverTimestamp()
-            }, { merge: true });
+            };
+            console.log('Update data:', updateData);
+            
+            await setDoc(planningRef, updateData, { merge: true });
+            console.log('Card sorting verified successfully in Firestore');
             
             alert('Card sorting verified successfully!');
             await this.loadGuideProjectPlanning();
             this.closeApproveCardSortingModal();
         } catch (error) {
             console.error('Error verifying card sorting:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code
+            });
             alert('Error verifying card sorting. Please try again.');
         }
     },
