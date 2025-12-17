@@ -10402,20 +10402,70 @@ const app = {
                 stories.push(story);
             });
             
-            // Sort by sortOrder if available, otherwise by createdAt (newest first)
-            stories.forEach((story, index) => {
+            // Group stories by user, then sort by sortOrder within each user group
+            // First, find the maximum sortOrder to assign defaults to stories without one
+            const maxSortOrder = stories.reduce((max, story) => {
+                const sortOrder = story.sortOrder !== undefined && story.sortOrder !== null ? story.sortOrder : -1;
+                return Math.max(max, sortOrder);
+            }, -1);
+            
+            // Assign default sortOrder to stories that don't have one (place them after existing ordered stories)
+            let defaultIndex = 0;
+            stories.forEach((story) => {
                 if (story.sortOrder === undefined || story.sortOrder === null) {
-                    story.sortOrder = index;
+                    story.sortOrder = maxSortOrder + 1 + defaultIndex;
+                    defaultIndex++;
                 }
             });
-            stories.sort((a, b) => {
-                if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
-                    return a.sortOrder - b.sortOrder;
+            
+            // Group stories by userId
+            const storiesByUser = {};
+            stories.forEach(story => {
+                const userId = story.userId || 'unknown';
+                if (!storiesByUser[userId]) {
+                    storiesByUser[userId] = [];
                 }
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt || 0);
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt || 0);
-                return dateB - dateA; // Descending order
+                storiesByUser[userId].push(story);
             });
+            
+            // Sort stories within each user group by sortOrder
+            Object.keys(storiesByUser).forEach(userId => {
+                storiesByUser[userId].sort((a, b) => {
+                    const sortOrderA = a.sortOrder !== undefined && a.sortOrder !== null ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+                    const sortOrderB = b.sortOrder !== undefined && b.sortOrder !== null ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+                    return sortOrderA - sortOrderB;
+                });
+            });
+            
+            // Get unique user IDs and sort them by the minimum sortOrder of their stories (or by userName for consistency)
+            const userIds = Object.keys(storiesByUser);
+            userIds.sort((userIdA, userIdB) => {
+                const storiesA = storiesByUser[userIdA];
+                const storiesB = storiesByUser[userIdB];
+                
+                // Get minimum sortOrder for each user
+                const minSortOrderA = Math.min(...storiesA.map(s => s.sortOrder !== undefined && s.sortOrder !== null ? s.sortOrder : Number.MAX_SAFE_INTEGER));
+                const minSortOrderB = Math.min(...storiesB.map(s => s.sortOrder !== undefined && s.sortOrder !== null ? s.sortOrder : Number.MAX_SAFE_INTEGER));
+                
+                // If sortOrders are equal, sort by userName for consistency
+                if (minSortOrderA === minSortOrderB) {
+                    const nameA = storiesA[0].userName || '';
+                    const nameB = storiesB[0].userName || '';
+                    return nameA.localeCompare(nameB);
+                }
+                
+                return minSortOrderA - minSortOrderB;
+            });
+            
+            // Flatten the grouped stories back into a single array
+            const sortedStories = [];
+            userIds.forEach(userId => {
+                sortedStories.push(...storiesByUser[userId]);
+            });
+            
+            // Replace the original stories array with the sorted one
+            stories.length = 0;
+            stories.push(...sortedStories);
             
             // Load submission status
             const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
