@@ -5717,9 +5717,239 @@ const app = {
                 const evaluations = {};
                 for (let i = 0; i < stages.length; i++) {
                     try {
+                        // Load main evaluation document (admin evaluation)
                         const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${i}`));
-                        if (evalDoc.exists()) {
-                            evaluations[i] = evalDoc.data();
+                        let evalData = evalDoc.exists() ? evalDoc.data() : {};
+                        
+                        // Load evaluator entries to get all evaluations
+                        const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(team.id, i);
+                        
+                        // Aggregate team marks from all evaluators (including admin)
+                        const teamMarksList = [];
+                        const teamMarksDataList = [];
+                        
+                        // Check if admin evaluation has team marks
+                        if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+                            teamMarksList.push(evalData.teamMarks);
+                        } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                            const total = Object.values(evalData.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                            if (total > 0) {
+                                teamMarksList.push(total);
+                                teamMarksDataList.push(evalData.teamMarksData);
+                            }
+                        }
+                        
+                        // Collect team marks from evaluator entries
+                        evaluatorEntries.forEach(evaluatorEntry => {
+                            if (evaluatorEntry.teamMarks !== null && evaluatorEntry.teamMarks !== undefined) {
+                                teamMarksList.push(evaluatorEntry.teamMarks);
+                            } else if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                                const total = Object.values(evaluatorEntry.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                                if (total > 0) {
+                                    teamMarksList.push(total);
+                                    teamMarksDataList.push(evaluatorEntry.teamMarksData);
+                                }
+                            }
+                        });
+                        
+                        // Calculate average team marks (only from evaluators who entered marks)
+                        if (teamMarksList.length > 0) {
+                            let avgTeamMarks = teamMarksList.reduce((sum, m) => sum + m, 0) / teamMarksList.length;
+                            // If there's only one evaluator, use their exact value (no averaging needed)
+                            // If multiple evaluators but all values are integers, round to integer
+                            if (teamMarksList.length === 1) {
+                                avgTeamMarks = teamMarksList[0]; // Use exact value from single evaluator
+                            } else if (teamMarksList.every(m => Number.isInteger(m))) {
+                                // All values are integers, round the average to integer
+                                avgTeamMarks = Math.round(avgTeamMarks);
+                            }
+                            evalData.teamMarks = avgTeamMarks;
+                            
+                            // Average team marks data by parameter
+                            if (teamMarksDataList.length > 0) {
+                                const avgTeamMarksData = {};
+                                const allParams = new Set();
+                                teamMarksDataList.forEach(md => {
+                                    Object.keys(md).forEach(param => allParams.add(param));
+                                });
+                                
+                                allParams.forEach(param => {
+                                    const values = teamMarksDataList
+                                        .map(md => md[param])
+                                        .filter(v => v !== null && v !== undefined && v !== '')
+                                        .map(v => parseFloat(v));
+                                    if (values.length > 0) {
+                                        let average = values.reduce((sum, v) => sum + (isNaN(v) ? 0 : v), 0) / values.length;
+                                        // If there's only one evaluator, use their exact value (no averaging needed)
+                                        // If multiple evaluators but all values are integers, round to integer
+                                        if (values.length === 1) {
+                                            average = values[0]; // Use exact value from single evaluator
+                                        } else if (values.every(v => Number.isInteger(v))) {
+                                            // All values are integers, round the average to integer
+                                            average = Math.round(average);
+                                        }
+                                        avgTeamMarksData[param] = average;
+                                    }
+                                });
+                                
+                                if (Object.keys(avgTeamMarksData).length > 0) {
+                                    evalData.teamMarksData = avgTeamMarksData;
+                                }
+                            }
+                        }
+                        
+                        // Aggregate team comments from all evaluators
+                        const evaluatorTeamComments = [];
+                        if (evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>') {
+                            evaluatorTeamComments.push({
+                                evaluatorName: 'Admin',
+                                comment: evalData.teamComments
+                            });
+                        }
+                        evaluatorEntries.forEach(e => {
+                            if (e.teamComments || e.comments) {
+                                const comment = e.teamComments || e.comments || '';
+                                if (comment.trim() !== '' && comment.trim() !== '<p><br></p>') {
+                                    evaluatorTeamComments.push({
+                                        evaluatorName: e.evaluatorName || 'Unknown Evaluator',
+                                        comment: comment
+                                    });
+                                }
+                            }
+                        });
+                        evalData.evaluatorTeamComments = evaluatorTeamComments;
+                        
+                        // Aggregate individual evaluations from all evaluators
+                        const aggregatedIndividualEvaluations = {};
+                        
+                        // Add individual evaluations from main eval document (admin)
+                        if (evalData.individualEvaluations) {
+                            Object.keys(evalData.individualEvaluations).forEach(userId => {
+                                if (!aggregatedIndividualEvaluations[userId]) {
+                                    aggregatedIndividualEvaluations[userId] = {
+                                        marks: [],
+                                        marksData: {},
+                                        comments: [],
+                                        isAbsent: false
+                                    };
+                                }
+                                const individualEval = evalData.individualEvaluations[userId];
+                                
+                                if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                    aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                                }
+                                
+                                if (!individualEval.isAbsent && individualEval.marksData) {
+                                    Object.keys(individualEval.marksData).forEach(paramName => {
+                                        const paramValue = individualEval.marksData[paramName];
+                                        if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                            if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                                aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                            }
+                                            aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                        }
+                                    });
+                                }
+                                
+                                if (individualEval.comments) {
+                                    aggregatedIndividualEvaluations[userId].comments.push({
+                                        evaluatorName: 'Admin',
+                                        comment: individualEval.comments
+                                    });
+                                }
+                                
+                                if (individualEval.isAbsent) {
+                                    aggregatedIndividualEvaluations[userId].isAbsent = true;
+                                }
+                            });
+                        }
+                        
+                        // Add individual evaluations from evaluator entries
+                        evaluatorEntries.forEach(evaluatorEntry => {
+                            if (evaluatorEntry.individualEvaluations) {
+                                Object.keys(evaluatorEntry.individualEvaluations).forEach(userId => {
+                                    if (!aggregatedIndividualEvaluations[userId]) {
+                                        aggregatedIndividualEvaluations[userId] = {
+                                            marks: [],
+                                            marksData: {},
+                                            comments: [],
+                                            isAbsent: false
+                                        };
+                                    }
+                                    const individualEval = evaluatorEntry.individualEvaluations[userId];
+                                    
+                                    if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                        aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                                    }
+                                    
+                                    if (!individualEval.isAbsent && individualEval.marksData) {
+                                        Object.keys(individualEval.marksData).forEach(paramName => {
+                                            const paramValue = individualEval.marksData[paramName];
+                                            if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                                if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                                    aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                                }
+                                                aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                            }
+                                        });
+                                    }
+                                    
+                                    if (individualEval.comments) {
+                                        aggregatedIndividualEvaluations[userId].comments.push({
+                                            evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                            comment: individualEval.comments
+                                        });
+                                    }
+                                    
+                                    if (individualEval.isAbsent) {
+                                        aggregatedIndividualEvaluations[userId].isAbsent = true;
+                                    }
+                                });
+                            }
+                        });
+                        
+                        // Calculate averages for individual marks
+                        Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                            const agg = aggregatedIndividualEvaluations[userId];
+                            
+                            if (agg.marks.length > 0) {
+                                let average = agg.marks.reduce((sum, m) => sum + m, 0) / agg.marks.length;
+                                // If there's only one evaluator, use their exact value (no averaging needed)
+                                // If multiple evaluators but all values are integers, round to integer
+                                if (agg.marks.length === 1) {
+                                    average = agg.marks[0]; // Use exact value from single evaluator
+                                } else if (agg.marks.every(m => Number.isInteger(m))) {
+                                    // All values are integers, round the average to integer
+                                    average = Math.round(average);
+                                }
+                                agg.marks = average;
+                            } else {
+                                agg.marks = null;
+                            }
+                            
+                            const avgMarksData = {};
+                            Object.keys(agg.marksData).forEach(paramName => {
+                                const values = agg.marksData[paramName];
+                                if (values.length > 0) {
+                                    let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                    // If there's only one evaluator, use their exact value (no averaging needed)
+                                    // If multiple evaluators but all values are integers, round to integer
+                                    if (values.length === 1) {
+                                        average = values[0]; // Use exact value from single evaluator
+                                    } else if (values.every(v => Number.isInteger(v))) {
+                                        // All values are integers, round the average to integer
+                                        average = Math.round(average);
+                                    }
+                                    avgMarksData[paramName] = average;
+                                }
+                            });
+                            agg.marksData = avgMarksData;
+                        });
+                        
+                        evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
+                        
+                        if (evalDoc.exists() || evaluatorEntries.length > 0) {
+                            evaluations[i] = evalData;
                         }
                     } catch (error) {
                         console.error(`Error loading evaluation for team ${team.id}, stage ${i}:`, error);
@@ -5856,38 +6086,69 @@ const app = {
                                             </span>
                                         </div>
                                         ${showEvaluationDetails ? `
-                                            ${teamTotal > 0 && (teamMarks > 0 || teamMarksData) ? `
+                                            ${teamTotal > 0 && (teamMarks > 0 || (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0)) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                                    <i class="fas fa-users"></i> Team: ${teamMarks || 0} / ${teamTotal} marks
+                                                    <i class="fas fa-users"></i> Team: ${typeof teamMarks === 'number' ? teamMarks.toFixed(2) : (teamMarks || 0)} / ${teamTotal} marks
+                                                    ${evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0 ? `
+                                                        <div style="margin-top: 0.25rem; margin-left: 1rem; font-size: 0.75rem;">
+                                                            ${Object.entries(evalData.teamMarksData).map(([param, marks]) => `
+                                                                <div>${this.escapeHtml(param)}: ${typeof marks === 'number' ? parseFloat(marks).toFixed(2) : marks}</div>
+                                                            `).join('')}
                                                 </div>
                                             ` : ''}
-                                            ${hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
+                                                </div>
+                                            ` : ''}
+                                            ${(evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) || hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-primary); margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid var(--border-color);">
-                                                    <div style="font-weight: 600; margin-bottom: 0.25rem; color: var(--text-primary); font-size: 0.85rem;">
+                                                    <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary); font-size: 0.85rem;">
                                                         <i class="fas fa-comment"></i> Team Comments
                                                     </div>
+                                                    ${evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0 ? `
+                                                        ${evalData.evaluatorTeamComments.map(evalComment => `
+                                                            <div style="margin-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '0.75rem' : '0'}; padding-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '0.75rem' : '0'}; border-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '1px solid var(--border-color)' : 'none'};">
+                                                                <div style="font-weight: 600; margin-bottom: 0.25rem; font-size: 0.75rem; color: var(--primary-color);">
+                                                                    <i class="fas fa-user-tie"></i> ${this.escapeHtml(evalComment.evaluatorName)}
+                                                    </div>
+                                                                <div class="formatted-content" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); min-height: 20px;">
+                                                                    ${evalComment.comment}
+                                                                </div>
+                                                            </div>
+                                                        `).join('')}
+                                                    ` : (hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
                                                     <div class="formatted-content" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); min-height: 20px;">
                                                         ${teamCommentsText}
                                                     </div>
+                                                    ` : '')}
                                                 </div>
                                             ` : ''}
-                                            ${hasIndividualEvals ? `
+                                            ${hasIndividualEvals || (evalData.aggregatedIndividualEvaluations && Object.keys(evalData.aggregatedIndividualEvaluations).length > 0) ? `
                                                 <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
                                                     <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
                                                         <i class="fas fa-user"></i> Individual Evaluations
                                                     </div>
-                                                    ${Object.entries(evalData.individualEvaluations).map(([userId, individualEval]) => {
+                                                    ${(() => {
+                                                        // Use aggregated individual evaluations if available, otherwise use original
+                                                        const individualEvals = evalData.aggregatedIndividualEvaluations || evalData.individualEvaluations || {};
+                                                        return Object.entries(individualEvals).map(([userId, individualEval]) => {
                                                         const member = (team.members || []).find(m => (m.userId || m.ktuid) === userId) || {};
                                                         const studentName = individualEval.studentName || member.name || member.ktuid || userId;
-                                                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
-                                                        const individualCommentsText = individualEval.comments || '';
-                                                        // More lenient check - show if there's any meaningful content
-                                                        const hasIndividualComments = individualCommentsText && 
-                                                            individualCommentsText.trim() !== '' && 
-                                                            individualCommentsText.trim() !== '<p><br></p>' &&
-                                                            individualCommentsText.trim() !== '<p></p>' &&
-                                                            individualCommentsText.trim() !== '<br>' &&
-                                                            individualCommentsText.trim().length > 0;
+                                                        // Calculate student marks from marksData (sum of parameter marks) if available
+                                                        // This ensures the total matches the sum of individual parameters
+                                                        let studentMarks = 0;
+                                                        if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                                                            // Sum all parameter marks from marksData
+                                                            studentMarks = Object.values(individualEval.marksData).reduce((sum, m) => {
+                                                                const numValue = parseFloat(m);
+                                                                return sum + (isNaN(numValue) ? 0 : numValue);
+                                                            }, 0);
+                                                        } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                                                            // Fall back to marks field if marksData is not available
+                                                            studentMarks = individualEval.marks;
+                                                        }
+                                                            
+                                                            // Get comments - check if it's an array (from aggregated) or string (from original)
+                                                            const commentsArray = Array.isArray(individualEval.comments) ? individualEval.comments : 
+                                                                                 (individualEval.comments ? [{ evaluatorName: 'Admin', comment: individualEval.comments }] : []);
                                                         
                                                         return `
                                                             <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid var(--primary-color);">
@@ -5898,23 +6159,50 @@ const app = {
                                                                     </span>
                                                                     ${individualTotal > 0 ? `
                                                                         <span style="font-size: 0.75rem; color: var(--text-secondary);">
-                                                                            ${studentMarks} / ${individualTotal} marks
+                                                                                ${typeof studentMarks === 'number' ? studentMarks.toFixed(2) : studentMarks} / ${individualTotal} marks
                                                                         </span>
                                                                     ` : ''}
                                                                 </div>
-                                                                ${hasIndividualComments || (individualCommentsText && individualCommentsText.trim().length > 10) ? `
+                                                                    ${individualEval.marksData && Object.keys(individualEval.marksData).length > 0 ? `
+                                                                        <div style="margin-top: 0.25rem; font-size: 0.75rem; color: var(--text-secondary);">
+                                                                            ${Object.entries(individualEval.marksData).map(([param, marks]) => `
+                                                                                <div style="margin-left: 0.5rem;">
+                                                                                    ${this.escapeHtml(param)}: ${typeof marks === 'number' ? parseFloat(marks).toFixed(2) : marks}
+                                                                                </div>
+                                                                            `).join('')}
+                                                                        </div>
+                                                                    ` : ''}
+                                                                    ${commentsArray.length > 0 ? `
+                                                                        <div style="margin-top: 0.25rem;">
+                                                                            ${commentsArray.map(commentItem => {
+                                                                                const commentText = typeof commentItem === 'string' ? commentItem : commentItem.comment;
+                                                                                const evaluatorName = typeof commentItem === 'string' ? 'Admin' : commentItem.evaluatorName;
+                                                                                const hasComment = commentText && 
+                                                                                    commentText.trim() !== '' && 
+                                                                                    commentText.trim() !== '<p><br></p>' &&
+                                                                                    commentText.trim() !== '<p></p>' &&
+                                                                                    commentText.trim() !== '<br>' &&
+                                                                                    commentText.trim().length > 0;
+                                                                                
+                                                                                if (!hasComment) return '';
+                                                                                
+                                                                                return `
                                                                     <div style="margin-top: 0.25rem; padding: 0.4rem; background: var(--bg-color); border-radius: 4px;">
                                                                         <div style="font-weight: 600; margin-bottom: 0.25rem; font-size: 0.75rem; color: var(--text-primary);">
-                                                                            <i class="fas fa-comment"></i> Comments
+                                                                                            <i class="fas fa-comment"></i> ${this.escapeHtml(evaluatorName)}
                                                                         </div>
                                                                         <div class="formatted-content" style="font-size: 0.8rem; line-height: 1.4; color: var(--text-secondary); min-height: 20px;">
-                                                                            ${individualCommentsText}
+                                                                                            ${commentText}
                                                                         </div>
+                                                                                    </div>
+                                                                                `;
+                                                                            }).filter(c => c !== '').join('')}
                                                                     </div>
                                                                 ` : ''}
                                                             </div>
                                                         `;
-                                                    }).join('')}
+                                                        }).join('');
+                                                    })()}
                                                 </div>
                                             ` : ''}
                                         ` : `
@@ -6071,11 +6359,58 @@ const app = {
                         (evalData.uploadedFiles && evalData.uploadedFiles.some(f => f.type === 'ppt' || f.type === 'pptx' || f.name?.endsWith('.ppt') || f.name?.endsWith('.pptx')))
                     );
                     
+                    // Collect absent students from admin evaluation
+                    const absentStudents = [];
+                    if (evalData && evalData.individualEvaluations) {
+                        Object.entries(evalData.individualEvaluations).forEach(([userId, indEval]) => {
+                            if (indEval.isAbsent) {
+                                const member = (team.members || []).find(m => (m.userId || m.ktuid) === userId);
+                                absentStudents.push({
+                                    name: indEval.studentName || member?.name || userId,
+                                    ktuid: indEval.ktuid || member?.ktuid || ''
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Also check evaluator entries for absent students
+                    try {
+                        const evaluatorEntriesRef = collection(
+                            window.firebaseDb,
+                            'evaluations',
+                            `${team.id}_${stageIndex}`,
+                            'evaluatorEntries'
+                        );
+                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                        
+                        evaluatorEntriesSnapshot.forEach(doc => {
+                            const entryData = doc.data();
+                            if (entryData.individualEvaluations) {
+                                Object.entries(entryData.individualEvaluations).forEach(([userId, indEval]) => {
+                                    if (indEval.isAbsent) {
+                                        // Check if already added
+                                        if (!absentStudents.some(a => (a.ktuid && a.ktuid === (indEval.ktuid || '')) || 
+                                                                     (team.members || []).find(m => (m.userId || m.ktuid) === userId))) {
+                                            const member = (team.members || []).find(m => (m.userId || m.ktuid) === userId);
+                                            absentStudents.push({
+                                                name: indEval.studentName || member?.name || userId,
+                                                ktuid: indEval.ktuid || member?.ktuid || ''
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    } catch (error) {
+                        console.warn(`Error loading evaluator entries for absent students:`, error);
+                    }
+                    
                     return {
                         ...team,
                         evaluationStatus: isComplete ? 'completed' : 'pending',
                         hasPPT: !!hasPPT,
-                        pptUrl: evalData?.pptUrl || evalData?.presentationUrl || evalData?.pptFileUrl || evalData?.presentationFileUrl || null
+                        pptUrl: evalData?.pptUrl || evalData?.presentationUrl || evalData?.pptFileUrl || evalData?.presentationFileUrl || null,
+                        absentStudents: absentStudents
                     };
                 } catch (error) {
                     console.error(`Error checking evaluation for team ${team.id}:`, error);
@@ -6083,7 +6418,8 @@ const app = {
                         ...team,
                         evaluationStatus: 'pending',
                         hasPPT: false,
-                        pptUrl: null
+                        pptUrl: null,
+                        absentStudents: []
                     };
                 }
             }));
@@ -6101,6 +6437,22 @@ const app = {
                                 ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
                             </span>
                         </div>
+                        ${team.absentStudents && team.absentStudents.length > 0 ? `
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fef2f2; border: 1px solid #ef4444; border-radius: 6px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-user-times" style="color: #ef4444;"></i>
+                                    <strong style="color: #991b1b; font-size: 0.85rem;">Absent Students (${team.absentStudents.length})</strong>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem;">
+                                    ${team.absentStudents.map(student => `
+                                        <div style="color: var(--text-primary);">
+                                            ${this.escapeHtml(student.name)}
+                                            ${student.ktuid ? `<span style="color: var(--text-secondary);">(${this.escapeHtml(student.ktuid)})</span>` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
                         <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
                             <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
                                 <i class="fas fa-file-powerpoint" style="color: ${team.hasPPT ? '#10b981' : '#ef4444'};"></i>
@@ -6382,6 +6734,11 @@ const app = {
                             Cancel
                         </button>
                         <div style="display: flex; gap: 0.75rem;">
+                            ${this.userRole === 'admin' ? `
+                                <button type="button" class="btn btn-info" onclick="app.showEditForReportModal('${teamId}', '${stageIndex}')" style="background: #0ea5e9; border-color: #0ea5e9;">
+                                    <i class="fas fa-edit"></i> Edit for Report
+                                </button>
+                            ` : ''}
                             <button type="button" class="btn btn-secondary" onclick="app.showReportGenerationOptions('${teamId}', '${stageIndex}')">
                                 <i class="fas fa-file-download"></i> Generate Report
                             </button>
@@ -6708,6 +7065,375 @@ const app = {
         }
     },
     
+    // ========== ALL EVALUATIONS VIEW FUNCTIONS ==========
+    
+    async showAllEvaluationsView() {
+        const container = document.getElementById('all-evaluations-view-container');
+        const teamsContainer = document.getElementById('teams-list-container');
+        const formContainer = document.getElementById('evaluation-form-container');
+        
+        if (!container) return;
+        
+        // Hide other sections
+        if (teamsContainer) teamsContainer.style.display = 'none';
+        if (formContainer) formContainer.style.display = 'none';
+        
+        // Show all evaluations view
+        container.style.display = 'block';
+        
+        // Load stages dropdown for filtering
+        await this.loadAllEvaluationsStagesDropdown();
+        
+        // Load all evaluations
+        await this.loadAllEvaluations();
+    },
+    
+    hideAllEvaluationsView() {
+        const container = document.getElementById('all-evaluations-view-container');
+        if (container) {
+            container.style.display = 'none';
+        }
+    },
+    
+    async loadAllEvaluationsStagesDropdown() {
+        const select = document.getElementById('all-evals-stage-select');
+        if (!select) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            select.innerHTML = '<option value="">-- All Stages --</option>';
+            
+            stages.forEach((stage, index) => {
+                select.innerHTML += `<option value="${index}">${this.escapeHtml(stage.name)}</option>`;
+            });
+        } catch (error) {
+            console.error('Error loading evaluation stages:', error);
+            select.innerHTML = '<option value="">Error loading stages</option>';
+        }
+    },
+    
+    async loadAllEvaluations() {
+        const contentContainer = document.getElementById('all-evaluations-content');
+        const stageSelect = document.getElementById('all-evals-stage-select');
+        
+        if (!contentContainer) return;
+        
+        const selectedStage = stageSelect ? stageSelect.value : '';
+        
+        try {
+            contentContainer.innerHTML = '<div class="loading-state">Loading all evaluations...</div>';
+            
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!data.deleted) {
+                    teams.push({
+                        id: doc.id,
+                        groupName: data.groupName || 'Unnamed Team',
+                        ...data
+                    });
+                }
+            });
+            
+            // Apply team order settings
+            const sortedTeams = await this.applyTeamOrder(teams);
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            // Load all evaluations for all teams
+            const allEvaluations = [];
+            
+            for (const team of sortedTeams) {
+                const stagesToCheck = selectedStage !== '' ? [parseInt(selectedStage)] : stages.map((_, idx) => idx);
+                
+                for (const stageIndex of stagesToCheck) {
+                    const stage = stages[stageIndex];
+                    if (!stage) continue;
+                    
+                    // Load admin evaluation (from main evaluation document)
+                    try {
+                        const mainEvalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
+                        if (mainEvalDoc.exists()) {
+                            const mainData = mainEvalDoc.data();
+                            // Check if it's from admin
+                            if (mainData.updatedBy) {
+                                const userDoc = await getDoc(doc(window.firebaseDb, 'users', mainData.updatedBy));
+                                const userData = userDoc.exists() ? userDoc.data() : {};
+                                if (userData.role === 'admin') {
+                                    const hasData = (mainData.teamMarks !== null && mainData.teamMarks !== undefined) ||
+                                                  (mainData.teamMarksData && Object.keys(mainData.teamMarksData).length > 0) ||
+                                                  (mainData.teamComments && mainData.teamComments.trim() !== '' && mainData.teamComments.trim() !== '<p><br></p>') ||
+                                                  (mainData.individualEvaluations && Object.keys(mainData.individualEvaluations).length > 0);
+                                    if (hasData) {
+                                        allEvaluations.push({
+                                            teamId: team.id,
+                                            teamName: team.groupName,
+                                            stageIndex: stageIndex,
+                                            stageName: stage.name,
+                                            evaluatorId: mainData.updatedBy,
+                                            evaluatorName: userData.name || userData.username || 'Admin',
+                                            evaluatorRole: 'admin',
+                                            teamMarks: mainData.teamMarks || null,
+                                            teamMarksData: mainData.teamMarksData || {},
+                                            teamComments: mainData.teamComments || '',
+                                            individualEvaluations: mainData.individualEvaluations || {},
+                                            updatedAt: mainData.updatedAt
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.warn(`Error loading admin evaluation for team ${team.id}, stage ${stageIndex}:`, error);
+                    }
+                    
+                    // Load all evaluator entries
+                    try {
+                        const evaluatorEntriesRef = collection(
+                            window.firebaseDb,
+                            'evaluations',
+                            `${team.id}_${stageIndex}`,
+                            'evaluatorEntries'
+                        );
+                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                        
+                        evaluatorEntriesSnapshot.forEach(doc => {
+                            const entryData = doc.data();
+                            const hasData = (entryData.teamMarks !== null && entryData.teamMarks !== undefined) ||
+                                          (entryData.teamMarksData && Object.keys(entryData.teamMarksData || {}).length > 0) ||
+                                          (entryData.teamComments && entryData.teamComments.trim() !== '' && entryData.teamComments.trim() !== '<p><br></p>') ||
+                                          (entryData.individualEvaluations && Object.keys(entryData.individualEvaluations || {}).length > 0);
+                            if (hasData) {
+                                allEvaluations.push({
+                                    teamId: team.id,
+                                    teamName: team.groupName,
+                                    stageIndex: stageIndex,
+                                    stageName: stage.name,
+                                    evaluatorId: doc.id,
+                                    evaluatorName: entryData.evaluatorName || 'Unknown Evaluator',
+                                    evaluatorRole: 'evaluator',
+                                    teamMarks: entryData.teamMarks || null,
+                                    teamMarksData: entryData.teamMarksData || {},
+                                    teamComments: entryData.teamComments || entryData.comments || '',
+                                    individualEvaluations: entryData.individualEvaluations || {},
+                                    updatedAt: entryData.updatedAt || entryData.timestamp
+                                });
+                            }
+                        });
+                    } catch (error) {
+                        console.warn(`Error loading evaluator entries for team ${team.id}, stage ${stageIndex}:`, error);
+                    }
+                }
+            }
+            
+            // Display evaluations
+            if (allEvaluations.length === 0) {
+                contentContainer.innerHTML = '<p class="empty-state">No evaluations found.</p>';
+                return;
+            }
+            
+            // Group by team and stage
+            const groupedEvaluations = {};
+            allEvaluations.forEach(evaluation => {
+                const key = `${evaluation.teamId}_${evaluation.stageIndex}`;
+                if (!groupedEvaluations[key]) {
+                    groupedEvaluations[key] = {
+                        teamId: evaluation.teamId,
+                        teamName: evaluation.teamName,
+                        stageIndex: evaluation.stageIndex,
+                        stageName: evaluation.stageName,
+                        evaluations: []
+                    };
+                }
+                groupedEvaluations[key].evaluations.push(evaluation);
+            });
+            
+            // Build HTML
+            let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem;">';
+            
+            Object.values(groupedEvaluations).forEach(group => {
+                // Collect all absent students from all evaluations for this team/stage
+                const absentStudents = new Map(); // userId -> {name, ktuid, evaluators: []}
+                
+                group.evaluations.forEach(evaluation => {
+                    if (evaluation.individualEvaluations) {
+                        Object.entries(evaluation.individualEvaluations).forEach(([userId, indEval]) => {
+                            if (indEval.isAbsent) {
+                                if (!absentStudents.has(userId)) {
+                                    absentStudents.set(userId, {
+                                        name: indEval.studentName || userId,
+                                        ktuid: indEval.ktuid || '',
+                                        evaluators: []
+                                    });
+                                }
+                                // Track which evaluator marked them as absent
+                                const absentInfo = absentStudents.get(userId);
+                                if (!absentInfo.evaluators.includes(evaluation.evaluatorName)) {
+                                    absentInfo.evaluators.push(evaluation.evaluatorName);
+                                }
+                            }
+                        });
+                    }
+                });
+                
+                // Try to get team member info to fill in missing names/ktuids
+                const team = sortedTeams.find(t => t.id === group.teamId);
+                if (team && team.members) {
+                    team.members.forEach(member => {
+                        const userId = member.userId || member.ktuid;
+                        if (absentStudents.has(userId)) {
+                            const absentInfo = absentStudents.get(userId);
+                            if (!absentInfo.name || absentInfo.name === userId) {
+                                absentInfo.name = member.name || absentInfo.name;
+                            }
+                            if (!absentInfo.ktuid && member.ktuid) {
+                                absentInfo.ktuid = member.ktuid;
+                            }
+                        }
+                    });
+                }
+                
+                html += `
+                    <div class="admin-card" style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 1.5rem;">
+                        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid var(--primary-color);">
+                            <h4 style="margin: 0; color: var(--text-primary); font-size: 1.1rem;">
+                                <i class="fas fa-users"></i> ${this.escapeHtml(group.teamName)}
+                            </h4>
+                            <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">
+                                <i class="fas fa-clipboard-check"></i> ${this.escapeHtml(group.stageName)}
+                            </p>
+                        </div>
+                        
+                        ${absentStudents.size > 0 ? `
+                            <div style="margin-bottom: 1rem; padding: 1rem; background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                    <i class="fas fa-user-times" style="color: #ef4444; font-size: 1.1rem;"></i>
+                                    <strong style="color: #991b1b; font-size: 0.95rem;">Absent Students (${absentStudents.size})</strong>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${Array.from(absentStudents.entries()).map(([userId, info]) => `
+                                        <div style="padding: 0.5rem 0.75rem; background: white; border-radius: 6px; border-left: 3px solid #ef4444; font-size: 0.9rem;">
+                                            <div style="font-weight: 600; color: var(--text-primary);">
+                                                ${this.escapeHtml(info.name)}
+                                                ${info.ktuid ? `<span style="color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(${this.escapeHtml(info.ktuid)})</span>` : ''}
+                                            </div>
+                                            ${info.evaluators.length > 0 ? `
+                                                <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                                    Marked absent by: ${info.evaluators.map(e => this.escapeHtml(e)).join(', ')}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                `;
+                
+                group.evaluations.forEach(evaluation => {
+                    const isAdmin = evaluation.evaluatorRole === 'admin';
+                    html += `
+                        <div style="background: ${isAdmin ? '#f0f9ff' : '#fef3c7'}; border: 1px solid ${isAdmin ? '#0ea5e9' : '#f59e0b'}; border-radius: 6px; padding: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                <i class="fas ${isAdmin ? 'fa-user-shield' : 'fa-user'}" style="color: ${isAdmin ? '#0ea5e9' : '#f59e0b'};"></i>
+                                <strong style="color: var(--text-primary);">${this.escapeHtml(evaluation.evaluatorName)}</strong>
+                                <span style="padding: 2px 8px; background: ${isAdmin ? '#0ea5e9' : '#f59e0b'}; color: white; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
+                                    ${isAdmin ? 'Admin' : 'Evaluator'}
+                                </span>
+                            </div>
+                            
+                            ${evaluation.teamMarks !== null && evaluation.teamMarks !== undefined ? `
+                                <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                    <strong>Team Marks:</strong> ${evaluation.teamMarks}
+                                    ${Object.keys(evaluation.teamMarksData || {}).length > 0 ? `
+                                        <div style="margin-top: 0.25rem; margin-left: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                            ${Object.entries(evaluation.teamMarksData).map(([param, marks]) => `
+                                                <div>${this.escapeHtml(param)}: ${marks}</div>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                            
+                            ${evaluation.teamComments && evaluation.teamComments.trim() !== '' && evaluation.teamComments.trim() !== '<p><br></p>' ? `
+                                <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                    <strong>Team Comments:</strong>
+                                    <div style="margin-top: 0.25rem; padding: 0.75rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb; max-height: 200px; overflow-y: auto;">
+                                        ${evaluation.teamComments}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${evaluation.individualEvaluations && Object.keys(evaluation.individualEvaluations).length > 0 ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e5e7eb;">
+                                    <strong style="font-size: 0.9rem;">Individual Evaluations:</strong>
+                                    <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                                        ${Object.entries(evaluation.individualEvaluations).map(([userId, indEval]) => `
+                                            <div style="padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb; font-size: 0.85rem;">
+                                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+                                                    ${this.escapeHtml(indEval.studentName || userId)}
+                                                    ${indEval.ktuid ? `<span style="color: var(--text-secondary); font-weight: normal;">(${this.escapeHtml(indEval.ktuid)})</span>` : ''}
+                                                    ${indEval.isAbsent ? '<span style="color: #ef4444; margin-left: 0.5rem;">(Absent)</span>' : ''}
+                                                </div>
+                                                ${indEval.marks !== null && indEval.marks !== undefined ? `
+                                                    <div style="margin-bottom: 0.25rem;">
+                                                        <strong>Marks:</strong> ${indEval.marks}
+                                                        ${indEval.marksData && Object.keys(indEval.marksData).length > 0 ? `
+                                                            <div style="margin-left: 1rem; margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                                                ${Object.entries(indEval.marksData).map(([param, marks]) => `
+                                                                    <div>${this.escapeHtml(param)}: ${marks}</div>
+                                                                `).join('')}
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
+                                                ` : ''}
+                                                ${indEval.comments && indEval.comments.trim() !== '' && indEval.comments.trim() !== '<p><br></p>' ? `
+                                                    <div>
+                                                        <strong>Comments:</strong>
+                                                        <div style="margin-top: 0.25rem; padding: 0.5rem; background: #f9fafb; border-radius: 4px;">
+                                                            ${indEval.comments}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${this.userRole === 'admin' ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e5e7eb;">
+                                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 0.5rem; font-size: 0.85rem;" onclick="app.showReportGenerationOptions('${group.teamId}', '${group.stageIndex}')">
+                                        <i class="fas fa-file-download"></i> Generate Report
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            contentContainer.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading all evaluations:', error);
+            contentContainer.innerHTML = '<p class="error-message">Error loading evaluations. Please try again.</p>';
+        }
+    },
+    
     // ========== GUIDE EVALUATOR FUNCTIONS ==========
     
     async checkIfGuideIsEvaluator() {
@@ -6777,7 +7503,7 @@ const app = {
         const stageIndex = stageSelect.value;
         
         // Hide form and teams list when stage changes
-        formContainer.style.display = 'none';
+            formContainer.style.display = 'none';
         teamsContainer.style.display = 'none';
         
         if (stageIndex === '') {
@@ -6820,34 +7546,61 @@ const app = {
             // Check evaluation status for each team
             const teamsWithStatus = await Promise.all(sortedTeams.map(async (team) => {
                 try {
-                    // Check if this evaluator has already submitted
-                    let evaluatorSubmitted = false;
-                    let evalData = null;
-                    const evaluatorEntryDoc = await getDoc(
-                        doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`, 'evaluatorEntries', this.currentUser.uid)
-                    );
+                // Check if this evaluator has already submitted
+                let evaluatorSubmitted = false;
+                const evaluatorEntryDoc = await getDoc(
+                    doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`, 'evaluatorEntries', this.currentUser.uid)
+                );
                     if (evaluatorEntryDoc.exists()) {
                         evaluatorSubmitted = true;
-                        evalData = evaluatorEntryDoc.data();
                     }
                     
-                    // Determine if evaluation is complete
-                    // Complete if: has team marks OR has team comments OR has individual evaluations
-                    let isComplete = false;
-                    if (evalData) {
-                        const hasTeamMarks = (evalData.teamMarks !== null && evalData.teamMarks !== undefined) || 
-                                           (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0);
-                        const hasTeamComments = evalData.teamComments && evalData.teamComments.trim() !== '' && 
-                                             evalData.teamComments.trim() !== '<p><br></p>';
-                        const hasIndividualEvals = evalData.individualEvaluations && 
-                                                Object.keys(evalData.individualEvaluations).length > 0;
-                        
-                        isComplete = hasTeamMarks || hasTeamComments || hasIndividualEvals;
-                    }
-                    
-                    // Check for PPT upload status (from main evaluation document)
+                    // Check main evaluation document (admin evaluation)
                     const mainEvalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
                     const mainEvalData = mainEvalDoc.exists() ? mainEvalDoc.data() : null;
+                    
+                    // Check if admin has completed evaluation
+                    let adminCompleted = false;
+                    if (mainEvalData) {
+                        const hasTeamMarks = (mainEvalData.teamMarks !== null && mainEvalData.teamMarks !== undefined) || 
+                                           (mainEvalData.teamMarksData && Object.keys(mainEvalData.teamMarksData).length > 0);
+                        const hasTeamComments = mainEvalData.teamComments && mainEvalData.teamComments.trim() !== '' && 
+                                             mainEvalData.teamComments.trim() !== '<p><br></p>';
+                        const hasIndividualEvals = mainEvalData.individualEvaluations && 
+                                                Object.keys(mainEvalData.individualEvaluations).length > 0;
+                        adminCompleted = hasTeamMarks || hasTeamComments || hasIndividualEvals;
+                    }
+                    
+                    // Check if any other evaluator has completed evaluation
+                    let anyEvaluatorCompleted = false;
+                    try {
+                        const evaluatorEntriesRef = collection(
+                            window.firebaseDb,
+                            'evaluations',
+                            `${team.id}_${stageIndex}`,
+                            'evaluatorEntries'
+                        );
+                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                        evaluatorEntriesSnapshot.forEach(doc => {
+                            const entryData = doc.data();
+                            const hasTeamMarks = (entryData.teamMarks !== null && entryData.teamMarks !== undefined) || 
+                                               (entryData.teamMarksData && Object.keys(entryData.teamMarksData || {}).length > 0);
+                            const hasTeamComments = entryData.teamComments && entryData.teamComments.trim() !== '' && 
+                                                 entryData.teamComments.trim() !== '<p><br></p>';
+                            const hasIndividualEvals = entryData.individualEvaluations && 
+                                                    Object.keys(entryData.individualEvaluations || {}).length > 0;
+                            if (hasTeamMarks || hasTeamComments || hasIndividualEvals) {
+                                anyEvaluatorCompleted = true;
+                            }
+                        });
+                    } catch (error) {
+                        console.warn('Error checking other evaluator entries:', error);
+                    }
+                    
+                    // Determine if evaluation is complete (by admin or any evaluator)
+                    const isComplete = adminCompleted || anyEvaluatorCompleted;
+                    
+                    // Check for PPT upload status (from main evaluation document)
                     const hasPPT = mainEvalData && (
                         mainEvalData.pptUrl || 
                         mainEvalData.presentationUrl || 
@@ -6860,6 +7613,8 @@ const app = {
                         ...team,
                         evaluationStatus: isComplete ? 'completed' : 'pending',
                         evaluatorSubmitted: evaluatorSubmitted,
+                        adminCompleted: adminCompleted,
+                        anyEvaluatorCompleted: anyEvaluatorCompleted,
                         hasPPT: !!hasPPT,
                         pptUrl: mainEvalData?.pptUrl || mainEvalData?.presentationUrl || mainEvalData?.pptFileUrl || mainEvalData?.presentationFileUrl || null
                     };
@@ -6869,6 +7624,8 @@ const app = {
                         ...team,
                         evaluationStatus: 'pending',
                         evaluatorSubmitted: false,
+                        adminCompleted: false,
+                        anyEvaluatorCompleted: false,
                         hasPPT: false,
                         pptUrl: null
                     };
@@ -6956,7 +7713,7 @@ const app = {
                 return;
             }
             
-            // Load existing evaluation data from evaluatorEntries subcollection
+            // Load existing evaluation data from current evaluator's entry
             let evalData = {};
             let teamComments = '';
             
@@ -6976,6 +7733,67 @@ const app = {
                 }
             } catch (error) {
                 console.warn('Error loading evaluator entry:', error);
+            }
+            
+            // Load admin evaluation (from main evaluation document)
+            let adminEvalData = null;
+            try {
+                const mainEvalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+                if (mainEvalDoc.exists()) {
+                    const mainData = mainEvalDoc.data();
+                    // Only show if it's from admin (not from evaluator entries)
+                    if (mainData.updatedBy && mainData.updatedBy !== this.currentUser.uid) {
+                        const userDoc = await getDoc(doc(window.firebaseDb, 'users', mainData.updatedBy));
+                        const userData = userDoc.exists() ? userDoc.data() : {};
+                        if (userData.role === 'admin') {
+                            adminEvalData = {
+                                evaluatorName: userData.name || userData.username || 'Admin',
+                                teamMarks: mainData.teamMarks || null,
+                                teamMarksData: mainData.teamMarksData || {},
+                                teamComments: mainData.teamComments || '',
+                                individualEvaluations: mainData.individualEvaluations || {},
+                                updatedAt: mainData.updatedAt
+                            };
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Error loading admin evaluation:', error);
+            }
+            
+            // Load other evaluators' entries
+            let otherEvaluatorEntries = [];
+            try {
+                const evaluatorEntriesRef = collection(
+                    window.firebaseDb,
+                    'evaluations',
+                    `${teamId}_${stageIndex}`,
+                    'evaluatorEntries'
+                );
+                const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                evaluatorEntriesSnapshot.forEach(doc => {
+                    if (doc.id !== this.currentUser.uid) {
+                        const entryData = doc.data();
+                        // Only include if it has actual evaluation data
+                        const hasData = (entryData.teamMarks !== null && entryData.teamMarks !== undefined) ||
+                                      (entryData.teamMarksData && Object.keys(entryData.teamMarksData).length > 0) ||
+                                      (entryData.teamComments && entryData.teamComments.trim() !== '' && entryData.teamComments.trim() !== '<p><br></p>') ||
+                                      (entryData.individualEvaluations && Object.keys(entryData.individualEvaluations).length > 0);
+                        if (hasData) {
+                            otherEvaluatorEntries.push({
+                                evaluatorId: doc.id,
+                                evaluatorName: entryData.evaluatorName || 'Unknown Evaluator',
+                                teamMarks: entryData.teamMarks || null,
+                                teamMarksData: entryData.teamMarksData || {},
+                                teamComments: entryData.teamComments || entryData.comments || '',
+                                individualEvaluations: entryData.individualEvaluations || {},
+                                updatedAt: entryData.updatedAt || entryData.timestamp
+                            });
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn('Error loading other evaluator entries:', error);
             }
             
             // Get mark parameters
@@ -7001,6 +7819,79 @@ const app = {
                             <i class="fas fa-user-tie"></i> Guide: <strong style="color: var(--text-primary);">${this.escapeHtml(teamData.guideName)}</strong>
                         </div>
                     ` : ''}
+                    
+                    ${adminEvalData ? `
+                        <!-- Admin Evaluation (Read-only) -->
+                        <div class="evaluation-section" style="margin-bottom: 1.5rem; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 1rem;">
+                            <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-user-shield" style="color: #0ea5e9;"></i> Admin Evaluation
+                                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: auto;">(Read-only)</span>
+                            </h5>
+                            ${adminEvalData.teamMarks !== null && adminEvalData.teamMarks !== undefined ? `
+                                <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                    <strong>Team Marks:</strong> ${adminEvalData.teamMarks}
+                                    ${Object.keys(adminEvalData.teamMarksData || {}).length > 0 ? `
+                                        <div style="margin-top: 0.25rem; margin-left: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                            ${Object.entries(adminEvalData.teamMarksData).map(([param, marks]) => `
+                                                <div>${this.escapeHtml(param)}: ${marks}</div>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                            ${adminEvalData.teamComments && adminEvalData.teamComments.trim() !== '' && adminEvalData.teamComments.trim() !== '<p><br></p>' ? `
+                                <div style="margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                    <strong>Team Comments:</strong>
+                                    <div style="margin-top: 0.25rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">
+                                        ${adminEvalData.teamComments}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${otherEvaluatorEntries.length > 0 ? `
+                        <!-- Other Evaluators' Evaluations (Read-only) -->
+                        <div class="evaluation-section" style="margin-bottom: 1.5rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 1rem;">
+                            <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-users" style="color: #f59e0b;"></i> Other Evaluators' Evaluations
+                                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: auto;">(Read-only)</span>
+                            </h5>
+                            ${otherEvaluatorEntries.map((entry, idx) => `
+                                <div style="margin-bottom: ${idx < otherEvaluatorEntries.length - 1 ? '1rem' : '0'}; padding-bottom: ${idx < otherEvaluatorEntries.length - 1 ? '1rem' : '0'}; border-bottom: ${idx < otherEvaluatorEntries.length - 1 ? '1px solid #e5e7eb' : 'none'};">
+                                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                        <i class="fas fa-user"></i> ${this.escapeHtml(entry.evaluatorName)}
+                                    </div>
+                                    ${entry.teamMarks !== null && entry.teamMarks !== undefined ? `
+                                        <div style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+                                            <strong>Team Marks:</strong> ${entry.teamMarks}
+                                            ${Object.keys(entry.teamMarksData || {}).length > 0 ? `
+                                                <div style="margin-top: 0.25rem; margin-left: 1rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                                    ${Object.entries(entry.teamMarksData).map(([param, marks]) => `
+                                                        <div>${this.escapeHtml(param)}: ${marks}</div>
+                                                    `).join('')}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                    ${entry.teamComments && entry.teamComments.trim() !== '' && entry.teamComments.trim() !== '<p><br></p>' ? `
+                                        <div style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+                                            <strong>Team Comments:</strong>
+                                            <div style="margin-top: 0.25rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">
+                                                ${entry.teamComments}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Your Evaluation -->
+                    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid var(--primary-color);">
+                        <h5 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1.1rem; font-weight: 600;">
+                            <i class="fas fa-edit"></i> Your Evaluation
+                        </h5>
                     
                     <!-- Team Marks & Comments -->
                     <div class="evaluation-section">
@@ -7112,6 +8003,9 @@ const app = {
                             }).join('')
                         }
                     </div>
+                    
+                    </div>
+                    <!-- End of Your Evaluation section -->
                     
                     <div class="modal-actions" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: 0.75rem; justify-content: space-between;">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('guide-evaluator-form-container').style.display = 'none'">
@@ -7411,9 +8305,9 @@ const app = {
             console.log('Saved to evaluatorEntries subcollection:', evaluatorEntryData);
             
             alert('Evaluation data saved successfully!');
-            
-            // Reload teams list to update status
-            await this.loadTeamsForGuideEvaluator();
+        
+        // Reload teams list to update status
+        await this.loadTeamsForGuideEvaluator();
             
             // Hide form
             const formContainer = document.getElementById('guide-evaluator-form-container');
@@ -7527,6 +8421,501 @@ const app = {
             // Reset format selection to PDF
             const formatSelect = document.getElementById('report-format');
             if (formatSelect) formatSelect.value = 'pdf';
+        }
+    },
+    
+    async showEditForReportModal(teamId, stageIndex) {
+        if (!teamId || stageIndex === undefined) {
+            alert('Invalid team or evaluation stage selected.');
+            return;
+        }
+        
+        if (this.userRole !== 'admin') {
+            alert('Only administrators can edit evaluations for reports.');
+            return;
+        }
+        
+        // Store the current team and stage
+        this.currentEditReportTeamId = teamId;
+        this.currentEditReportStageIndex = stageIndex;
+        
+        // Show the modal
+        const modal = document.getElementById('edit-for-report-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            await this.loadEditForReportForm(teamId, stageIndex);
+        }
+    },
+    
+    closeEditForReportModal() {
+        const modal = document.getElementById('edit-for-report-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.currentEditReportTeamId = null;
+        this.currentEditReportStageIndex = null;
+    },
+    
+    async loadEditForReportForm(teamId, stageIndex) {
+        const formContainer = document.getElementById('edit-for-report-form-container');
+        if (!formContainer) return;
+        
+        try {
+            formContainer.innerHTML = '<div class="loading-state">Loading evaluation data...</div>';
+            
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found!');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const members = teamData.members || [];
+            
+            // Load evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            
+            if (!stage) {
+                alert('Evaluation stage not found!');
+                return;
+            }
+            
+            // Load original evaluation data (from main document or evaluator entries)
+            let originalEvalData = {};
+            try {
+                const mainEvalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+                if (mainEvalDoc.exists()) {
+                    const mainData = mainEvalDoc.data();
+                    originalEvalData = {
+                        teamMarks: mainData.teamMarks || null,
+                        teamMarksData: mainData.teamMarksData || {},
+                        teamComments: mainData.teamComments || '',
+                        individualEvaluations: mainData.individualEvaluations || {}
+                    };
+                }
+            } catch (error) {
+                console.warn('Error loading original evaluation:', error);
+            }
+            
+            // Load edited data if exists
+            let editedEvalData = null;
+            try {
+                const editDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'reportEdits', 'admin'));
+                if (editDoc.exists()) {
+                    editedEvalData = editDoc.data();
+                }
+            } catch (error) {
+                console.warn('Error loading edited evaluation:', error);
+            }
+            
+            // Use edited data if available, otherwise use original
+            const evalData = editedEvalData || originalEvalData;
+            
+            // Get mark parameters
+            const teamParams = stage.teamMarkParams || [];
+            const individualParams = stage.individualMarkParams || [];
+            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            
+            // Get existing evaluation marks
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarksTotal = evalData.teamMarks !== null && evalData.teamMarks !== undefined 
+                ? evalData.teamMarks 
+                : (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            
+            // Build form HTML
+            formContainer.innerHTML = `
+                <div class="evaluation-form">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">
+                        <i class="fas fa-edit"></i> ${this.escapeHtml(stage.name)} - ${this.escapeHtml(teamData.groupName || 'Team')}
+                    </h4>
+                    ${editedEvalData ? `
+                        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #d1fae5; border: 1px solid #10b981; border-radius: 6px; color: #065f46; font-size: 0.9rem;">
+                            <i class="fas fa-check-circle"></i> <strong>Edited data exists.</strong> Changes will update the existing edits.
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Team Marks & Comments -->
+                    <div class="evaluation-section">
+                        <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem;">
+                            <i class="fas fa-users"></i> Team Evaluation
+                            ${teamTotal > 0 ? `<span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">(Total: ${teamTotal} marks)</span>` : ''}
+                        </h5>
+                        ${teamParams.length > 0 ? `
+                            ${teamParams.map((param, idx) => `
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label for="edit-report-team-param-${idx}" style="font-size: 0.9rem; margin-bottom: 0.25rem;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                    <input type="number" id="edit-report-team-param-${idx}" class="form-input edit-report-team-param-input" 
+                                           min="0" max="${param.maxMarks}" 
+                                           data-param-name="${this.escapeHtml(param.name)}"
+                                           value="${teamMarksData[param.name] || ''}" 
+                                           ${teamMarksData[param.name] ? '' : 'placeholder="Enter marks"'}
+                                           style="padding: 0.5rem; font-size: 0.9rem;">
+                                </div>
+                            `).join('')}
+                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.9rem;">
+                                <strong>Total Team Marks: <span id="edit-report-team-marks-total">${teamMarksTotal || 0}</span> / ${teamTotal}</strong>
+                            </div>
+                        ` : `
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="edit-report-team-marks" style="font-size: 0.9rem; margin-bottom: 0.25rem;">Team Marks</label>
+                                    <input type="number" id="edit-report-team-marks" class="form-input" min="0" 
+                                           value="${teamMarksTotal || ''}" ${teamMarksTotal ? '' : 'placeholder="Enter team marks"'}
+                                           style="padding: 0.5rem; font-size: 0.9rem;">
+                                </div>
+                            </div>
+                        `}
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="edit-report-team-comments" style="font-size: 0.9rem; margin-bottom: 0.25rem;">Team Comments</label>
+                            <div id="edit-report-team-comments-editor" style="min-height: 120px; background: white; border: 1px solid var(--border-color); border-radius: 6px;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Individual Marks & Comments -->
+                    <div class="evaluation-section" style="margin-top: 1rem;">
+                        <h5 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 1rem;">
+                            <i class="fas fa-user"></i> Individual Evaluations
+                        </h5>
+                        ${members.length === 0 
+                            ? '<p class="empty-state">No team members found.</p>'
+                            : members.map((member, index) => {
+                                const memberEval = evalData.individualEvaluations?.[member.userId || member.ktuid] || {};
+                                const isAbsent = memberEval.isAbsent || false;
+                                return `
+                                    <div class="individual-eval-item" style="background: var(--bg-color); border-radius: 6px; border-left: 3px solid var(--primary-color); ${isAbsent ? 'opacity: 0.7;' : ''}">
+                                        <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <strong style="color: var(--text-primary); font-size: 0.95rem;">${this.escapeHtml(member.name || member.ktuid)}</strong>
+                                                ${member.ktuid ? `<span style="color: var(--text-secondary); font-size: 0.8rem; margin-left: 0.5rem;">(${this.escapeHtml(member.ktuid)})</span>` : ''}
+                                            </div>
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" id="edit-report-absent-${index}" class="edit-report-absent-checkbox" 
+                                                       ${isAbsent ? 'checked' : ''} 
+                                                       onchange="app.toggleEditReportAbsentStatus(${index})"
+                                                       style="width: 16px; height: 16px; cursor: pointer;">
+                                                <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 500;">
+                                                    <i class="fas fa-user-times"></i> Absent
+                                                </span>
+                                            </label>
+                                        </div>
+                                        ${individualParams.length > 0 ? `
+                                            ${individualParams.map((param, paramIdx) => {
+                                                const paramMarks = memberEval.marksData?.[param.name] || '';
+                                                return `
+                                                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                                                        <label for="edit-report-individual-param-${index}-${paramIdx}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">${this.escapeHtml(param.name)} (out of ${param.maxMarks})</label>
+                                                        <input type="number" id="edit-report-individual-param-${index}-${paramIdx}" 
+                                                               class="form-input edit-report-individual-param-input" 
+                                                               min="0" max="${param.maxMarks}" 
+                                                               data-user-id="${member.userId || member.ktuid}"
+                                                               data-param-name="${this.escapeHtml(param.name)}"
+                                                               data-member-index="${index}"
+                                                               value="${paramMarks}" 
+                                                               ${paramMarks ? '' : 'placeholder="Enter marks"'}
+                                                               style="padding: 0.5rem; font-size: 0.9rem;"
+                                                               ${isAbsent ? 'disabled' : ''}>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; font-size: 0.85rem;">
+                                                <strong>Total Individual Marks: <span id="edit-report-individual-marks-total-${index}">${memberEval.marks || 0}</span> / ${individualTotal}</strong>
+                                            </div>
+                                        ` : `
+                                            <div class="form-row">
+                                                <div class="form-group" style="flex: 1;">
+                                                    <label for="edit-report-individual-marks-${index}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Individual Marks</label>
+                                                    <input type="number" id="edit-report-individual-marks-${index}" 
+                                                           class="form-input" min="0" 
+                                                           data-user-id="${member.userId || member.ktuid}"
+                                                           data-member-index="${index}"
+                                                           value="${memberEval.marks || ''}" 
+                                                           ${memberEval.marks ? '' : 'placeholder="Enter individual marks"'}
+                                                           style="padding: 0.5rem; font-size: 0.9rem;"
+                                                           ${isAbsent ? 'disabled' : ''}>
+                                                </div>
+                                            </div>
+                                        `}
+                                        <div class="form-group" style="margin-top: 0.75rem;">
+                                            <label for="edit-report-individual-comments-${index}" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Individual Comments</label>
+                                            <div id="edit-report-individual-comments-editor-${index}" style="min-height: 100px; background: white; border: 1px solid var(--border-color); border-radius: 6px;"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')
+                        }
+                    </div>
+                    
+                    <div class="modal-actions" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: 0.75rem; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="app.closeEditForReportModal()">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="app.saveEditForReport('${teamId}', '${stageIndex}')">
+                            <i class="fas fa-save"></i> Save Edits
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize Quill editors
+            this.quillEditors = this.quillEditors || {};
+            
+            // Team comments editor
+            const teamCommentsEditor = new Quill('#edit-report-team-comments-editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        ['link'],
+                        ['clean']
+                    ]
+                },
+                placeholder: 'Enter team evaluation comments...'
+            });
+            if (evalData.teamComments) {
+                teamCommentsEditor.root.innerHTML = evalData.teamComments;
+            }
+            this.quillEditors['edit-report-team-comments'] = teamCommentsEditor;
+            
+            // Individual comments editors
+            members.forEach((member, index) => {
+                const memberEval = evalData.individualEvaluations?.[member.userId || member.ktuid] || {};
+                const editorId = `edit-report-individual-comments-editor-${index}`;
+                const individualEditor = new Quill(`#${editorId}`, {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            ['bold', 'italic', 'underline'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            ['link'],
+                            ['clean']
+                        ]
+                    },
+                    placeholder: 'Enter individual evaluation comments...'
+                });
+                if (memberEval.comments) {
+                    individualEditor.root.innerHTML = memberEval.comments;
+                }
+                this.quillEditors[`edit-report-individual-comments-${index}`] = individualEditor;
+            });
+            
+            // Add event listeners for parameter-based marks calculation
+            if (teamParams.length > 0) {
+                document.querySelectorAll('.edit-report-team-param-input').forEach(input => {
+                    input.addEventListener('input', () => this.calculateEditReportTeamMarksTotal());
+                });
+            }
+            
+            if (individualParams.length > 0) {
+                document.querySelectorAll('.edit-report-individual-param-input').forEach(input => {
+                    input.addEventListener('input', (e) => {
+                        const userId = e.target.dataset.userId;
+                        this.calculateEditReportIndividualMarksTotal(userId);
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Error loading edit for report form:', error);
+            alert('Error loading evaluation form. Please try again.');
+        }
+    },
+    
+    calculateEditReportTeamMarksTotal() {
+        const inputs = document.querySelectorAll('.edit-report-team-param-input');
+        let total = 0;
+        inputs.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            total += value;
+        });
+        const totalEl = document.getElementById('edit-report-team-marks-total');
+        if (totalEl) totalEl.textContent = total;
+    },
+    
+    calculateEditReportIndividualMarksTotal(userId) {
+        const inputs = document.querySelectorAll(`.edit-report-individual-param-input[data-user-id="${userId}"]`);
+        let total = 0;
+        inputs.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            total += value;
+        });
+        const firstInput = inputs[0];
+        if (firstInput) {
+            const inputId = firstInput.id;
+            const match = inputId.match(/edit-report-individual-param-(\d+)-/);
+            if (match) {
+                const memberIndex = match[1];
+                const totalEl = document.getElementById(`edit-report-individual-marks-total-${memberIndex}`);
+                if (totalEl) totalEl.textContent = total;
+            }
+        }
+    },
+    
+    toggleEditReportAbsentStatus(memberIndex) {
+        const absentCheckbox = document.getElementById(`edit-report-absent-${memberIndex}`);
+        const isAbsent = absentCheckbox.checked;
+        
+        const memberInputs = document.querySelectorAll(`[data-member-index="${memberIndex}"]`);
+        memberInputs.forEach(input => {
+            input.disabled = isAbsent;
+            if (isAbsent) {
+                input.value = '';
+            }
+        });
+        
+        if (this.quillEditors && this.quillEditors[`edit-report-individual-comments-${memberIndex}`]) {
+            const editor = this.quillEditors[`edit-report-individual-comments-${memberIndex}`];
+            editor.enable(!isAbsent);
+            if (isAbsent) {
+                editor.root.innerHTML = '<p><br></p>';
+            }
+        }
+        
+        if (isAbsent) {
+            const totalEl = document.getElementById(`edit-report-individual-marks-total-${memberIndex}`);
+            if (totalEl) totalEl.textContent = '0';
+        } else {
+            const firstInput = memberInputs[0];
+            if (firstInput && firstInput.dataset.userId) {
+                this.calculateEditReportIndividualMarksTotal(firstInput.dataset.userId);
+            }
+        }
+        
+        const evalItem = absentCheckbox.closest('.individual-eval-item');
+        if (evalItem) {
+            if (isAbsent) {
+                evalItem.style.opacity = '0.7';
+            } else {
+                evalItem.style.opacity = '1';
+            }
+        }
+    },
+    
+    async saveEditForReport(teamId, stageIndex) {
+        try {
+            // Get stage and parameters
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const stage = stages[parseInt(stageIndex)];
+            const teamParams = stage?.teamMarkParams || [];
+            const individualParams = stage?.individualMarkParams || [];
+            
+            // Get team comments from Quill editor
+            let teamComments = '';
+            if (this.quillEditors && this.quillEditors['edit-report-team-comments']) {
+                const html = this.quillEditors['edit-report-team-comments'].root.innerHTML;
+                teamComments = html.trim() === '<p><br></p>' ? '' : html.trim();
+            }
+            
+            // Collect team marks
+            let teamMarks = null;
+            let teamMarksData = {};
+            
+            if (teamParams.length > 0) {
+                teamParams.forEach((param, idx) => {
+                    const input = document.getElementById(`edit-report-team-param-${idx}`);
+                    if (input) {
+                        const value = parseFloat(input.value) || 0;
+                        if (value > 0) {
+                            teamMarksData[param.name] = value;
+                        }
+                    }
+                });
+                teamMarks = Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+            } else {
+                const teamMarksInput = document.getElementById('edit-report-team-marks');
+                if (teamMarksInput) {
+                    const value = teamMarksInput.value.trim();
+                    teamMarks = value ? parseFloat(value) : null;
+                }
+            }
+            
+            // Get individual evaluations
+            const individualEvaluations = {};
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const members = teamData.members || [];
+            
+            members.forEach((member, index) => {
+                const userId = member.userId || member.ktuid;
+                let comments = '';
+                if (this.quillEditors && this.quillEditors[`edit-report-individual-comments-${index}`]) {
+                    const html = this.quillEditors[`edit-report-individual-comments-${index}`].root.innerHTML;
+                    comments = html.trim() === '<p><br></p>' ? '' : html.trim();
+                }
+                
+                const absentCheckbox = document.getElementById(`edit-report-absent-${index}`);
+                const isAbsent = absentCheckbox ? absentCheckbox.checked : false;
+                
+                let marks = null;
+                let marksData = {};
+                
+                if (!isAbsent) {
+                    if (individualParams.length > 0) {
+                        individualParams.forEach((param, paramIdx) => {
+                            const input = document.getElementById(`edit-report-individual-param-${index}-${paramIdx}`);
+                            if (input) {
+                                const value = parseFloat(input.value) || 0;
+                                if (value > 0) {
+                                    marksData[param.name] = value;
+                                }
+                            }
+                        });
+                        marks = Object.values(marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                    } else {
+                        const marksInput = document.getElementById(`edit-report-individual-marks-${index}`);
+                        if (marksInput) {
+                            const value = marksInput.value.trim();
+                            marks = value ? parseFloat(value) : null;
+                        }
+                    }
+                }
+                
+                const individualEval = {
+                    marks: isAbsent ? 0 : marks,
+                    comments: comments || '',
+                    studentName: member.name || member.ktuid,
+                    ktuid: member.ktuid || '',
+                    isAbsent: isAbsent
+                };
+                
+                if (!isAbsent && Object.keys(marksData).length > 0) {
+                    individualEval.marksData = marksData;
+                }
+                
+                individualEvaluations[userId] = individualEval;
+            });
+            
+            // Save to reportEdits subcollection
+            const editRef = doc(
+                window.firebaseDb,
+                'evaluations',
+                `${teamId}_${stageIndex}`,
+                'reportEdits',
+                'admin'
+            );
+            
+            const editData = {
+                teamId: teamId,
+                stageIndex: parseInt(stageIndex),
+                teamMarks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
+                teamMarksData: Object.keys(teamMarksData).length > 0 ? teamMarksData : null,
+                teamComments: teamComments || '',
+                individualEvaluations: individualEvaluations,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            };
+            
+            await setDoc(editRef, editData, { merge: true });
+            
+            alert('Evaluation edits saved successfully! These edits will be used for report generation.');
+            this.closeEditForReportModal();
+        } catch (error) {
+            console.error('Error saving edit for report:', error);
+            alert('Error saving evaluation edits. Please try again.');
         }
     },
     
@@ -8753,12 +10142,421 @@ const app = {
                 return;
             }
             
-            // Load evaluation data
-            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
-            const evalData = evalDoc.exists() ? evalDoc.data() : {};
-            
-            // Get mark parameters
+            // Get mark parameters first (needed for normalization)
             const teamParams = stage.teamMarkParams || [];
+            
+            // Always load original evaluation data first to aggregate from all evaluators
+            let evalData = {};
+            const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`));
+            if (evalDoc.exists()) {
+                const mainEvalData = evalDoc.data();
+                evalData = {
+                    teamMarks: mainEvalData.teamMarks || null,
+                    teamMarksData: mainEvalData.teamMarksData || {},
+                    teamComments: mainEvalData.teamComments || '',
+                    individualEvaluations: mainEvalData.individualEvaluations || {}
+                };
+            }
+            
+            // Load evaluator entries to aggregate from all evaluators (including admin valuators)
+            const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(teamId, stageIndex);
+            
+            // Load edited data (admin-only, for reports) - will be applied after aggregation
+            let editData = null;
+            try {
+                const editDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'reportEdits', 'admin'));
+                if (editDoc.exists()) {
+                    editData = editDoc.data();
+                }
+            } catch (error) {
+                console.warn('Error loading edited evaluation data:', error);
+            }
+            
+            // Aggregate team marks from all evaluators (including admin from main doc)
+            const teamMarksList = [];
+            const teamMarksDataList = [];
+            
+            // Always include admin's teamMarksData if it exists (even if empty, to preserve structure)
+            console.log('Admin evalData:', {
+                teamMarks: evalData.teamMarks,
+                teamMarksData: evalData.teamMarksData,
+                hasTeamMarksData: evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0
+            });
+            
+            // Only include admin's teamMarksData if it exists and has actual values
+            // Check that it has at least one non-empty, non-null value
+            if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                const hasActualValues = Object.values(evalData.teamMarksData).some(v => 
+                    v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v))
+                );
+                if (hasActualValues) {
+                    teamMarksDataList.push(evalData.teamMarksData);
+                    console.log('Added admin teamMarksData to list:', evalData.teamMarksData);
+                } else {
+                    console.log('Skipped admin teamMarksData - no actual values');
+                }
+            }
+            
+            // Check if admin evaluation has team marks (for total calculation)
+            if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+                teamMarksList.push(evalData.teamMarks);
+            } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                // Calculate total from teamMarksData if teamMarks is not set
+                const total = Object.values(evalData.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                if (total > 0) {
+                    teamMarksList.push(total);
+                }
+            }
+            
+            // Collect team marks from evaluator entries
+            console.log('Evaluator entries count:', evaluatorEntries.length);
+            evaluatorEntries.forEach((evaluatorEntry, idx) => {
+                console.log(`Evaluator entry ${idx}:`, {
+                    evaluatorName: evaluatorEntry.evaluatorName,
+                    teamMarks: evaluatorEntry.teamMarks,
+                    teamMarksData: evaluatorEntry.teamMarksData,
+                    hasTeamMarksData: evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0
+                });
+                
+                // Only include evaluator's teamMarksData if it exists and has actual values
+                // Check that it has at least one non-empty, non-null value
+                if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                    const hasActualValues = Object.values(evaluatorEntry.teamMarksData).some(v => 
+                        v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v))
+                    );
+                    if (hasActualValues) {
+                        teamMarksDataList.push(evaluatorEntry.teamMarksData);
+                        console.log(`Added evaluator ${idx} teamMarksData to list:`, evaluatorEntry.teamMarksData);
+                    } else {
+                        console.log(`Skipped evaluator ${idx} teamMarksData - no actual values`);
+                    }
+                }
+                
+                // Check if evaluator has team marks (for total calculation)
+                if (evaluatorEntry.teamMarks !== null && evaluatorEntry.teamMarks !== undefined) {
+                    teamMarksList.push(evaluatorEntry.teamMarks);
+                } else if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                    // Calculate total from teamMarksData if teamMarks is not set
+                    const total = Object.values(evaluatorEntry.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                    if (total > 0) {
+                        teamMarksList.push(total);
+                    }
+                }
+            });
+            
+            console.log('Final teamMarksDataList count:', teamMarksDataList.length);
+            console.log('Final teamMarksList count:', teamMarksList.length);
+            
+            // Don't calculate teamMarks from teamMarksList here
+            // Instead, calculate it from aggregated teamMarksData after aggregation
+            // This ensures the total matches the sum of individual parameter averages
+            // The teamMarksList is kept for reference but teamMarks will be recalculated below
+            
+            // Average team marks data by parameter (always do this if we have any teamMarksData)
+            if (teamMarksDataList.length > 0) {
+                const avgTeamMarksData = {};
+                // Create a map to normalize parameter names (case-insensitive, trimmed)
+                const paramMap = new Map(); // normalized name -> original names array
+                
+                // Debug: Log what we're aggregating
+                console.log('Aggregating team marks data:', {
+                    teamMarksDataListCount: teamMarksDataList.length,
+                    teamMarksDataList: teamMarksDataList,
+                    teamParams: teamParams.map(p => p.name)
+                });
+                
+                // First pass: collect all parameter names and normalize them
+                teamMarksDataList.forEach(md => {
+                    Object.keys(md).forEach(param => {
+                        const normalized = param.toLowerCase().trim();
+                        if (!paramMap.has(normalized)) {
+                            paramMap.set(normalized, []);
+                        }
+                        paramMap.get(normalized).push(param);
+                    });
+                });
+                
+                // Second pass: aggregate values for each normalized parameter name
+                paramMap.forEach((originalNames, normalizedName) => {
+                    const values = [];
+                    // For each evaluator, only take ONE value (the first matching parameter name found)
+                    // IMPORTANT: Only include evaluators who actually provided a value for this parameter
+                    // Do NOT include evaluators who didn't evaluate this parameter at all
+                    teamMarksDataList.forEach(md => {
+                        // Try to find the parameter in this evaluator's data
+                        for (const originalName of originalNames) {
+                            if (md.hasOwnProperty(originalName)) {
+                                const value = md[originalName];
+                                // Only include if value is explicitly provided (not null, undefined, or empty string)
+                                // Also exclude 0 unless it was explicitly entered (we can't distinguish, so we'll include 0)
+                                // But we MUST exclude null, undefined, and empty string
+                                if (value !== null && value !== undefined && value !== '') {
+                                    const numValue = parseFloat(value);
+                                    // Only add if it's a valid number (including 0, as 0 might be a valid mark)
+                                    if (!isNaN(numValue)) {
+                                        values.push(numValue);
+                                    }
+                                    break; // Only take one value per evaluator
+                                }
+                            }
+                        }
+                        // If parameter not found in this evaluator's data, don't add anything (don't count them)
+                    });
+                    
+                    if (values.length > 0) {
+                        // Use the first original name found (prefer exact match from stage params if available)
+                        const preferredName = teamParams.find(p => 
+                            p.name.toLowerCase().trim() === normalizedName
+                        )?.name || originalNames[0];
+                        // Average only over evaluators who actually provided marks for this parameter
+                        let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                        
+                        // If there's only one evaluator, use their exact value (no averaging needed)
+                        // If multiple evaluators but all values are integers, round to integer
+                        if (values.length === 1) {
+                            average = values[0]; // Use exact value from single evaluator
+                        } else if (values.every(v => Number.isInteger(v))) {
+                            // All values are integers, round the average to integer
+                            average = Math.round(average);
+                        }
+                        
+                        avgTeamMarksData[preferredName] = average;
+                        console.log(`Aggregated ${preferredName}: ${avgTeamMarksData[preferredName]} from ${values.length} evaluators (who provided marks):`, values);
+                    }
+                });
+                
+                // Use aggregated values as the base (they are the correct averages)
+                // Merge with original to preserve any parameters that weren't in aggregation
+                const originalTeamMarksData = evalData.teamMarksData || {};
+                evalData.teamMarksData = { ...originalTeamMarksData, ...avgTeamMarksData };
+                console.log('Final aggregated teamMarksData:', evalData.teamMarksData);
+            } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                // If no aggregation happened but we have teamMarksData, keep it
+                // This handles the case where only one evaluator (admin) evaluated
+                console.log('No aggregation needed, using existing teamMarksData:', evalData.teamMarksData);
+            } else {
+                console.warn('No team marks data found for aggregation!');
+            }
+            
+            // Recalculate teamMarks from aggregated teamMarksData (sum of all parameter averages)
+            // This ensures the total matches the sum of individual parameters
+            // This is the CORRECT way to calculate total - sum of aggregated parameter values
+            if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                const calculatedTotal = Object.values(evalData.teamMarksData).reduce((sum, m) => {
+                    const numValue = parseFloat(m);
+                    return sum + (isNaN(numValue) ? 0 : numValue);
+                }, 0);
+                evalData.teamMarks = calculatedTotal;
+                console.log('Recalculated teamMarks from aggregated parameters:', calculatedTotal, 'from:', evalData.teamMarksData);
+            }
+            
+            // Aggregate team comments from all evaluators
+            const evaluatorTeamComments = [];
+            if (evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>') {
+                evaluatorTeamComments.push({
+                    evaluatorName: 'Admin',
+                    comment: evalData.teamComments
+                });
+            }
+            evaluatorEntries.forEach(e => {
+                if (e.teamComments || e.comments) {
+                    const comment = e.teamComments || e.comments || '';
+                    if (comment.trim() !== '' && comment.trim() !== '<p><br></p>') {
+                        evaluatorTeamComments.push({
+                            evaluatorName: e.evaluatorName || 'Unknown Evaluator',
+                            comment: comment
+                        });
+                    }
+                }
+            });
+            evalData.evaluatorTeamComments = evaluatorTeamComments;
+            
+            // Aggregate individual evaluations from all evaluators
+            const aggregatedIndividualEvaluations = {};
+            
+            // Add individual evaluations from main eval document (admin)
+            if (evalData.individualEvaluations) {
+                Object.keys(evalData.individualEvaluations).forEach(userId => {
+                    if (!aggregatedIndividualEvaluations[userId]) {
+                        aggregatedIndividualEvaluations[userId] = {
+                            marks: [],
+                            marksData: {},
+                            comments: [],
+                            isAbsent: false
+                        };
+                    }
+                    const individualEval = evalData.individualEvaluations[userId];
+                    
+                    if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                        aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                    }
+                    
+                    if (!individualEval.isAbsent && individualEval.marksData) {
+                        Object.keys(individualEval.marksData).forEach(paramName => {
+                            const paramValue = individualEval.marksData[paramName];
+                            if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                    aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                }
+                                aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                            }
+                        });
+                    }
+                    
+                    if (individualEval.comments) {
+                        aggregatedIndividualEvaluations[userId].comments.push({
+                            evaluatorName: 'Admin',
+                            comment: individualEval.comments
+                        });
+                    }
+                    
+                    if (individualEval.isAbsent) {
+                        aggregatedIndividualEvaluations[userId].isAbsent = true;
+                    }
+                });
+            }
+            
+            // Add individual evaluations from evaluator entries
+            evaluatorEntries.forEach(evaluatorEntry => {
+                if (evaluatorEntry.individualEvaluations) {
+                    Object.keys(evaluatorEntry.individualEvaluations).forEach(userId => {
+                        if (!aggregatedIndividualEvaluations[userId]) {
+                            aggregatedIndividualEvaluations[userId] = {
+                                marks: [],
+                                marksData: {},
+                                comments: [],
+                                isAbsent: false
+                            };
+                        }
+                        const individualEval = evaluatorEntry.individualEvaluations[userId];
+                        
+                        if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                            aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                        }
+                        
+                        if (!individualEval.isAbsent && individualEval.marksData) {
+                            Object.keys(individualEval.marksData).forEach(paramName => {
+                                const paramValue = individualEval.marksData[paramName];
+                                if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                    if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                        aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                    }
+                                    aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                }
+                            });
+                        }
+                        
+                        if (individualEval.comments) {
+                            aggregatedIndividualEvaluations[userId].comments.push({
+                                evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                comment: individualEval.comments
+                            });
+                        }
+                        
+                        if (individualEval.isAbsent) {
+                            aggregatedIndividualEvaluations[userId].isAbsent = true;
+                        }
+                    });
+                }
+            });
+            
+            // Calculate averages for individual marks
+            Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                const agg = aggregatedIndividualEvaluations[userId];
+                
+                if (agg.marks.length > 0) {
+                    let average = agg.marks.reduce((sum, m) => sum + m, 0) / agg.marks.length;
+                    // If there's only one evaluator, use their exact value (no averaging needed)
+                    // If multiple evaluators but all values are integers, round to integer
+                    if (agg.marks.length === 1) {
+                        average = agg.marks[0]; // Use exact value from single evaluator
+                    } else if (agg.marks.every(m => Number.isInteger(m))) {
+                        // All values are integers, round the average to integer
+                        average = Math.round(average);
+                    }
+                    agg.marks = average;
+                } else {
+                    agg.marks = null;
+                }
+                
+                const avgMarksData = {};
+                Object.keys(agg.marksData).forEach(paramName => {
+                    const values = agg.marksData[paramName];
+                    if (values.length > 0) {
+                        let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                        // If there's only one evaluator, use their exact value (no averaging needed)
+                        // If multiple evaluators but all values are integers, round to integer
+                        if (values.length === 1) {
+                            average = values[0]; // Use exact value from single evaluator
+                        } else if (values.every(v => Number.isInteger(v))) {
+                            // All values are integers, round the average to integer
+                            average = Math.round(average);
+                        }
+                        avgMarksData[paramName] = average;
+                    }
+                });
+                agg.marksData = avgMarksData;
+            });
+            
+            // Merge aggregated data back into evalData
+            if (!evalData.individualEvaluations) {
+                evalData.individualEvaluations = {};
+            }
+            Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                evalData.individualEvaluations[userId] = {
+                    ...evalData.individualEvaluations[userId],
+                    marks: aggregatedIndividualEvaluations[userId].marks,
+                    marksData: aggregatedIndividualEvaluations[userId].marksData,
+                    aggregatedComments: aggregatedIndividualEvaluations[userId].comments,
+                    isAbsent: aggregatedIndividualEvaluations[userId].isAbsent
+                };
+            });
+            
+            // Apply edits if they exist (edits override aggregated values)
+            // BUT only apply edits for values that are explicitly set and non-zero
+            // This prevents empty/incomplete edits from overriding correctly aggregated values
+            if (editData) {
+                if (editData.teamMarks !== null && editData.teamMarks !== undefined) {
+                    evalData.teamMarks = editData.teamMarks;
+                }
+                if (editData.teamMarksData && Object.keys(editData.teamMarksData).length > 0) {
+                    // Only override parameters that are explicitly edited with non-zero values
+                    // This ensures that if an edit doesn't include all parameters, we don't lose the aggregated values
+                    Object.keys(editData.teamMarksData).forEach(paramName => {
+                        const editedValue = editData.teamMarksData[paramName];
+                        // Only apply edit if value is explicitly set and greater than 0
+                        // This prevents 0 or empty values in edits from overriding aggregated averages
+                        if (editedValue !== null && editedValue !== undefined && editedValue !== '' && parseFloat(editedValue) > 0) {
+                            evalData.teamMarksData[paramName] = parseFloat(editedValue);
+                        }
+                    });
+                }
+                if (editData.teamComments) {
+                    evalData.teamComments = editData.teamComments;
+                }
+                if (editData.individualEvaluations && Object.keys(editData.individualEvaluations).length > 0) {
+                    Object.keys(editData.individualEvaluations).forEach(userId => {
+                        if (!evalData.individualEvaluations[userId]) {
+                            evalData.individualEvaluations[userId] = {};
+                        }
+                        const editedEval = editData.individualEvaluations[userId];
+                        if (editedEval.marks !== null && editedEval.marks !== undefined) {
+                            evalData.individualEvaluations[userId].marks = editedEval.marks;
+                        }
+                        if (editedEval.marksData && Object.keys(editedEval.marksData).length > 0) {
+                            evalData.individualEvaluations[userId].marksData = { ...evalData.individualEvaluations[userId].marksData, ...editedEval.marksData };
+                        }
+                        if (editedEval.comments) {
+                            evalData.individualEvaluations[userId].comments = editedEval.comments;
+                        }
+                        if (editedEval.isAbsent !== undefined) {
+                            evalData.individualEvaluations[userId].isAbsent = editedEval.isAbsent;
+                        }
+                    });
+                }
+            }
+            
+            // Get individual mark parameters (teamParams already loaded above at line 9969)
             const individualParams = stage.individualMarkParams || [];
             const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
             const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
@@ -8908,18 +10706,38 @@ const app = {
                             </thead>
                             <tbody>
                                 ${teamParams.map((param, idx) => {
-                                    const paramMarks = teamMarksData[param.name] || 0;
+                                    // Try exact match first
+                                    let paramMarks = teamMarksData[param.name];
+                                    
+                                    // If not found, try case-insensitive and trimmed match
+                                    if (paramMarks === undefined || paramMarks === null) {
+                                        const paramNameNormalized = param.name.toLowerCase().trim();
+                                        const matchingKey = Object.keys(teamMarksData).find(key => {
+                                            const keyNormalized = key.toLowerCase().trim();
+                                            return keyNormalized === paramNameNormalized;
+                                        });
+                                        if (matchingKey) {
+                                            paramMarks = teamMarksData[matchingKey];
+                                        }
+                                    }
+                                    
+                                    // Default to 0 if still not found
+                                    if (paramMarks === undefined || paramMarks === null) {
+                                        paramMarks = 0;
+                                    }
+                                    
+                                    const formattedMarks = typeof paramMarks === 'number' ? paramMarks.toFixed(2) : String(paramMarks);
                                     return `
                                         <tr style="${idx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;'}">
                                             <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; color: #1f2937; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(param.name)}</td>
-                                            <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${paramMarks}</td>
+                                            <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #059669; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${formattedMarks}</td>
                                             <td style="padding: ${skipHeader ? '10px 14px' : '14px 18px'}; text-align: center; color: #4b5563; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; border-bottom: 1px solid #e5e7eb;">${param.maxMarks}</td>
                                         </tr>
                                     `;
                                 }).join('')}
                                 <tr style="background: #f0fdf4; border-top: 2px solid #059669;">
                                     <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 0 8px;">Total</td>
-                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: ${skipHeader ? '16px' : '18px'};">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</td>
+                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: ${skipHeader ? '16px' : '18px'};">${teamMarks !== null && teamMarks !== undefined ? (typeof teamMarks === 'number' ? teamMarks.toFixed(2) : teamMarks) : '0.00'}</td>
                                     <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 8px 0;">${teamTotal}</td>
                                 </tr>
                             </tbody>
@@ -8929,12 +10747,25 @@ const app = {
                             <strong style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '15px' : '17px'}; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
                         </div>
                     `}
-                    ${teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>' ? `
+                    ${(evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) || (teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>') ? `
                         <div style="margin-top: ${skipHeader ? '15px' : '25px'}; padding: ${skipHeader ? '15px' : '20px'}; background: #f8fafc; border-radius: 8px; border-left: 4px solid #9333ea;">
                             <h4 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '16px'}; font-weight: 700; margin-bottom: ${skipHeader ? '10px' : '12px'}; color: #1f2937;">Team Comments</h4>
+                            ${evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0 ? `
+                                ${evalData.evaluatorTeamComments.map(evalComment => `
+                                    <div style="margin-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '12px' : '0'}; padding-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '12px' : '0'}; border-bottom: ${evalData.evaluatorTeamComments.indexOf(evalComment) < evalData.evaluatorTeamComments.length - 1 ? '1px solid #e5e7eb' : 'none'};">
+                                        <div style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '12px' : '13px'}; font-weight: 600; margin-bottom: 6px; color: #9333ea;">
+                                            <i class="fas fa-user-tie"></i> ${this.escapeHtml(evalComment.evaluatorName)}
+                                        </div>
+                                        <div style="padding: ${skipHeader ? '10px' : '12px'}; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; line-height: 1.7;">
+                                            ${evalComment.comment}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            ` : (teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>') ? `
                             <div style="padding: ${skipHeader ? '12px' : '14px'}; background: #ffffff; border-radius: 6px; color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '14px' : '15px'}; line-height: 1.7;">
                                 ${teamComments}
                             </div>
+                            ` : ''}
                         </div>
                     ` : ''}
                 </div>
@@ -8947,7 +10778,19 @@ const app = {
                     ${members.map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
-                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                        // Calculate student marks from marksData (sum of parameter marks) if available
+                        // This ensures the total matches the sum of individual parameters
+                        let studentMarks = 0;
+                        if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                            // Sum all parameter marks from marksData
+                            studentMarks = Object.values(individualEval.marksData).reduce((sum, m) => {
+                                const numValue = parseFloat(m);
+                                return sum + (isNaN(numValue) ? 0 : numValue);
+                            }, 0);
+                        } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                            // Fall back to marks field if marksData is not available
+                            studentMarks = individualEval.marks;
+                        }
                         const individualComments = individualEval.comments || '';
                         const isAbsent = individualEval.isAbsent || false;
                         
@@ -8961,25 +10804,47 @@ const app = {
                                     <span style="margin-left: auto; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '15px'}; font-weight: 600; color: #7e22ce;">${studentMarks} / ${individualTotal}</span>
                                 </div>
                                 ${individualParams.length > 0 && !isAbsent ? `
-                                    <table style="width: 100%; border-collapse: collapse; margin: ${skipHeader ? '4px' : '10px'} 0 ${skipHeader ? '6px' : '12px'} ${skipHeader ? '24px' : '36px'}; font-size: ${skipHeader ? '11px' : '13px'};">
-                                        <tbody>
-                                            ${individualParams.map((param) => {
-                                                const paramMarks = individualEval.marksData?.[param.name] || 0;
-                                                return `
-                                                    <tr>
-                                                        <td style="padding: ${skipHeader ? '2px 8px 2px 0' : '4px 12px 4px 0'}; color: #4b5563; font-family: 'Lato', sans-serif; width: 60%;">${this.escapeHtml(param.name)}</td>
-                                                        <td style="padding: ${skipHeader ? '2px 0' : '4px 0'}; text-align: right; color: #1f2937; font-family: 'Lato', sans-serif; font-weight: 500;">${paramMarks} / ${param.maxMarks}</td>
-                                                    </tr>
-                                                `;
-                                            }).join('')}
-                                        </tbody>
-                                    </table>
+                                    <div style="margin: ${skipHeader ? '4px' : '10px'} 0 ${skipHeader ? '6px' : '12px'} ${skipHeader ? '24px' : '36px'}; overflow: hidden;">
+                                        <table style="width: 100%; border-collapse: collapse; font-size: ${skipHeader ? '11px' : '13px'}; table-layout: fixed;">
+                                            <colgroup>
+                                                <col style="width: auto;">
+                                                <col style="width: 110px;">
+                                            </colgroup>
+                                            <tbody>
+                                                ${individualParams.map((param) => {
+                                                    const paramMarks = individualEval.marksData?.[param.name] || 0;
+                                                    const formattedMarks = typeof paramMarks === 'number' ? paramMarks.toFixed(2) : paramMarks;
+                                                    return `
+                                                        <tr>
+                                                            <td style="padding: ${skipHeader ? '2px 8px 2px 0' : '4px 12px 4px 0'}; color: #4b5563; font-family: 'Lato', sans-serif; word-wrap: break-word; overflow-wrap: break-word; vertical-align: top;">${this.escapeHtml(param.name)}</td>
+                                                            <td style="padding: ${skipHeader ? '2px 8px 2px 8px' : '4px 12px 4px 12px'}; text-align: right; color: #1f2937; font-family: 'Lato', sans-serif; font-weight: 500; white-space: nowrap; vertical-align: top; box-sizing: border-box; overflow: hidden;">${formattedMarks} / ${param.maxMarks}</td>
+                                                        </tr>
+                                                    `;
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 ` : ''}
-                                ${individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>' ? `
-                                    <div style="margin-top: ${skipHeader ? '4px' : '8px'}; margin-left: ${skipHeader ? '24px' : '36px'}; padding: ${skipHeader ? '6px 8px' : '10px 12px'}; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
+                                ${(individualEval.aggregatedComments && individualEval.aggregatedComments.length > 0) || (individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>') ? `
+                                    <div style="margin-top: ${skipHeader ? '4px' : '8px'}; margin-left: ${skipHeader ? '24px' : '36px'};">
+                                        ${individualEval.aggregatedComments && individualEval.aggregatedComments.length > 0 ? `
+                                            ${individualEval.aggregatedComments.map(commentItem => `
+                                                <div style="margin-bottom: ${individualEval.aggregatedComments.indexOf(commentItem) < individualEval.aggregatedComments.length - 1 ? '8px' : '0'}; padding: ${skipHeader ? '6px 8px' : '10px 12px'}; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
+                                                    <div style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '10px' : '12px'}; font-weight: 600; margin-bottom: 4px; color: #9333ea;">
+                                                        <i class="fas fa-user-tie"></i> ${this.escapeHtml(commentItem.evaluatorName)}
+                                                    </div>
+                                                    <div style="color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '11px' : '13px'}; line-height: ${skipHeader ? '1.5' : '1.6'};">
+                                                        ${commentItem.comment}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        ` : (individualComments && individualComments.trim() !== '' && individualComments.trim() !== '<p><br></p>' && individualComments.trim() !== '<p></p>') ? `
+                                            <div style="padding: ${skipHeader ? '6px 8px' : '10px 12px'}; background: #f8fafc; border-radius: 6px; border-left: 2px solid #9333ea;">
                                         <div style="color: #374151; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '11px' : '13px'}; line-height: ${skipHeader ? '1.5' : '1.6'};">
                                             ${individualComments}
                                         </div>
+                                            </div>
+                                        ` : ''}
                                     </div>
                                 ` : ''}
                             </div>
@@ -9342,6 +11207,34 @@ const app = {
         URL.revokeObjectURL(url);
     },
     
+    async loadEvaluatorEntriesForTeam(teamId, stageIndex) {
+        try {
+            const evaluatorEntriesRef = collection(
+                window.firebaseDb,
+                'evaluations',
+                `${teamId}_${stageIndex}`,
+                'evaluatorEntries'
+            );
+            const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+            const entries = [];
+            evaluatorEntriesSnapshot.forEach(doc => {
+                const entryData = doc.data();
+                entries.push({
+                    evaluatorId: doc.id,
+                    evaluatorName: entryData.evaluatorName || 'Unknown Evaluator',
+                    teamMarks: entryData.teamMarks,
+                    teamMarksData: entryData.teamMarksData,
+                    teamComments: entryData.teamComments || entryData.comments,
+                    individualEvaluations: entryData.individualEvaluations || {}
+                });
+            });
+            return entries;
+        } catch (error) {
+            console.error(`Error loading evaluator entries for team ${teamId}, stage ${stageIndex}:`, error);
+            return [];
+        }
+    },
+    
     async generateConsolidatedReport(stage, stageIndex, format) {
         try {
             // Load all teams
@@ -9360,11 +11253,328 @@ const app = {
                 }
             });
             
-            // Load evaluation data for all teams
+            // Load evaluation data for all teams (including evaluator entries)
             const teamsWithEvaluations = await Promise.all(teams.map(async (team) => {
                 try {
+                    // Load main evaluation document (admin evaluation)
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
-                    const evalData = evalDoc.exists() ? evalDoc.data() : {};
+                    let evalData = evalDoc.exists() ? evalDoc.data() : {};
+                    
+                    // Load evaluator entries to aggregate comments and marks
+                    const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(team.id, stageIndex);
+                    
+                    // Get team parameters for normalization
+                    const teamParams = stage.teamMarkParams || [];
+                    
+                    // Aggregate team marks from all evaluators (including admin from main doc)
+                    const teamMarksList = [];
+                    const teamMarksDataList = [];
+                    
+                    // Only include admin's teamMarksData if it exists and has actual values
+                    // Check that it has at least one non-empty, non-null value
+                    if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                        const hasActualValues = Object.values(evalData.teamMarksData).some(v => 
+                            v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v))
+                        );
+                        if (hasActualValues) {
+                            teamMarksDataList.push(evalData.teamMarksData);
+                        }
+                    }
+                    
+                    // Check if admin evaluation has team marks (for total calculation)
+                    if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+                        teamMarksList.push(evalData.teamMarks);
+                    } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                        const total = Object.values(evalData.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                        if (total > 0) {
+                            teamMarksList.push(total);
+                        }
+                    }
+                    
+                    // Collect team marks from evaluator entries
+                    evaluatorEntries.forEach(evaluatorEntry => {
+                        // Only include evaluator's teamMarksData if it exists and has actual values
+                        // Check that it has at least one non-empty, non-null value
+                        if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                            const hasActualValues = Object.values(evaluatorEntry.teamMarksData).some(v => 
+                                v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v))
+                            );
+                            if (hasActualValues) {
+                                teamMarksDataList.push(evaluatorEntry.teamMarksData);
+                            }
+                            // If no actual values, don't include this evaluator in aggregation
+                        }
+                        
+                        // Check if evaluator has team marks (for total calculation)
+                        if (evaluatorEntry.teamMarks !== null && evaluatorEntry.teamMarks !== undefined) {
+                            teamMarksList.push(evaluatorEntry.teamMarks);
+                        } else if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                            const total = Object.values(evaluatorEntry.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                            if (total > 0) {
+                                teamMarksList.push(total);
+                            }
+                        }
+                    });
+                    
+            // Don't calculate teamMarks from teamMarksList here
+            // Instead, calculate it from aggregated teamMarksData after aggregation
+            // This ensures the total matches the sum of individual parameter averages
+            
+            // Average team marks data by parameter (always do this if we have any teamMarksData)
+                    if (teamMarksDataList.length > 0) {
+                        const avgTeamMarksData = {};
+                        // Create a map to normalize parameter names (case-insensitive, trimmed)
+                        const paramMap = new Map(); // normalized name -> original names array
+                        
+                        // First pass: collect all parameter names and normalize them
+                        teamMarksDataList.forEach(md => {
+                            Object.keys(md).forEach(param => {
+                                const normalized = param.toLowerCase().trim();
+                                if (!paramMap.has(normalized)) {
+                                    paramMap.set(normalized, []);
+                                }
+                                paramMap.get(normalized).push(param);
+                            });
+                        });
+                        
+                        // Second pass: aggregate values for each normalized parameter name
+                        paramMap.forEach((originalNames, normalizedName) => {
+                            const values = [];
+                            // For each evaluator, only take ONE value (the first matching parameter name found)
+                            // IMPORTANT: Only include evaluators who actually provided a value for this parameter
+                            // Do NOT include evaluators who didn't evaluate this parameter at all
+                            teamMarksDataList.forEach(md => {
+                                // Try to find the parameter in this evaluator's data
+                                for (const originalName of originalNames) {
+                                    if (md.hasOwnProperty(originalName)) {
+                                        const value = md[originalName];
+                                        // Only include if value is explicitly provided (not null, undefined, or empty string)
+                                        // Also exclude 0 unless it was explicitly entered (we can't distinguish, so we'll include 0)
+                                        // But we MUST exclude null, undefined, and empty string
+                                        if (value !== null && value !== undefined && value !== '') {
+                                            const numValue = parseFloat(value);
+                                            // Only add if it's a valid number (including 0, as 0 might be a valid mark)
+                                            if (!isNaN(numValue)) {
+                                                values.push(numValue);
+                                            }
+                                            break; // Only take one value per evaluator
+                                        }
+                                    }
+                                }
+                                // If parameter not found in this evaluator's data, don't add anything (don't count them)
+                            });
+                            
+                            if (values.length > 0) {
+                                // Use the first original name found (prefer exact match from stage params if available)
+                                const preferredName = teamParams.find(p => 
+                                    p.name.toLowerCase().trim() === normalizedName
+                                )?.name || originalNames[0];
+                                // Average only over evaluators who actually provided marks for this parameter
+                                let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                
+                                // If there's only one evaluator, use their exact value (no averaging needed)
+                                // If multiple evaluators but all values are integers, round to integer
+                                if (values.length === 1) {
+                                    average = values[0]; // Use exact value from single evaluator
+                                } else if (values.every(v => Number.isInteger(v))) {
+                                    // All values are integers, round the average to integer
+                                    average = Math.round(average);
+                                }
+                                
+                                avgTeamMarksData[preferredName] = average;
+                            }
+                        });
+                        
+                        // Use aggregated values as the base (they are the correct averages)
+                        // Merge with original to preserve any parameters that weren't in aggregation
+                        const originalTeamMarksData = evalData.teamMarksData || {};
+                        evalData.teamMarksData = { ...originalTeamMarksData, ...avgTeamMarksData };
+                    } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                        // If no aggregation happened but we have teamMarksData, keep it
+                        // This handles the case where only one evaluator (admin) evaluated
+                    }
+                    
+                    // Recalculate teamMarks from aggregated teamMarksData (sum of all parameter averages)
+                    // This ensures the total matches the sum of individual parameters
+                    // This is the CORRECT way to calculate total - sum of aggregated parameter values
+                    if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                        const calculatedTotal = Object.values(evalData.teamMarksData).reduce((sum, m) => {
+                            const numValue = parseFloat(m);
+                            return sum + (isNaN(numValue) ? 0 : numValue);
+                        }, 0);
+                        evalData.teamMarks = calculatedTotal;
+                    }
+                    
+                    // Aggregate team comments from all evaluators
+                    const evaluatorTeamComments = [];
+                    if (evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>') {
+                        evaluatorTeamComments.push({
+                            evaluatorName: 'Admin',
+                            comment: evalData.teamComments
+                        });
+                    }
+                    evaluatorEntries.forEach(e => {
+                        if (e.teamComments || e.comments) {
+                            const comment = e.teamComments || e.comments || '';
+                            if (comment.trim() !== '' && comment.trim() !== '<p><br></p>') {
+                                evaluatorTeamComments.push({
+                                    evaluatorName: e.evaluatorName || 'Unknown Evaluator',
+                                    comment: comment
+                                });
+                            }
+                        }
+                    });
+                    evalData.evaluatorTeamComments = evaluatorTeamComments;
+                    
+                    // Aggregate individual evaluations from all evaluators
+                    const aggregatedIndividualEvaluations = {};
+                    
+                    // Add individual evaluations from main eval document (admin)
+                    if (evalData.individualEvaluations) {
+                        Object.keys(evalData.individualEvaluations).forEach(userId => {
+                            if (!aggregatedIndividualEvaluations[userId]) {
+                                aggregatedIndividualEvaluations[userId] = {
+                                    marks: [],
+                                    marksData: {},
+                                    comments: [],
+                                    isAbsent: false
+                                };
+                            }
+                            const individualEval = evalData.individualEvaluations[userId];
+                            
+                            if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                            }
+                            
+                            if (!individualEval.isAbsent && individualEval.marksData) {
+                                Object.keys(individualEval.marksData).forEach(paramName => {
+                                    const paramValue = individualEval.marksData[paramName];
+                                    if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                        if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                            aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                        }
+                                        aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                    }
+                                });
+                            }
+                            
+                            if (individualEval.comments) {
+                                aggregatedIndividualEvaluations[userId].comments.push({
+                                    evaluatorName: 'Admin',
+                                    comment: individualEval.comments
+                                });
+                            }
+                            
+                            if (individualEval.isAbsent) {
+                                aggregatedIndividualEvaluations[userId].isAbsent = true;
+                            }
+                        });
+                    }
+                    
+                    // Add individual evaluations from evaluator entries
+                    evaluatorEntries.forEach(evaluatorEntry => {
+                        if (evaluatorEntry.individualEvaluations) {
+                            Object.keys(evaluatorEntry.individualEvaluations).forEach(userId => {
+                                if (!aggregatedIndividualEvaluations[userId]) {
+                                    aggregatedIndividualEvaluations[userId] = {
+                                        marks: [],
+                                        marksData: {},
+                                        comments: [],
+                                        isAbsent: false
+                                    };
+                                }
+                                const individualEval = evaluatorEntry.individualEvaluations[userId];
+                                
+                                if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                    aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                                }
+                                
+                                if (!individualEval.isAbsent && individualEval.marksData) {
+                                    Object.keys(individualEval.marksData).forEach(paramName => {
+                                        const paramValue = individualEval.marksData[paramName];
+                                        if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                            if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                                aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                            }
+                                            aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                        }
+                                    });
+                                }
+                                
+                                if (individualEval.comments) {
+                                    aggregatedIndividualEvaluations[userId].comments.push({
+                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                        comment: individualEval.comments
+                                    });
+                                }
+                                
+                                if (individualEval.isAbsent) {
+                                    aggregatedIndividualEvaluations[userId].isAbsent = true;
+                                }
+                            });
+                        }
+                    });
+                    
+                    // Calculate averages for individual marks
+                    Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                        const agg = aggregatedIndividualEvaluations[userId];
+                        
+                        const avgMarksData = {};
+                        Object.keys(agg.marksData).forEach(paramName => {
+                            const values = agg.marksData[paramName];
+                            if (values.length > 0) {
+                                let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                // If there's only one evaluator, use their exact value (no averaging needed)
+                                // If multiple evaluators but all values are integers, round to integer
+                                if (values.length === 1) {
+                                    average = values[0]; // Use exact value from single evaluator
+                                } else if (values.every(v => Number.isInteger(v))) {
+                                    // All values are integers, round the average to integer
+                                    average = Math.round(average);
+                                }
+                                avgMarksData[paramName] = average;
+                            }
+                        });
+                        agg.marksData = avgMarksData;
+                        
+                        // Recalculate marks from the sum of marksData to ensure consistency
+                        // This ensures the total matches the sum of individual parameters
+                        if (Object.keys(avgMarksData).length > 0) {
+                            agg.marks = Object.values(avgMarksData).reduce((sum, m) => {
+                                const numValue = parseFloat(m);
+                                return sum + (isNaN(numValue) ? 0 : numValue);
+                            }, 0);
+                        } else if (agg.marks.length > 0) {
+                            // Fall back to averaging marks if marksData is not available
+                            let average = agg.marks.reduce((sum, m) => sum + m, 0) / agg.marks.length;
+                            // If there's only one evaluator, use their exact value (no averaging needed)
+                            // If multiple evaluators but all values are integers, round to integer
+                            if (agg.marks.length === 1) {
+                                average = agg.marks[0]; // Use exact value from single evaluator
+                            } else if (agg.marks.every(m => Number.isInteger(m))) {
+                                // All values are integers, round the average to integer
+                                average = Math.round(average);
+                            }
+                            agg.marks = average;
+                        } else {
+                            agg.marks = null;
+                        }
+                    });
+                    
+                    // Merge aggregated data back into evalData
+                    if (!evalData.individualEvaluations) {
+                        evalData.individualEvaluations = {};
+                    }
+                    Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                        evalData.individualEvaluations[userId] = {
+                            ...evalData.individualEvaluations[userId],
+                            marks: aggregatedIndividualEvaluations[userId].marks,
+                            marksData: aggregatedIndividualEvaluations[userId].marksData,
+                            aggregatedComments: aggregatedIndividualEvaluations[userId].comments,
+                            isAbsent: aggregatedIndividualEvaluations[userId].isAbsent
+                        };
+                    });
+                    
                     return { ...team, evaluation: evalData };
                 } catch (error) {
                     console.error(`Error loading evaluation for team ${team.id}:`, error);
@@ -9437,7 +11647,8 @@ const app = {
             
             const evalData = team.evaluation || {};
             const teamMarksData = evalData.teamMarksData || {};
-            const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+            // Use averaged team marks (already calculated in generateConsolidatedReport)
+            const teamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined ? evalData.teamMarks : (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
             
             // Team Evaluation
             if (teamTotal > 0) {
@@ -9445,12 +11656,28 @@ const app = {
                 if (teamParams.length > 0) {
                     csvRows.push('Parameter,Marks Obtained,Maximum Marks');
                     teamParams.forEach(param => {
-                        const paramMarks = teamMarksData[param.name] || 0;
-                        csvRows.push(`${param.name},${paramMarks},${param.maxMarks}`);
+                        // Use averaged parameter marks if available
+                        const paramMarks = teamMarksData[param.name] !== null && teamMarksData[param.name] !== undefined ? teamMarksData[param.name] : 0;
+                        csvRows.push(`${param.name},${typeof paramMarks === 'number' ? paramMarks.toFixed(2) : paramMarks},${param.maxMarks}`);
                     });
-                    csvRows.push(`Total,${teamMarks},${teamTotal}`);
+                    csvRows.push(`Total,${typeof teamMarks === 'number' ? teamMarks.toFixed(2) : teamMarks},${teamTotal}`);
                 } else {
                     csvRows.push(`Total Team Marks,${teamMarks},${teamTotal}`);
+                }
+                
+                // Add team comments from all evaluators
+                if (evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) {
+                    csvRows.push('');
+                    csvRows.push('Team Comments');
+                    evalData.evaluatorTeamComments.forEach(evalComment => {
+                        csvRows.push(`Evaluator: ${evalComment.evaluatorName}`);
+                        csvRows.push(this.stripHtml(evalComment.comment).replace(/\n/g, ' ').replace(/,/g, ';'));
+                        csvRows.push('');
+                    });
+                } else if (evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>') {
+                    csvRows.push('');
+                    csvRows.push('Team Comments');
+                    csvRows.push(this.stripHtml(evalData.teamComments).replace(/\n/g, ' ').replace(/,/g, ';'));
                 }
                 csvRows.push('');
             }
@@ -9460,11 +11687,45 @@ const app = {
             (team.members || []).forEach((member, index) => {
                 const userId = member.userId || member.ktuid;
                 const individualEval = individualEvaluations[userId] || {};
-                const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                // Calculate student marks from marksData (sum of parameter marks) if available
+                // This ensures the total matches the sum of individual parameters
+                let studentMarks = 0;
+                if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                    // Sum all parameter marks from marksData
+                    studentMarks = Object.values(individualEval.marksData).reduce((sum, m) => {
+                        const numValue = parseFloat(m);
+                        return sum + (isNaN(numValue) ? 0 : numValue);
+                    }, 0);
+                } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                    // Fall back to marks field if marksData is not available
+                    studentMarks = individualEval.marks;
+                }
                 const isAbsent = individualEval.isAbsent || false;
                 
                 csvRows.push(`Student ${index + 1}: ${member.name || 'N/A'}${isAbsent ? ' [Absent]' : ''}`);
-                csvRows.push(`Marks,${studentMarks},${individualTotal}`);
+                csvRows.push(`Marks,${typeof studentMarks === 'number' ? studentMarks.toFixed(2) : studentMarks},${individualTotal}`);
+                
+                // Add parameter-based marks if available
+                if (individualParams.length > 0 && !isAbsent && individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                    csvRows.push('Parameter,Marks Obtained,Maximum Marks');
+                    individualParams.forEach(param => {
+                        const paramMarks = individualEval.marksData[param.name] !== null && individualEval.marksData[param.name] !== undefined ? individualEval.marksData[param.name] : 0;
+                        csvRows.push(`${param.name},${typeof paramMarks === 'number' ? paramMarks.toFixed(2) : paramMarks},${param.maxMarks}`);
+                    });
+                }
+                
+                // Add individual comments from all evaluators
+                if (individualEval.aggregatedComments && individualEval.aggregatedComments.length > 0) {
+                    csvRows.push('Comments');
+                    individualEval.aggregatedComments.forEach(commentItem => {
+                        csvRows.push(`Evaluator: ${commentItem.evaluatorName}`);
+                        csvRows.push(this.stripHtml(commentItem.comment).replace(/\n/g, ' ').replace(/,/g, ';'));
+                        csvRows.push('');
+                    });
+                } else if (individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>') {
+                    csvRows.push('Comments');
+                    csvRows.push(this.stripHtml(individualEval.comments).replace(/\n/g, ' ').replace(/,/g, ';'));
+                }
                 csvRows.push('');
             });
             
@@ -9506,7 +11767,8 @@ const app = {
             teams: teamsWithEvaluations.map((team, teamIndex) => {
                 const evalData = team.evaluation || {};
                 const teamMarksData = evalData.teamMarksData || {};
-                const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                // Use averaged team marks (already calculated in generateConsolidatedReport)
+                const teamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined ? evalData.teamMarks : (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                 const individualEvaluations = evalData.individualEvaluations || {};
                 
                 return {
@@ -9532,7 +11794,19 @@ const app = {
                     individualEvaluations: (team.members || []).map((member, index) => {
                         const userId = member.userId || member.ktuid;
                         const individualEval = individualEvaluations[userId] || {};
-                        const studentMarks = individualEval.marks !== null && individualEval.marks !== undefined ? individualEval.marks : 0;
+                        // Calculate student marks from marksData (sum of parameter marks) if available
+                        // This ensures the total matches the sum of individual parameters
+                        let studentMarks = 0;
+                        if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                            // Sum all parameter marks from marksData
+                            studentMarks = Object.values(individualEval.marksData).reduce((sum, m) => {
+                                const numValue = parseFloat(m);
+                                return sum + (isNaN(numValue) ? 0 : numValue);
+                            }, 0);
+                        } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                            // Fall back to marks field if marksData is not available
+                            studentMarks = individualEval.marks;
+                        }
                         
                         return {
                             serialNumber: index + 1,
@@ -9541,12 +11815,18 @@ const app = {
                             isAbsent: individualEval.isAbsent || false,
                             totalMarks: individualTotal,
                             marksObtained: studentMarks,
-                            parameters: individualParams.map(param => ({
-                                name: param.name,
-                                marksObtained: individualEval.marksData?.[param.name] || 0,
-                                maximumMarks: param.maxMarks
-                            })),
-                            comments: individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>' ? this.stripHtml(individualEval.comments) : null
+                            parameters: individualParams.map(param => {
+                                // Use averaged parameter marks if available
+                                const paramMarks = individualEval.marksData?.[param.name];
+                                return {
+                                    name: param.name,
+                                    marksObtained: paramMarks !== null && paramMarks !== undefined ? paramMarks : 0,
+                                    maximumMarks: param.maxMarks
+                                };
+                            }),
+                            comments: individualEval.aggregatedComments && individualEval.aggregatedComments.length > 0 
+                                ? individualEval.aggregatedComments.map(c => `${c.evaluatorName}: ${this.stripHtml(c.comment)}`).join(' | ')
+                                : (individualEval.comments && individualEval.comments.trim() !== '' && individualEval.comments.trim() !== '<p><br></p>' ? this.stripHtml(individualEval.comments) : null)
                         };
                     })
                 };
@@ -9682,8 +11962,82 @@ const app = {
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
                     let evalData = evalDoc.exists() ? evalDoc.data() : {};
                     
-                    // Load evaluator entries to aggregate comments
+                    // Load evaluator entries to aggregate comments and marks
                     const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
+                    
+                    // Aggregate team marks from all evaluators (including admin from main doc)
+                    const teamMarksList = [];
+                    const teamMarksDataList = [];
+                    
+                    // Check if admin evaluation has team marks
+                    if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+                        teamMarksList.push(evalData.teamMarks);
+                    } else if (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0) {
+                        const total = Object.values(evalData.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                        if (total > 0) {
+                            teamMarksList.push(total);
+                            teamMarksDataList.push(evalData.teamMarksData);
+                        }
+                    }
+                    
+                    // Collect team marks from evaluator entries
+                    evaluatorEntries.forEach(evaluatorEntry => {
+                        if (evaluatorEntry.teamMarks !== null && evaluatorEntry.teamMarks !== undefined) {
+                            teamMarksList.push(evaluatorEntry.teamMarks);
+                        } else if (evaluatorEntry.teamMarksData && Object.keys(evaluatorEntry.teamMarksData).length > 0) {
+                            const total = Object.values(evaluatorEntry.teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+                            if (total > 0) {
+                                teamMarksList.push(total);
+                                teamMarksDataList.push(evaluatorEntry.teamMarksData);
+                            }
+                        }
+                    });
+                    
+                    // Calculate average team marks (only from evaluators who entered marks)
+                    if (teamMarksList.length > 0) {
+                        let avgTeamMarks = teamMarksList.reduce((sum, m) => sum + m, 0) / teamMarksList.length;
+                        // If there's only one evaluator, use their exact value (no averaging needed)
+                        // If multiple evaluators but all values are integers, round to integer
+                        if (teamMarksList.length === 1) {
+                            avgTeamMarks = teamMarksList[0]; // Use exact value from single evaluator
+                        } else if (teamMarksList.every(m => Number.isInteger(m))) {
+                            // All values are integers, round the average to integer
+                            avgTeamMarks = Math.round(avgTeamMarks);
+                        }
+                        evalData.teamMarks = avgTeamMarks;
+                        
+                        // Average team marks data by parameter
+                        if (teamMarksDataList.length > 0) {
+                            const avgTeamMarksData = {};
+                            const allParams = new Set();
+                            teamMarksDataList.forEach(md => {
+                                Object.keys(md).forEach(param => allParams.add(param));
+                            });
+                            
+                            allParams.forEach(param => {
+                                const values = teamMarksDataList
+                                    .map(md => md[param])
+                                    .filter(v => v !== null && v !== undefined && v !== '')
+                                    .map(v => parseFloat(v));
+                                if (values.length > 0) {
+                                    let average = values.reduce((sum, v) => sum + (isNaN(v) ? 0 : v), 0) / values.length;
+                                    // If there's only one evaluator, use their exact value (no averaging needed)
+                                    // If multiple evaluators but all values are integers, round to integer
+                                    if (values.length === 1) {
+                                        average = values[0]; // Use exact value from single evaluator
+                                    } else if (values.every(v => Number.isInteger(v))) {
+                                        // All values are integers, round the average to integer
+                                        average = Math.round(average);
+                                    }
+                                    avgTeamMarksData[param] = average;
+                                }
+                            });
+                            
+                            if (Object.keys(avgTeamMarksData).length > 0) {
+                                evalData.teamMarksData = avgTeamMarksData;
+                            }
+                        }
+                    }
                     
                     // Merge evaluator entries data
                     if (evaluatorEntries.length > 0) {
@@ -9695,35 +12049,39 @@ const app = {
                                 comment: e.teamComments || e.comments || ''
                             }));
                         
-                        // Aggregate individual comments from all evaluators
+                        // Aggregate individual marks and comments from all evaluators
                         const aggregatedIndividualEvaluations = {};
                         evaluatorEntries.forEach(evaluatorEntry => {
                             if (evaluatorEntry.individualEvaluations) {
                                 Object.keys(evaluatorEntry.individualEvaluations).forEach(userId => {
                                     if (!aggregatedIndividualEvaluations[userId]) {
                                         aggregatedIndividualEvaluations[userId] = {
-                                            marks: null,
+                                            marks: [],
                                             marksData: {},
                                             comments: [],
                                             isAbsent: false
                                         };
                                     }
                                     const individualEval = evaluatorEntry.individualEvaluations[userId];
-                                    // Take marks from first evaluator that has marks
-                                    if (aggregatedIndividualEvaluations[userId].marks === null && individualEval.marks !== null && individualEval.marks !== undefined) {
-                                        aggregatedIndividualEvaluations[userId].marks = individualEval.marks;
+                                    
+                                    // Collect marks from all evaluators (only if not absent and has marks)
+                                    if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                        aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
                                     }
-                                    // Merge marksData (take first non-zero value for each parameter)
-                                    if (individualEval.marksData) {
+                                    
+                                    // Collect marksData by parameter (only if not absent and has marks)
+                                    if (!individualEval.isAbsent && individualEval.marksData) {
                                         Object.keys(individualEval.marksData).forEach(paramName => {
                                             const paramValue = individualEval.marksData[paramName];
                                             if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
-                                                if (!aggregatedIndividualEvaluations[userId].marksData[paramName] || aggregatedIndividualEvaluations[userId].marksData[paramName] === 0) {
-                                                    aggregatedIndividualEvaluations[userId].marksData[paramName] = paramValue;
+                                                if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                                    aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
                                                 }
+                                                aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
                                             }
                                         });
                                     }
+                                    
                                     // Collect comments from all evaluators
                                     if (individualEval.comments) {
                                         aggregatedIndividualEvaluations[userId].comments.push({
@@ -9731,6 +12089,7 @@ const app = {
                                             comment: individualEval.comments
                                         });
                                     }
+                                    
                                     // Set absent status if any evaluator marked as absent
                                     if (individualEval.isAbsent) {
                                         aggregatedIndividualEvaluations[userId].isAbsent = true;
@@ -9739,8 +12098,99 @@ const app = {
                             }
                         });
                         
+                        // Also include individual evaluations from main eval document (admin)
+                        if (evalData.individualEvaluations) {
+                            Object.keys(evalData.individualEvaluations).forEach(userId => {
+                                if (!aggregatedIndividualEvaluations[userId]) {
+                                    aggregatedIndividualEvaluations[userId] = {
+                                        marks: [],
+                                        marksData: {},
+                                        comments: [],
+                                        isAbsent: false
+                                    };
+                                }
+                                const individualEval = evalData.individualEvaluations[userId];
+                                
+                                // Collect marks from admin (only if not absent and has marks)
+                                if (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) {
+                                    aggregatedIndividualEvaluations[userId].marks.push(individualEval.marks);
+                                }
+                                
+                                // Collect marksData from admin
+                                if (!individualEval.isAbsent && individualEval.marksData) {
+                                    Object.keys(individualEval.marksData).forEach(paramName => {
+                                        const paramValue = individualEval.marksData[paramName];
+                                        if (paramValue !== null && paramValue !== undefined && paramValue !== '') {
+                                            if (!aggregatedIndividualEvaluations[userId].marksData[paramName]) {
+                                                aggregatedIndividualEvaluations[userId].marksData[paramName] = [];
+                                            }
+                                            aggregatedIndividualEvaluations[userId].marksData[paramName].push(parseFloat(paramValue) || 0);
+                                        }
+                                    });
+                                }
+                                
+                                // Set absent status if admin marked as absent
+                                if (individualEval.isAbsent) {
+                                    aggregatedIndividualEvaluations[userId].isAbsent = true;
+                                }
+                            });
+                        }
+                        
+                        // Calculate averages for individual marks
+                        Object.keys(aggregatedIndividualEvaluations).forEach(userId => {
+                            const agg = aggregatedIndividualEvaluations[userId];
+                            
+                            // Average marks (only from evaluators who entered marks)
+                            if (agg.marks.length > 0) {
+                                let average = agg.marks.reduce((sum, m) => sum + m, 0) / agg.marks.length;
+                                // If there's only one evaluator, use their exact value (no averaging needed)
+                                // If multiple evaluators but all values are integers, round to integer
+                                if (agg.marks.length === 1) {
+                                    average = agg.marks[0]; // Use exact value from single evaluator
+                                } else if (agg.marks.every(m => Number.isInteger(m))) {
+                                    // All values are integers, round the average to integer
+                                    average = Math.round(average);
+                                }
+                                agg.marks = average;
+                            } else {
+                                agg.marks = null;
+                            }
+                            
+                            // Average marksData by parameter (only from evaluators who entered marks for each parameter)
+                            const avgMarksData = {};
+                            Object.keys(agg.marksData).forEach(paramName => {
+                                const values = agg.marksData[paramName];
+                                if (values.length > 0) {
+                                    let average = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                    // If there's only one evaluator, use their exact value (no averaging needed)
+                                    // If multiple evaluators but all values are integers, round to integer
+                                    if (values.length === 1) {
+                                        average = values[0]; // Use exact value from single evaluator
+                                    } else if (values.every(v => Number.isInteger(v))) {
+                                        // All values are integers, round the average to integer
+                                        average = Math.round(average);
+                                    }
+                                    avgMarksData[paramName] = average;
+                                }
+                            });
+                            agg.marksData = avgMarksData;
+                        });
+                        
                         // Update evalData with aggregated evaluator comments
                         evalData.evaluatorTeamComments = evaluatorTeamComments;
+                        evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
+                    } else if (evalData.individualEvaluations) {
+                        // If no evaluator entries, still process admin's individual evaluations
+                        const aggregatedIndividualEvaluations = {};
+                        Object.keys(evalData.individualEvaluations).forEach(userId => {
+                            const individualEval = evalData.individualEvaluations[userId];
+                            aggregatedIndividualEvaluations[userId] = {
+                                marks: (!individualEval.isAbsent && individualEval.marks !== null && individualEval.marks !== undefined) ? individualEval.marks : null,
+                                marksData: (!individualEval.isAbsent && individualEval.marksData) ? individualEval.marksData : {},
+                                comments: [],
+                                isAbsent: individualEval.isAbsent || false
+                            };
+                        });
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                     }
                     
@@ -9892,7 +12342,7 @@ const app = {
                                                               evalData.aggregatedIndividualEvaluations?.[studentKtuid] || null;
                                         
                                         if (aggregatedEval) {
-                                            // Merge aggregated data with existing eval
+                                            // Use aggregated data (already averaged)
                                             if (!studentEval) {
                                                 studentEval = {
                                                     marks: aggregatedEval.marks,
@@ -9901,13 +12351,13 @@ const app = {
                                                     isAbsent: aggregatedEval.isAbsent
                                                 };
                                             } else {
-                                                // Merge marks if not already set
-                                                if (studentEval.marks === null || studentEval.marks === undefined) {
+                                                // Use aggregated marks (already averaged) if available
+                                                if (aggregatedEval.marks !== null && aggregatedEval.marks !== undefined) {
                                                     studentEval.marks = aggregatedEval.marks;
                                                 }
-                                                // Merge marksData
-                                                if (aggregatedEval.marksData) {
-                                                    studentEval.marksData = { ...studentEval.marksData, ...aggregatedEval.marksData };
+                                                // Use aggregated marksData (already averaged) if available
+                                                if (aggregatedEval.marksData && Object.keys(aggregatedEval.marksData).length > 0) {
+                                                    studentEval.marksData = aggregatedEval.marksData;
                                                 }
                                                 // Merge absent status
                                                 if (aggregatedEval.isAbsent) {
@@ -9919,6 +12369,20 @@ const app = {
                                         // Get team marks data (parameter-based or legacy)
                                         const teamMarksData = evalData.teamMarksData || {};
                                         const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
+                                        
+                                        // Calculate student marks from marksData (sum of parameter marks) if available
+                                        // This ensures the total matches the sum of individual parameters
+                                        let studentMarks = 0;
+                                        if (studentEval && studentEval.marksData && Object.keys(studentEval.marksData).length > 0) {
+                                            // Sum all parameter marks from marksData
+                                            studentMarks = Object.values(studentEval.marksData).reduce((sum, m) => {
+                                                const numValue = parseFloat(m);
+                                                return sum + (isNaN(numValue) ? 0 : numValue);
+                                            }, 0);
+                                        } else if (studentEval && studentEval.marks !== null && studentEval.marks !== undefined) {
+                                            // Fall back to marks field if marksData is not available
+                                            studentMarks = studentEval.marks;
+                                        }
                                         
                                         return `
                                             <div class="evaluation-card evaluation-completed">
@@ -9980,7 +12444,7 @@ const app = {
                                                                 <i class="fas fa-user"></i> Your Individual Marks
                                                                 ${studentEval?.isAbsent ? '<span class="absent-badge"><i class="fas fa-user-times"></i> Absent</span>' : ''}
                                                             </span>
-                                                            <span class="marks-value marks-individual">${studentEval && studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 0} / ${individualTotal}</span>
+                                                            <span class="marks-value marks-individual">${studentMarks} / ${individualTotal}</span>
                                                         </div>
                                                         ${studentEval?.isAbsent ? `
                                                             <div class="absent-notice">
@@ -10000,7 +12464,7 @@ const app = {
                                                                 }).join('')}
                                                                 <div class="breakdown-total">
                                                                     <span class="breakdown-label"><strong>Total:</strong></span>
-                                                                    <span class="breakdown-value"><strong>${studentEval && studentEval.marks !== null && studentEval.marks !== undefined ? studentEval.marks : 0} / ${individualTotal}</strong></span>
+                                                                    <span class="breakdown-value"><strong>${studentMarks} / ${individualTotal}</strong></span>
                                                                 </div>
                                                             </div>
                                                         ` : ''}
