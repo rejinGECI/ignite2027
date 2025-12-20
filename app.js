@@ -12292,7 +12292,7 @@ const app = {
                         </div>
                     </div>
                         
-                        ${stages.length > 0 ? `
+                        ${false && stages.length > 0 ? `
                             <div class="evaluations-section" style="margin-top: 2rem;">
                                 <h3 class="section-title"><i class="fas fa-clipboard-check"></i> Evaluations</h3>
                                 <div class="evaluations-grid">
