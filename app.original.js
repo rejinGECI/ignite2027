@@ -32,22 +32,57 @@ import {
     deleteObject
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
-// Import SoundManager from module (refactored)
-import { SoundManager } from './js/utils/soundManager.js';
-import { escapeHtml } from './js/utils/helpers.js';
-import { createDreamsModule } from './js/components/dreams.js';
-import { createActivitiesModule } from './js/components/activities.js';
-import { createDashboardModule } from './js/components/dashboard.js';
-import { createCalendarModule } from './js/components/calendar.js';
-import { createHabitsModule } from './js/components/habits.js';
-import { createFeedbackModule } from './js/components/feedback.js';
-import { createAdminDashboardModule } from './js/admin/dashboard.js';
-import { createAdminProgressModule } from './js/admin/progress.js';
-import { createAdminSettingsModule } from './js/admin/settings.js';
-import { createAdminMiniProjectModule } from './js/admin/miniproject.js';
-import { createGuideDashboardModule } from './js/guide/dashboard.js';
-import { createGuideProjectPlanningModule } from './js/guide/project-planning.js';
-import { createGuideEvaluatorModule } from './js/guide/evaluator.js';
+// Sound utility functions
+const SoundManager = {
+    playSound: function(frequency, duration, type = 'sine') {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = type;
+            
+            gainNode.gain.setValueAtTime(0.8, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        } catch (e) {
+            console.warn('Could not play sound:', e);
+        }
+    },
+    
+    playStartSound: function() {
+        // Distinct upbeat sound for start - higher pitch, quick
+        this.playSound(523.25, 0.2, 'sine'); // C
+        setTimeout(() => this.playSound(659.25, 0.2, 'sine'), 100); // E
+        setTimeout(() => this.playSound(783.99, 0.2, 'sine'), 200); // G
+    },
+    
+    playPauseSound: function() {
+        // Distinct pause sound - medium pitch, single tone
+        this.playSound(392, 0.3, 'square'); // G
+    },
+    
+    playStopSound: function() {
+        // Distinct stop sound - lower descending tone
+        this.playSound(440, 0.2, 'sine'); // A
+        setTimeout(() => this.playSound(349.23, 0.3, 'sine'), 150); // F
+    },
+    
+    playCompleteSound: function() {
+        // Distinct completion sound - triumphant ascending melody
+        this.playSound(523.25, 0.25, 'sine'); // C
+        setTimeout(() => this.playSound(659.25, 0.25, 'sine'), 150); // E
+        setTimeout(() => this.playSound(783.99, 0.3, 'sine'), 300); // G
+        setTimeout(() => this.playSound(987.77, 0.3, 'sine'), 450); // B
+        setTimeout(() => this.playSound(1046.50, 0.4, 'sine'), 600); // C (high)
+    }
+};
 
 // Application State
 // Define app object first, then make it global
@@ -1527,44 +1562,43 @@ const app = {
             }
         }
         
-        // Calculate today's completion status
+        // Calculate today's minutes for progress display
         const today = new Date().toISOString().split('T')[0];
         const todayLog = filteredTimeLog.find(log => log.date === today);
         const todayMinutes = todayLog ? todayLog.minutes : 0;
         
-        // Check if there's any activity submitted today (activity description = completed)
-        const todayActivities = (data.activities || []).filter(a => a.date === today);
-        const hasActivity = todayActivities.length > 0;
-        
-        // If activity is submitted OR any minutes logged (> 0), it's completed (partial = full completion)
-        const isCompleted = hasActivity || todayMinutes > 0;
-        
-        // Today's progress display
+        // Today's progress based on 20 minute goal
+        const progressPercent = Math.min(100, (todayMinutes / 20) * 100);
         const todayProgressEl = document.getElementById('today-progress');
         if (todayProgressEl) {
-            if (isCompleted) {
-                // Completed - green (100%)
-                todayProgressEl.style.width = '100%';
+            todayProgressEl.style.width = `${progressPercent}%`;
+            
+            // Set color based on completion status
+            todayProgressEl.className = 'progress-fill'; // Reset classes
+            if (todayMinutes >= 20) {
+                // Completed - green
                 todayProgressEl.style.background = 'linear-gradient(90deg, #10b981, #059669)';
-                todayProgressEl.className = 'progress-fill progress-completed';
+                todayProgressEl.classList.add('progress-completed');
+            } else if (todayMinutes > 0) {
+                // Partial - yellow/orange
+                todayProgressEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+                todayProgressEl.classList.add('progress-partial');
             } else {
                 // No progress - gray
-                todayProgressEl.style.width = '0%';
                 todayProgressEl.style.background = 'var(--border-color)';
-                todayProgressEl.className = 'progress-fill progress-none';
+                todayProgressEl.classList.add('progress-none');
             }
         }
         
         const todayMinutesEl = document.getElementById('today-minutes');
         if (todayMinutesEl) {
-            if (isCompleted) {
-                if (hasActivity) {
-                    todayMinutesEl.textContent = `✅ Completed! (Activity submitted)`;
-                } else {
-                    todayMinutesEl.textContent = `✅ Completed! (${todayMinutes} / 20 minutes)`;
-                }
+            if (todayMinutes >= 20) {
+                todayMinutesEl.textContent = `✅ Completed! (${todayMinutes} / 20 minutes)`;
+            } else if (todayMinutes > 0) {
+                const percent = Math.round(progressPercent);
+                todayMinutesEl.textContent = `${todayMinutes} / 20 minutes (${percent}%)`;
             } else {
-                todayMinutesEl.textContent = `Not completed yet`;
+                todayMinutesEl.textContent = `0 / 20 minutes`;
             }
         }
     },
@@ -1802,13 +1836,8 @@ const app = {
         
         container.innerHTML = days.map(date => {
             const log = filteredTimeLog.find(l => l.date === date);
-            
-            // Check if there's any activity submitted on this date (activity description = completed)
-            const dateActivities = (data.activities || []).filter(a => a.date === date);
-            const hasActivity = dateActivities.length > 0;
-            
-            // If activity is submitted OR any minutes logged (> 0), it's completed (partial = full completion)
-            const isActive = hasActivity || (log && log.minutes > 0);
+            const isActive = log && log.minutes >= 20;
+            const isPartial = log && log.minutes > 0 && log.minutes < 20;
             
             // Check if there's reading activity on this date
             const readingEntry = reading.find(r => r.date === date);
@@ -1818,15 +1847,14 @@ const app = {
             const dayNum = new Date(date).getDate();
             let className = 'calendar-day';
             if (isActive) className += ' active';
+            else if (isPartial) className += ' partial';
             
             // Build title with both timer and reading info
             let title = date + ': ';
-            if (hasActivity) {
-                title += 'Activity submitted';
-            } else if (log) {
+            if (log) {
                 title += log.minutes + ' min';
             } else {
-                title += 'Not completed';
+                title += 'No timer activity';
             }
             if (hasReading) {
                 title += `, ${readingPages} pages read`;
@@ -4014,45 +4042,12 @@ const app = {
                 return;
             }
             
-            // Load completion status for all stages
-            const stagesWithStatus = await Promise.all(stages.map(async (stage, index) => {
-                const completionStatus = await this.getEvaluatorCompletionStatusForStage(index);
-                return { stage, index, completionStatus };
-            }));
-            
-            container.innerHTML = stagesWithStatus.map(({ stage, index, completionStatus }) => {
+            container.innerHTML = stages.map((stage, index) => {
                 const teamParams = stage.teamMarkParams || [];
                 const individualParams = stage.individualMarkParams || [];
                 const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                 const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                 const pptRequired = stage.pptRequired || false;
-                
-                // Display completion status
-                let completionBadge = '';
-                if (completionStatus.completedEvaluators.length > 0) {
-                    const evaluatorCount = completionStatus.completedEvaluators.length;
-                    // Show first 2 evaluator names, or count if more
-                    let displayText = '';
-                    if (evaluatorCount <= 2) {
-                        displayText = completionStatus.completedEvaluators.map(name => this.escapeHtml(name)).join(', ');
-                    } else {
-                        const firstTwo = completionStatus.completedEvaluators.slice(0, 2).map(name => this.escapeHtml(name)).join(', ');
-                        displayText = `${firstTwo} + ${evaluatorCount - 2} more`;
-                    }
-                    completionBadge = `
-                        <span style="display: inline-flex; align-items: center; gap: 0.5rem; margin-left: 1rem; padding: 0.25rem 0.75rem; background: #10b981; color: white; border-radius: 20px; font-size: 0.85rem; font-weight: 500;" title="${completionStatus.completedEvaluators.map(name => this.escapeHtml(name)).join(', ')}">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Completed by: ${displayText}</span>
-                        </span>
-                    `;
-                } else {
-                    completionBadge = `
-                        <span style="display: inline-flex; align-items: center; gap: 0.5rem; margin-left: 1rem; padding: 0.25rem 0.75rem; background: #6b7280; color: white; border-radius: 20px; font-size: 0.85rem; font-weight: 500;">
-                            <i class="fas fa-clock"></i>
-                            <span>No evaluations yet</span>
-                        </span>
-                    `;
-                }
                 
                 return `
                 <div class="evaluation-stage-item">
@@ -4061,7 +4056,6 @@ const app = {
                     <span class="stage-marks" style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 1rem;">
                         Team: ${teamTotal} | Individual: ${individualTotal}
                     </span>
-                    ${completionBadge}
                     <label style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem; cursor: pointer;">
                         <input type="checkbox" id="ppt-required-${index}" ${pptRequired ? 'checked' : ''} onchange="app.togglePPTRequired(${index})" style="cursor: pointer;">
                         <span style="font-size: 0.9rem; color: var(--text-secondary);">PPT Required</span>
@@ -4079,66 +4073,6 @@ const app = {
             }).join('');
         } catch (error) {
             console.error('Error loading evaluation stages:', error);
-        }
-    },
-    
-    // Get evaluator completion status for a specific stage
-    async getEvaluatorCompletionStatusForStage(stageIndex) {
-        try {
-            // Get all teams
-            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
-            const teamsSnapshot = await getDocs(teamsQuery);
-            
-            const completedEvaluators = new Set();
-            
-            // Check each team for evaluator entries
-            for (const teamDoc of teamsSnapshot.docs) {
-                const teamData = teamDoc.data();
-                if (teamData.deleted) continue;
-                
-                const teamId = teamDoc.id;
-                
-                // Check evaluator entries for this team and stage
-                try {
-                    const evaluatorEntriesRef = collection(
-                        window.firebaseDb,
-                        'evaluations',
-                        `${teamId}_${stageIndex}`,
-                        'evaluatorEntries'
-                    );
-                    const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
-                    
-                    evaluatorEntriesSnapshot.forEach(entryDoc => {
-                        const entryData = entryDoc.data();
-                        
-                        // Check if evaluator has completed evaluation (has marks or comments)
-                        const hasTeamMarks = entryData.teamMarks !== null && entryData.teamMarks !== undefined;
-                        const hasTeamMarksData = entryData.teamMarksData && Object.keys(entryData.teamMarksData).length > 0;
-                        const hasTeamComments = entryData.teamComments && entryData.teamComments.trim() !== '' && entryData.teamComments.trim() !== '<p><br></p>';
-                        const hasIndividualEvaluations = entryData.individualEvaluations && Object.keys(entryData.individualEvaluations).length > 0;
-                        
-                        if (hasTeamMarks || hasTeamMarksData || hasTeamComments || hasIndividualEvaluations) {
-                            // Evaluator has completed evaluation
-                            const evaluatorName = entryData.evaluatorName || 'Unknown Evaluator';
-                            completedEvaluators.add(evaluatorName);
-                        }
-                    });
-                } catch (error) {
-                    // Skip if collection doesn't exist or has permission issues
-                    console.warn(`Error checking evaluator entries for team ${teamId}, stage ${stageIndex}:`, error);
-                }
-            }
-            
-            return {
-                completedEvaluators: Array.from(completedEvaluators),
-                hasCompletions: completedEvaluators.size > 0
-            };
-        } catch (error) {
-            console.error('Error getting evaluator completion status for stage:', error);
-            return {
-                completedEvaluators: [],
-                hasCompletions: false
-            };
         }
     },
     
@@ -6401,8 +6335,9 @@ const app = {
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${team.id}_${stageIndex}`));
                     const evalData = evalDoc.exists() ? evalDoc.data() : null;
                     
-                    // Check if admin has completed evaluation
-                    let adminCompleted = false;
+                    // Determine if evaluation is complete
+                    // Complete if: has team marks OR has team comments OR has individual evaluations
+                    let isComplete = false;
                     if (evalData) {
                         const hasTeamMarks = (evalData.teamMarks !== null && evalData.teamMarks !== undefined) || 
                                            (evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0);
@@ -6411,47 +6346,8 @@ const app = {
                         const hasIndividualEvals = evalData.individualEvaluations && 
                                                 Object.keys(evalData.individualEvaluations).length > 0;
                         
-                        adminCompleted = hasTeamMarks || hasTeamComments || hasIndividualEvals;
+                        isComplete = hasTeamMarks || hasTeamComments || hasIndividualEvals;
                     }
-                    
-                    // Check evaluator entries for submissions
-                    const submittedEvaluators = [];
-                    let anyEvaluatorCompleted = false;
-                    
-                    try {
-                        const evaluatorEntriesRef = collection(
-                            window.firebaseDb,
-                            'evaluations',
-                            `${team.id}_${stageIndex}`,
-                            'evaluatorEntries'
-                        );
-                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
-                        
-                        evaluatorEntriesSnapshot.forEach(entryDoc => {
-                            const entryData = entryDoc.data();
-                            
-                            // Check if evaluator has completed evaluation
-                            const hasTeamMarks = entryData.teamMarks !== null && entryData.teamMarks !== undefined;
-                            const hasTeamMarksData = entryData.teamMarksData && Object.keys(entryData.teamMarksData || {}).length > 0;
-                            const hasTeamComments = entryData.teamComments && entryData.teamComments.trim() !== '' && 
-                                                 entryData.teamComments.trim() !== '<p><br></p>';
-                            const hasIndividualEvals = entryData.individualEvaluations && 
-                                                    Object.keys(entryData.individualEvaluations || {}).length > 0;
-                            
-                            if (hasTeamMarks || hasTeamMarksData || hasTeamComments || hasIndividualEvals) {
-                                anyEvaluatorCompleted = true;
-                                const evaluatorName = entryData.evaluatorName || 'Unknown Evaluator';
-                                if (!submittedEvaluators.includes(evaluatorName)) {
-                                    submittedEvaluators.push(evaluatorName);
-                                }
-                            }
-                        });
-                    } catch (error) {
-                        console.warn(`Error checking evaluator entries for team ${team.id}, stage ${stageIndex}:`, error);
-                    }
-                    
-                    // Determine if evaluation is complete (by admin or any evaluator)
-                    const isComplete = adminCompleted || anyEvaluatorCompleted;
                     
                     // Check for PPT upload status
                     // Check multiple possible field names for PPT/presentation upload
@@ -6512,9 +6408,6 @@ const app = {
                     return {
                         ...team,
                         evaluationStatus: isComplete ? 'completed' : 'pending',
-                        adminCompleted: adminCompleted,
-                        anyEvaluatorCompleted: anyEvaluatorCompleted,
-                        submittedEvaluators: submittedEvaluators,
                         hasPPT: !!hasPPT,
                         pptUrl: evalData?.pptUrl || evalData?.presentationUrl || evalData?.pptFileUrl || evalData?.presentationFileUrl || null,
                         absentStudents: absentStudents
@@ -6524,9 +6417,6 @@ const app = {
                     return {
                         ...team,
                         evaluationStatus: 'pending',
-                        adminCompleted: false,
-                        anyEvaluatorCompleted: false,
-                        submittedEvaluators: [],
                         hasPPT: false,
                         pptUrl: null,
                         absentStudents: []
@@ -6543,26 +6433,10 @@ const app = {
                             <span><i class="fas fa-users"></i> ${(team.members || []).length} member(s)</span>
                             ${team.guideName ? `<span><i class="fas fa-user-tie"></i> ${this.escapeHtml(team.guideName)}</span>` : ''}
                             <span class="eval-status-badge">
-                                <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : (team.anyEvaluatorCompleted ? 'fa-user-check' : 'fa-clock')}"></i>
-                                ${team.evaluationStatus === 'completed' ? 'Completed' : (team.anyEvaluatorCompleted ? 'Submitted' : 'Pending')}
+                                <i class="fas ${team.evaluationStatus === 'completed' ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                ${team.evaluationStatus === 'completed' ? 'Completed' : 'Pending'}
                             </span>
                         </div>
-                        ${team.anyEvaluatorCompleted && team.submittedEvaluators && team.submittedEvaluators.length > 0 ? `
-                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #ecfdf5; border: 1px solid #10b981; border-radius: 6px;">
-                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                                    <i class="fas fa-user-check" style="color: #10b981;"></i>
-                                    <strong style="color: #065f46; font-size: 0.85rem;">Submitted by Evaluator(s)</strong>
-                                </div>
-                                <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem;">
-                                    ${team.submittedEvaluators.map(evaluatorName => `
-                                        <div style="color: var(--text-primary);">
-                                            <i class="fas fa-user-tie" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                            ${this.escapeHtml(evaluatorName)}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
                         ${team.absentStudents && team.absentStudents.length > 0 ? `
                             <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fef2f2; border: 1px solid #ef4444; border-radius: 6px;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
@@ -24953,30 +24827,6 @@ const app = {
     }
     */
 };
-
-// Merge extracted modules into app object
-// This allows us to gradually replace methods with module versions
-const dreamsModule = createDreamsModule(app);
-const activitiesModule = createActivitiesModule(app);
-const dashboardModule = createDashboardModule(app);
-const calendarModule = createCalendarModule(app);
-const habitsModule = createHabitsModule(app);
-const feedbackModule = createFeedbackModule(app);
-const adminDashboardModule = createAdminDashboardModule(app);
-const adminProgressModule = createAdminProgressModule(app);
-const adminSettingsModule = createAdminSettingsModule(app);
-const adminMiniProjectModule = createAdminMiniProjectModule(app);
-const guideDashboardModule = createGuideDashboardModule(app);
-const guideProjectPlanningModule = createGuideProjectPlanningModule(app);
-const guideEvaluatorModule = createGuideEvaluatorModule(app);
-
-// Merge module methods into app (module methods override existing ones)
-Object.assign(app, dreamsModule, activitiesModule, dashboardModule, calendarModule, habitsModule, feedbackModule, adminDashboardModule, adminProgressModule, adminSettingsModule, adminMiniProjectModule, guideDashboardModule, guideProjectPlanningModule, guideEvaluatorModule);
-
-// Add escapeHtml helper if not already present
-if (!app.escapeHtml) {
-    app.escapeHtml = escapeHtml;
-}
 
 // Make app available globally for onclick handlers
 window.app = app;
