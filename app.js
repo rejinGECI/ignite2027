@@ -1561,7 +1561,7 @@ const app = {
                 if (hasActivity) {
                     todayMinutesEl.textContent = `✅ Completed! (Activity submitted)`;
                 } else {
-                    todayMinutesEl.textContent = `✅ Completed! (${todayMinutes} / 20 minutes)`;
+                todayMinutesEl.textContent = `✅ Completed! (${todayMinutes} / 20 minutes)`;
                 }
             } else {
                 todayMinutesEl.textContent = `Not completed yet`;
@@ -6315,6 +6315,10 @@ const app = {
         // Load project planning when tab is switched
         if (tabName === 'project-planning') {
             setTimeout(() => this.loadAdminProjectPlanningTab(), 100);
+        }
+        // Load first review verification when tab is switched
+        if (tabName === 'first-review') {
+            setTimeout(() => this.loadAdminFirstReviewVerification(), 100);
         }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
@@ -13978,9 +13982,9 @@ const app = {
     },
     
     // Switch mini project tab
-    switchMiniProjectTab(tabName) {
+    async switchMiniProjectTab(tabName) {
         // Hide all tabs
-        document.querySelectorAll('#project-details-tab, #project-planning-tab').forEach(tab => {
+        document.querySelectorAll('#project-details-tab, #project-planning-tab, #first-review-tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
@@ -14002,6 +14006,11 @@ const app = {
         const button = tabsContainer ? tabsContainer.querySelector(`.tab-btn[data-tab="${tabName}"]`) : null;
         if (button) {
             button.classList.add('active');
+        }
+        
+        // Load data for the selected tab
+        if (tabName === 'first-review') {
+            await this.loadFirstReviewSchedule();
         }
     },
     
@@ -24952,6 +24961,2803 @@ const app = {
         }
     }
     */
+    
+    // ========== FIRST REVIEW FUNCTIONS ==========
+    
+    async loadFirstReviewSchedule() {
+        const modulesListContainer = document.getElementById('first-review-modules-list');
+        const standaloneBacklogsContainer = document.getElementById('first-review-standalone-backlogs');
+        const statusContainer = document.getElementById('first-review-submission-status');
+        const submitBtn = document.getElementById('submit-first-review-btn');
+        const moduleSelect = document.getElementById('first-review-module-select');
+        const firstReviewTab = document.getElementById('first-review-tab');
+        
+        // If container doesn't exist, try to find it or create a fallback
+        if (!modulesListContainer) {
+            console.error('First review modules list container not found');
+            if (firstReviewTab) {
+                firstReviewTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><p class="error-message">Error: Container not found. Please refresh the page.</p></div>';
+            }
+            return;
+        }
+        
+        try {
+            modulesListContainer.innerHTML = '<div class="loading-state">Loading first review schedule...</div>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                modulesListContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load first review schedule data
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            // Load modules from project planning (cardSortingModules)
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load product backlogs from project planning
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const allBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+            });
+            
+            // Load first review backlogs (separate from project planning)
+            const firstReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                where('teamId', '==', team.id)
+            );
+            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+            firstReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'firstReview' });
+            });
+            
+            // Load module assignments to know which backlogs belong to which modules
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogToModule = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                backlogToModule[data.backlogId] = data.moduleId;
+            });
+            
+            // Load submission and verification status (calculate canEdit first)
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true; // Check if schedule is frozen
+            // Can edit only if NOT submitted, OR if submitted AND verified, AND not frozen
+            const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+            
+            // IMPORTANT: If submitted but not verified, show message immediately and return early
+            if (isSubmitted && !isVerified) {
+                // Show verification in progress message FIRST - this is critical
+                if (modulesListContainer) {
+                    modulesListContainer.innerHTML = `
+                        <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2); text-align: center;">
+                            <div style="margin-bottom: 1rem;">
+                                <i class="fas fa-hourglass-half" style="font-size: 3rem; color: #f59e0b;"></i>
+                            </div>
+                            <h3 style="margin: 0 0 0.5rem 0; color: #92400e; font-size: 1.2rem; font-weight: 600;">
+                                Admin Verification In Progress
+                            </h3>
+                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem;">
+                                Your first review schedule has been submitted and is currently under admin review.
+                            </p>
+                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 0.9rem;">
+                                <i class="fas fa-clock"></i> Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                            <p style="margin: 1rem 0 0 0; color: #92400e; font-size: 0.9rem; font-style: italic;">
+                                You will be able to edit the schedule once admin verifies and adds comments. The Gantt chart below shows your current schedule.
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                // Hide "Add Module from Project Planning" section
+                const firstReviewTab = document.getElementById('first-review-tab');
+                if (firstReviewTab) {
+                    const allDivs = firstReviewTab.querySelectorAll('div');
+                    allDivs.forEach(div => {
+                        const h4 = div.querySelector('h4');
+                        if (h4) {
+                            const h4Text = h4.textContent || '';
+                            if (h4Text.includes('Add Module from Project Planning')) {
+                                div.style.display = 'none';
+                            }
+                            if (h4Text.includes('Standalone Product Backlogs')) {
+                                div.style.display = 'none';
+                            }
+                        }
+                    });
+                }
+                
+                // Clear standalone backlogs container
+                if (standaloneBacklogsContainer) {
+                    standaloneBacklogsContainer.innerHTML = '';
+                }
+                
+                // Disable all editing controls
+                if (moduleSelect) {
+                    moduleSelect.disabled = true;
+                    moduleSelect.style.opacity = '0.6';
+                    moduleSelect.style.cursor = 'not-allowed';
+                }
+                
+                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToFirstReview()"]');
+                if (addModuleBtn) {
+                    addModuleBtn.disabled = true;
+                    addModuleBtn.style.opacity = '0.6';
+                    addModuleBtn.style.cursor = 'not-allowed';
+                }
+                
+                // Render Gantt chart and return early
+                try {
+                    await this.renderFirstReviewGanttChart();
+                } catch (ganttError) {
+                    console.error('Error rendering Gantt chart:', ganttError);
+                }
+                
+                return; // Exit early - don't continue with module rendering
+            }
+            
+            // Populate module dropdown (only modules not already added)
+            if (moduleSelect) {
+                const addedModuleIds = new Set(scheduleData.modules.map(m => m.moduleId));
+                moduleSelect.innerHTML = '<option value="">-- Select a module --</option>';
+                allModules.forEach(module => {
+                    if (!addedModuleIds.has(module.id)) {
+                        const option = document.createElement('option');
+                        option.value = module.id;
+                        option.textContent = module.name || `Module ${module.id}`;
+                        moduleSelect.appendChild(option);
+                    }
+                });
+                // Disable if can't edit
+                moduleSelect.disabled = !canEdit;
+                if (!canEdit) {
+                    moduleSelect.style.opacity = '0.6';
+                    moduleSelect.style.cursor = 'not-allowed';
+                } else {
+                    moduleSelect.style.opacity = '1';
+                    moduleSelect.style.cursor = 'default';
+                }
+            }
+            
+            // Disable "Add Module" button if can't edit
+            const addModuleBtn = document.querySelector('button[onclick="app.addModuleToFirstReview()"]');
+            if (addModuleBtn) {
+                if (!canEdit) {
+                    addModuleBtn.disabled = true;
+                    addModuleBtn.style.opacity = '0.6';
+                    addModuleBtn.style.cursor = 'not-allowed';
+                } else {
+                    addModuleBtn.disabled = false;
+                    addModuleBtn.style.opacity = '1';
+                    addModuleBtn.style.cursor = 'pointer';
+                }
+            }
+            
+            // Disable "Add Backlog" button in standalone section if can't edit
+            const addStandaloneBacklogBtn = document.querySelector('button[onclick="app.showAddFirstReviewBacklogModal(null)"]');
+            if (addStandaloneBacklogBtn) {
+                if (!canEdit) {
+                    addStandaloneBacklogBtn.disabled = true;
+                    addStandaloneBacklogBtn.style.opacity = '0.6';
+                    addStandaloneBacklogBtn.style.cursor = 'not-allowed';
+                } else {
+                    addStandaloneBacklogBtn.disabled = false;
+                    addStandaloneBacklogBtn.style.opacity = '1';
+                    addStandaloneBacklogBtn.style.cursor = 'pointer';
+                }
+            }
+            
+            if (statusContainer) {
+                if (isSubmitted) {
+                    if (isVerified) {
+                        const frozenMessage = isFrozen ? `
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.25rem;">
+                                    <i class="fas fa-lock" style="font-size: 1rem;"></i>
+                                    <strong style="font-size: 0.9rem;">Frozen - Product backlogs are finalized and cannot be edited</strong>
+                                </div>
+                                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
+                                    The schedule has been frozen by admin. You can still resubmit the agreement, but product backlogs cannot be edited.
+                                </p>
+                            </div>
+                        ` : '';
+                        
+                        statusContainer.innerHTML = `
+                            <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #1e40af; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
+                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule${isFrozen ? ' (backlogs frozen)' : ''}</strong>
+                                </div>
+                                <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-clock"></i>
+                                    Submitted: ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                                <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-user-check"></i>
+                                    Verified: ${scheduleData.verifiedAt?.toDate ? scheduleData.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                </p>
+                                ${scheduleData.adminComments ? `
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #ffffff; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                            <i class="fas fa-comment-alt"></i> Admin Comments:
+                                        </div>
+                                        <div style="font-size: 0.85rem; color: var(--text-primary); line-height: 1.5;">
+                                            ${this.escapeHtml(scheduleData.adminComments)}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                ${frozenMessage}
+                            </div>
+                        `;
+                    } else {
+                        statusContainer.innerHTML = `
+                            <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                    <strong style="font-size: 0.95rem;">Submitted - Awaiting Admin Verification</strong>
+                                </div>
+                                <p style="margin: 0.25rem 0; color: #92400e; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-clock"></i>
+                                    Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                                <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
+                                    <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
+                                </p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                <i class="fas fa-edit" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Draft - Schedule your first review tasks</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            if (submitBtn) {
+                // Show submit button if there are modules/backlogs and either:
+                // 1. Not submitted yet, OR
+                // 2. Submitted and verified (allow resubmission)
+                const hasContent = scheduleData.modules.length > 0 || scheduleData.standaloneBacklogs.length > 0;
+                const canSubmit = hasContent && (!isSubmitted || (isSubmitted && isVerified));
+                submitBtn.style.display = canSubmit ? 'inline-flex' : 'none';
+            }
+            
+            // Store edit permission for use in rendering
+            scheduleData._canEdit = canEdit;
+            
+            // Note: If submitted but not verified, we already handled it above with early return
+            // This else block is only for when NOT submitted or when verified
+            if (!(isSubmitted && !isVerified)) {
+                // Show sections when not submitted or verified
+                if (moduleSelect) {
+                    let parent = moduleSelect.parentElement;
+                    while (parent && parent !== document.body) {
+                        if (parent.querySelector('h4')?.textContent?.includes('Add Module from Project Planning')) {
+                            parent.style.display = '';
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                }
+                
+                if (standaloneBacklogsContainer) {
+                    let parent = standaloneBacklogsContainer.parentElement;
+                    while (parent && parent !== document.body) {
+                        if (parent.querySelector('h4')?.textContent?.includes('Standalone Product Backlogs')) {
+                            parent.style.display = '';
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                }
+            }
+            
+            // Render modules with their product backlogs
+            // Only render if not in verification state (skip if submitted but not verified)
+            // IMPORTANT: If submitted but not verified, we already set the message above, so skip rendering
+            if (!(isSubmitted && !isVerified)) {
+                if (scheduleData.modules.length === 0) {
+                    modulesListContainer.innerHTML = '<p class="empty-state">No modules added yet. Add modules from project planning to schedule first review tasks.</p>';
+                } else {
+                    const moduleCards = scheduleData.modules.map((scheduleModule) => {
+                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                        if (!module) return '';
+                        
+                        // Get product backlogs for this module - ONLY from firstReviewBacklogs
+                        // Get backlog IDs from schedule
+                        const scheduledBacklogIds = (scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId));
+                        
+                        // Only get backlogs from firstReviewBacklogs that are in the schedule
+                        const moduleBacklogs = allBacklogs.filter(b => 
+                            b.source === 'firstReview' && 
+                            scheduledBacklogIds.includes(String(b.id))
+                        );
+                        
+                        // Merge with schedule data (dates from first review schedule)
+                        const scheduledBacklogs = moduleBacklogs.map(backlog => {
+                            // Ensure string comparison for backlogId matching
+                            const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                            return {
+                                ...backlog,
+                                startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
+                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || ''
+                            };
+                        });
+                        
+                        return this.renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit);
+                    });
+                    modulesListContainer.innerHTML = moduleCards.join('');
+                }
+            }
+            
+            // Render standalone backlogs - ONLY from firstReviewBacklogs
+            if (standaloneBacklogsContainer) {
+                const standaloneBacklogIds = scheduleData.standaloneBacklogs.map(b => String(b.backlogId));
+                // Only get backlogs from firstReviewBacklogs
+                const standaloneBacklogs = allBacklogs.filter(b => 
+                    b.source === 'firstReview' && 
+                    standaloneBacklogIds.includes(String(b.id))
+                );
+                
+                const scheduledStandalone = standaloneBacklogs.map(backlog => {
+                    // Ensure string comparison for backlogId matching
+                    const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        startDate: scheduleBacklog?.startDate || '',
+                        endDate: scheduleBacklog?.endDate || ''
+                    };
+                });
+                
+                if (scheduledStandalone.length === 0) {
+                    standaloneBacklogsContainer.innerHTML = '<p class="empty-state">No standalone product backlogs yet.</p>';
+                } else {
+                    standaloneBacklogsContainer.innerHTML = scheduledStandalone.map((backlog, index) => {
+                        // Pass canEdit to the rendering
+                        backlog._canEdit = canEdit;
+                        return backlog;
+                    }).map(backlog => {
+                        // Priority colors
+                        const priorityColors = {
+                            low: { bg: '#e5e7eb', text: '#4b5563', border: '#d1d5db' },
+                            medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                            high: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                            critical: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                        };
+                        
+                        // Difficulty colors
+                        const difficultyColors = {
+                            easy: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+                            medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                            hard: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                            'very-hard': { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                        };
+                        
+                        const priority = backlog.priority || 'medium';
+                        const difficulty = backlog.difficulty || 'medium';
+                        const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                        const difficultyStyle = difficultyColors[difficulty] || difficultyColors.medium;
+                        
+                        // Date status colors
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        let dateStatusColor = '#3b82f6';
+                        
+                        if (backlog.startDate) {
+                            const startDate = new Date(backlog.startDate);
+                            startDate.setHours(0, 0, 0, 0);
+                            if (startDate < today) {
+                                dateStatusColor = '#6b7280';
+                            } else if (startDate.getTime() === today.getTime()) {
+                                dateStatusColor = '#10b981';
+                            }
+                        }
+                        
+                        return `
+                            <div class="first-review-backlog-item" style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.75rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                    <div style="flex: 1;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                            <div style="font-weight: 600; color: var(--text-primary);">
+                                                ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                            </div>
+                                            <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
+                                                <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
+                                            </span>
+                                            <span style="padding: 0.25rem 0.5rem; background: ${difficultyStyle.bg}; color: ${difficultyStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${difficultyStyle.border};">
+                                                <i class="fas fa-signal"></i> ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('-', ' ')}
+                                            </span>
+                                        </div>
+                                        ${backlog.storyText ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">
+                                                ${this.escapeHtml(backlog.storyText)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    ${backlog._canEdit !== false ? `
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editFirstReviewBacklog('${backlog.id}', null)" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeFirstReviewBacklog('${backlog.id}', null)" title="Remove">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                    <div style="flex: 1;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                            <i class="fas fa-calendar-check" style="color: ${dateStatusColor};"></i> Start Date:
+                                        </label>
+                                        <input type="date" 
+                                               class="form-input" 
+                                               value="${backlog.startDate || ''}" 
+                                               ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateFirstReviewBacklogDate('${backlog.id}', null, 'startDate', this.value)"`}
+                                               style="width: 100%; border: 2px solid ${dateStatusColor}40; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                            <i class="fas fa-calendar-times" style="color: #ef4444;"></i> End Date:
+                                        </label>
+                                        <input type="date" 
+                                               class="form-input" 
+                                               value="${backlog.endDate || ''}" 
+                                               ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateFirstReviewBacklogDate('${backlog.id}', null, 'endDate', this.value)"`}
+                                               style="width: 100%; border: 2px solid #ef444440; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            // Recalculate all module dates from their child backlogs after loading
+            // This ensures module dates are always correct (min start, max end)
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                let needsUpdate = false;
+                for (const scheduleModule of scheduleData.modules) {
+                    const oldStartDate = scheduleModule.startDate;
+                    const oldEndDate = scheduleModule.endDate;
+                    await this.recalculateModuleDatesFromBacklogs(team.id, scheduleModule.moduleId, scheduleData);
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === scheduleModule.moduleId);
+                    if (moduleIndex !== -1) {
+                        if (scheduleData.modules[moduleIndex].startDate !== oldStartDate || 
+                            scheduleData.modules[moduleIndex].endDate !== oldEndDate) {
+                            needsUpdate = true;
+                        }
+                    }
+                }
+                // Save recalculated dates if they changed
+                if (needsUpdate) {
+                    await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+                }
+            }
+        } catch (error) {
+            console.error('Error loading first review schedule:', error);
+            if (modulesListContainer) {
+                // Check if it's a submitted but not verified state - show appropriate message
+                try {
+                    const team = await this.getUserTeam();
+                    if (team) {
+                        const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+                        if (scheduleDoc.exists()) {
+                            const scheduleData = scheduleDoc.data();
+                            const isSubmitted = scheduleData.submitted === true;
+                            const isVerified = scheduleData.verified === true;
+                            
+                            if (isSubmitted && !isVerified) {
+                                modulesListContainer.innerHTML = `
+                                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2); text-align: center;">
+                                        <div style="margin-bottom: 1rem;">
+                                            <i class="fas fa-hourglass-half" style="font-size: 3rem; color: #f59e0b;"></i>
+                                        </div>
+                                        <h3 style="margin: 0 0 0.5rem 0; color: #92400e; font-size: 1.2rem; font-weight: 600;">
+                                            Admin Verification In Progress
+                                        </h3>
+                                        <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem;">
+                                            Your first review schedule has been submitted and is currently under admin review.
+                                        </p>
+                                        <p style="margin: 0.5rem 0; color: #92400e; font-size: 0.9rem;">
+                                            <i class="fas fa-clock"></i> Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                        </p>
+                                        <p style="margin: 1rem 0 0 0; color: #92400e; font-size: 0.9rem; font-style: italic;">
+                                            You will be able to edit the schedule once admin verifies and adds comments. The Gantt chart below shows your current schedule.
+                                        </p>
+                                    </div>
+                                `;
+                                // Still try to render Gantt chart
+                                try {
+                                    await this.renderFirstReviewGanttChart();
+                                } catch (ganttError) {
+                                    console.error('Error rendering Gantt chart:', ganttError);
+                                }
+                                return;
+                            }
+                        }
+                    }
+                } catch (checkError) {
+                    console.error('Error checking schedule status:', checkError);
+                }
+                modulesListContainer.innerHTML = '<p class="error-message">Error loading first review schedule. Please try again.</p>';
+            }
+        }
+        
+        // Render Gantt chart after loading schedule
+        try {
+            await this.renderFirstReviewGanttChart();
+        } catch (ganttError) {
+            console.error('Error rendering Gantt chart:', ganttError);
+        }
+    },
+    
+    renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true) {
+        // Color coding for modules - use gradient border
+        const hasDates = scheduleModule.startDate && scheduleModule.endDate;
+        const borderColor = hasDates ? '#3b82f6' : '#9ca3af';
+        const borderStyle = hasDates ? '2px solid' : '1px solid';
+        
+        return `
+            <div class="first-review-module-card" style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: ${borderStyle} ${borderColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 0.5rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-folder" style="color: #3b82f6;"></i> ${this.escapeHtml(module.name || 'Unnamed Module')}
+                        </h4>
+                        <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem;">
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-alt" style="color: #3b82f6;"></i> Module Start Date:
+                                </label>
+                                <input type="date" 
+                                       class="form-input" 
+                                       value="${scheduleModule.startDate || ''}" 
+                                       ${!canEdit ? 'disabled' : ''}
+                                       ${!canEdit ? '' : `onchange="app.updateFirstReviewModuleDate('${scheduleModule.moduleId}', 'startDate', this.value)"`}
+                                       style="width: 200px; border: 2px solid #3b82f640; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}" 
+                                       title="${!canEdit ? 'Editing is locked' : 'Update module start date. All child backlogs will be updated.'}">
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-check" style="color: #10b981;"></i> Module End Date:
+                                </label>
+                                <input type="date" 
+                                       class="form-input" 
+                                       value="${scheduleModule.endDate || ''}" 
+                                       ${!canEdit ? 'disabled' : ''}
+                                       ${!canEdit ? '' : `onchange="app.updateFirstReviewModuleDate('${scheduleModule.moduleId}', 'endDate', this.value)"`}
+                                       style="width: 200px; border: 2px solid #10b98140; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}" 
+                                       title="${!canEdit ? 'Editing is locked' : 'Update module end date. All child backlogs will be updated.'}">
+                            </div>
+                        </div>
+                    </div>
+                    ${canEdit ? `
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editFirstReviewModule('${scheduleModule.moduleId}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeFirstReviewModule('${scheduleModule.moduleId}')" title="Remove">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h5 style="margin: 0; color: var(--text-primary); font-size: 0.95rem;">
+                            Product Backlogs (${scheduledBacklogs.length})
+                        </h5>
+                        ${canEdit ? `
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.showAddFirstReviewBacklogModal('${scheduleModule.moduleId}')">
+                            <i class="fas fa-plus"></i> Add Backlog
+                        </button>
+                        ` : ''}
+                    </div>
+                    
+                    ${scheduledBacklogs.length === 0 ? '<p class="empty-state" style="font-size: 0.9rem;">No product backlogs in this module.</p>' : ''}
+                    
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${scheduledBacklogs.map(backlog => {
+                            backlog._canEdit = canEdit;
+                            return backlog;
+                        }).map(backlog => {
+                            // Priority colors
+                            const priorityColors = {
+                                low: { bg: '#e5e7eb', text: '#4b5563', border: '#d1d5db' },
+                                medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                                high: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                                critical: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                            };
+                            
+                            // Difficulty colors
+                            const difficultyColors = {
+                                easy: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+                                medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                                hard: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                                'very-hard': { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                            };
+                            
+                            const priority = backlog.priority || 'medium';
+                            const difficulty = backlog.difficulty || 'medium';
+                            const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                            const difficultyStyle = difficultyColors[difficulty] || difficultyColors.medium;
+                            
+                            // Date status colors
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            let dateStatus = 'future';
+                            let dateStatusColor = '#3b82f6';
+                            
+                            if (backlog.startDate) {
+                                const startDate = new Date(backlog.startDate);
+                                startDate.setHours(0, 0, 0, 0);
+                                if (startDate < today) {
+                                    dateStatus = 'past';
+                                    dateStatusColor = '#6b7280';
+                                } else if (startDate.getTime() === today.getTime()) {
+                                    dateStatus = 'current';
+                                    dateStatusColor = '#10b981';
+                                }
+                            }
+                            
+                            return `
+                                <div class="first-review-backlog-item" style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                                <div style="font-weight: 600; color: var(--text-primary);">
+                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                </div>
+                                                <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
+                                                    <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
+                                                </span>
+                                                <span style="padding: 0.25rem 0.5rem; background: ${difficultyStyle.bg}; color: ${difficultyStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${difficultyStyle.border};">
+                                                    <i class="fas fa-signal"></i> ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('-', ' ')}
+                                                </span>
+                                            </div>
+                                            ${backlog.storyText ? `
+                                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">
+                                                    ${this.escapeHtml(backlog.storyText)}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        ${backlog._canEdit !== false ? `
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editFirstReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeFirstReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Remove">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                        <div style="flex: 1;">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                <i class="fas fa-calendar-check" style="color: ${dateStatusColor};"></i> Start Date:
+                                            </label>
+                                            <input type="date" 
+                                                   class="form-input" 
+                                                   value="${backlog.startDate || ''}" 
+                                                   ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateFirstReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'startDate', this.value)"`}
+                                                   style="width: 100%; border: 2px solid ${dateStatusColor}40; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                        </div>
+                                        <div style="flex: 1;">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                <i class="fas fa-calendar-times" style="color: #ef4444;"></i> End Date:
+                                            </label>
+                                            <input type="date" 
+                                                   class="form-input" 
+                                                   value="${backlog.endDate || ''}" 
+                                                   ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateFirstReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'endDate', this.value)"`}
+                                                   style="width: 100%; border: 2px solid #ef444440; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+    
+    async addModuleToFirstReview() {
+        const moduleSelect = document.getElementById('first-review-module-select');
+        if (!moduleSelect || !moduleSelect.value) {
+            alert('Please select a module to add.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const moduleId = moduleSelect.value;
+            
+            // Load module details
+            const moduleDoc = await getDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId));
+            if (!moduleDoc.exists()) {
+                alert('Module not found.');
+                return;
+            }
+            
+            // Load current schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            // Check if module already added
+            if (scheduleData.modules.some(m => m.moduleId === moduleId)) {
+                alert('This module is already added to first review schedule.');
+                return;
+            }
+            
+            // Get all backlogs assigned to this module from project planning
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const projectPlanningBacklogIds = [];
+            assignmentsSnapshot.forEach(doc => {
+                projectPlanningBacklogIds.push(doc.data().backlogId);
+            });
+            
+            // Copy all project planning backlogs to firstReviewBacklogs
+            const productBacklogsToCopy = [];
+            for (const backlogId of projectPlanningBacklogIds) {
+                // Check if already copied
+                const existingCopy = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+                if (!existingCopy.exists()) {
+                    // Get the original backlog
+                    const originalBacklog = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                    if (originalBacklog.exists()) {
+                        const originalData = originalBacklog.data();
+                        // Create copy in firstReviewBacklogs with the same ID for easy reference
+                        await setDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                            teamId: team.id,
+                            task: originalData.task || originalData.description || '',
+                            priority: originalData.priority || 'medium',
+                            difficulty: originalData.difficulty || 'medium',
+                            storyText: originalData.storyText || '',
+                            moduleId: moduleId,
+                            createdAt: serverTimestamp(),
+                            copiedFromProjectPlanning: true,
+                            originalBacklogId: backlogId
+                        });
+                        productBacklogsToCopy.push(backlogId);
+                    }
+                } else {
+                    // Already exists, just update moduleId if needed
+                    await updateDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                        moduleId: moduleId
+                    });
+                    productBacklogsToCopy.push(backlogId);
+                }
+            }
+            
+            // Add module with all backlogs from firstReviewBacklogs
+            scheduleData.modules.push({
+                moduleId: moduleId,
+                startDate: '',
+                endDate: '',
+                productBacklogs: productBacklogsToCopy.map(backlogId => ({
+                    backlogId: backlogId,
+                    startDate: '',
+                    endDate: ''
+                }))
+            });
+            
+            // Save
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            
+            // Recalculate module dates from any existing backlogs
+            await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            
+            // Reload
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+            
+            alert('Module added to first review schedule!');
+        } catch (error) {
+            console.error('Error adding module to first review:', error);
+            alert('Error adding module. Please try again.');
+        }
+    },
+    
+    async updateFirstReviewModuleDate(moduleId, dateType, dateValue) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+            if (moduleIndex === -1) return;
+            
+            const module = scheduleData.modules[moduleIndex];
+            
+            // Update the module date
+            if (dateType === 'startDate') {
+                scheduleData.modules[moduleIndex].startDate = dateValue;
+            } else if (dateType === 'endDate') {
+                scheduleData.modules[moduleIndex].endDate = dateValue;
+            }
+            
+            // Update all child product backlogs to match module dates
+            if (module.productBacklogs && module.productBacklogs.length > 0) {
+                const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
+                const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
+                
+                // Update each child backlog
+                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(backlog => {
+                    return {
+                        backlogId: backlog.backlogId,
+                        startDate: moduleStartDate || backlog.startDate || '',
+                        endDate: moduleEndDate || backlog.endDate || ''
+                    };
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            
+            // Reload to show updated dates
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+        } catch (error) {
+            console.error('Error updating module date:', error);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    async updateFirstReviewBacklogDate(backlogId, moduleId, dateType, dateValue) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (moduleId) {
+                // Update backlog in module
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                
+                if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                    scheduleData.modules[moduleIndex].productBacklogs = [];
+                }
+                
+                // Find the specific backlog by ID using findIndex - ensure string comparison
+                const backlogIndex = scheduleData.modules[moduleIndex].productBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) {
+                    // Create new backlog schedule entry
+                    scheduleData.modules[moduleIndex].productBacklogs.push({ 
+                        backlogId: String(backlogId), 
+                        startDate: dateType === 'startDate' ? dateValue : '', 
+                        endDate: dateType === 'endDate' ? dateValue : '' 
+                    });
+                } else {
+                    // Update existing backlog schedule entry - create completely new object and array to avoid any reference issues
+                    const existingBacklog = scheduleData.modules[moduleIndex].productBacklogs[backlogIndex];
+                    const updatedBacklog = {
+                        backlogId: String(existingBacklog.backlogId || backlogId),
+                        startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
+                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '')
+                    };
+                    // Replace the entire array with a new array, ensuring all objects are new (deep copy)
+                    const newProductBacklogs = scheduleData.modules[moduleIndex].productBacklogs.map((pb, idx) => {
+                        if (idx === backlogIndex) {
+                            return updatedBacklog;
+                        }
+                        // Create new object for each backlog to avoid shared references
+                        return {
+                            backlogId: String(pb.backlogId),
+                            startDate: pb.startDate || '',
+                            endDate: pb.endDate || ''
+                        };
+                    });
+                    scheduleData.modules[moduleIndex].productBacklogs = newProductBacklogs;
+                }
+                
+                // Recalculate module dates from child backlogs (min start, max end)
+                await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+            } else {
+                // Update standalone backlog (no module recalculation needed)
+                // Ensure standaloneBacklogs array exists
+                if (!scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = [];
+                }
+                
+                // Find the specific backlog by ID - ensure string comparison
+                const backlogIndex = scheduleData.standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) {
+                    // Create new backlog schedule entry
+                    scheduleData.standaloneBacklogs.push({ 
+                        backlogId: String(backlogId), 
+                        startDate: dateType === 'startDate' ? dateValue : '', 
+                        endDate: dateType === 'endDate' ? dateValue : '' 
+                    });
+                } else {
+                    // Update existing backlog schedule entry - create completely new object to avoid any reference issues
+                    const existingBacklog = scheduleData.standaloneBacklogs[backlogIndex];
+                    const updatedBacklog = {
+                        backlogId: String(existingBacklog.backlogId || backlogId),
+                        startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
+                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '')
+                    };
+                    // Replace the entire array with a new array to ensure no shared references
+                    scheduleData.standaloneBacklogs = [
+                        ...scheduleData.standaloneBacklogs.slice(0, backlogIndex),
+                        updatedBacklog,
+                        ...scheduleData.standaloneBacklogs.slice(backlogIndex + 1)
+                    ];
+                }
+            }
+            
+            // Save without merge to ensure clean structure
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            
+            // Reload
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+        } catch (error) {
+            console.error('Error updating backlog date:', error);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    async recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData) {
+        try {
+            const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+            if (moduleIndex === -1) return;
+            
+            // Only use backlogs from the schedule's productBacklogs array (which are all from firstReviewBacklogs)
+            if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                scheduleData.modules[moduleIndex].productBacklogs = [];
+            }
+            
+            // Collect all start and end dates from backlogs in the schedule
+            const startDates = [];
+            const endDates = [];
+            
+            scheduleData.modules[moduleIndex].productBacklogs.forEach(backlogSchedule => {
+                // Only use explicit backlog dates
+                if (backlogSchedule.startDate) {
+                    startDates.push(new Date(backlogSchedule.startDate));
+                }
+                if (backlogSchedule.endDate) {
+                    endDates.push(new Date(backlogSchedule.endDate));
+                }
+            });
+            
+            // Calculate min start date and max end date
+            if (startDates.length > 0) {
+                const minStartDate = new Date(Math.min(...startDates.map(d => d.getTime())));
+                scheduleData.modules[moduleIndex].startDate = minStartDate.toISOString().split('T')[0];
+            } else {
+                // If no dates found, clear module dates
+                scheduleData.modules[moduleIndex].startDate = '';
+            }
+            
+            if (endDates.length > 0) {
+                const maxEndDate = new Date(Math.max(...endDates.map(d => d.getTime())));
+                scheduleData.modules[moduleIndex].endDate = maxEndDate.toISOString().split('T')[0];
+            } else {
+                // If no dates found, clear module dates
+                scheduleData.modules[moduleIndex].endDate = '';
+            }
+        } catch (error) {
+            console.error('Error recalculating module dates:', error);
+        }
+    },
+    
+    async removeFirstReviewModule(moduleId) {
+        if (!confirm('Are you sure you want to remove this module from first review schedule?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit (not submitted, or submitted and verified, and not frozen)
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Modules cannot be removed. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            scheduleData.modules = scheduleData.modules.filter(m => m.moduleId !== moduleId);
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            await this.loadFirstReviewSchedule();
+        } catch (error) {
+            console.error('Error removing module:', error);
+            alert('Error removing module. Please try again.');
+        }
+    },
+    
+    async editFirstReviewModule(moduleId) {
+        // Module dates can be edited directly via the date inputs
+        // This function can be extended for more complex editing in the future
+        // For now, users can edit dates directly using the calendar inputs
+    },
+    
+    async showAddFirstReviewBacklogModal(moduleId) {
+        // Check if can edit (not submitted, or submitted and verified, and not frozen)
+        try {
+            const team = await this.getUserTeam();
+            if (team) {
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+                if (scheduleDoc.exists()) {
+                    const scheduleData = scheduleDoc.data();
+                    const isSubmitted = scheduleData.submitted === true;
+                    const isVerified = scheduleData.verified === true;
+                    const isFrozen = scheduleData.frozen === true;
+                    
+                    if (isSubmitted && !isVerified) {
+                        alert('The schedule is locked for editing until admin verification.');
+                        return;
+                    }
+                    
+                    if (isFrozen) {
+                        alert('The schedule is frozen. Product backlogs cannot be added. Please contact admin to unfreeze.');
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error checking edit permission:', error);
+        }
+        
+        // Create modal for adding new product backlog
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'add-first-review-backlog-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Add Product Backlog to First Review</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-first-review-backlog-form" onsubmit="app.saveFirstReviewBacklog(event, '${moduleId || ''}')">
+                        <div class="form-group">
+                            <label for="first-review-backlog-task">Task/Description *</label>
+                            <input type="text" id="first-review-backlog-task" class="form-input" required placeholder="Enter task description">
+                        </div>
+                        <div class="form-group">
+                            <label for="first-review-backlog-start-date">Start Date</label>
+                            <input type="date" id="first-review-backlog-start-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="first-review-backlog-end-date">End Date</label>
+                            <input type="date" id="first-review-backlog-end-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="first-review-backlog-priority">Priority</label>
+                            <select id="first-review-backlog-priority" class="form-input">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="first-review-backlog-difficulty">Difficulty</label>
+                            <select id="first-review-backlog-difficulty" class="form-input">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                                <option value="very-hard">Very Hard</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Add Backlog</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+    
+    async saveFirstReviewBacklog(event, moduleId) {
+        event.preventDefault();
+        
+        const task = document.getElementById('first-review-backlog-task').value.trim();
+        const startDate = document.getElementById('first-review-backlog-start-date').value;
+        const endDate = document.getElementById('first-review-backlog-end-date').value;
+        const priority = document.getElementById('first-review-backlog-priority').value;
+        const difficulty = document.getElementById('first-review-backlog-difficulty').value;
+        
+        if (!task) {
+            alert('Please enter a task description.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if can edit (not submitted, or submitted and verified, and not frozen)
+            const checkScheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (checkScheduleDoc.exists()) {
+                const checkScheduleData = checkScheduleDoc.data();
+                const isSubmitted = checkScheduleData.submitted === true;
+                const isVerified = checkScheduleData.verified === true;
+                const isFrozen = checkScheduleData.frozen === true;
+                
+                if (isSubmitted && !isVerified) {
+                    alert('The schedule is locked for editing until admin verification.');
+                    return;
+                }
+                
+                if (isFrozen) {
+                    alert('The schedule is frozen. Product backlogs cannot be added. Please contact admin to unfreeze.');
+                    return;
+                }
+            }
+            
+            // Create new product backlog in firstReviewBacklogs collection (separate from project planning)
+            const newBacklogRef = doc(collection(window.firebaseDb, 'firstReviewBacklogs'));
+            const backlogData = {
+                teamId: team.id,
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                createdAt: serverTimestamp(),
+                moduleId: moduleId || null // null for standalone
+            };
+            
+            await setDoc(newBacklogRef, backlogData);
+            
+            // Add to schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            if (moduleId) {
+                // Add to module
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    scheduleData.modules[moduleIndex].productBacklogs.push({
+                        backlogId: newBacklogRef.id,
+                        startDate: startDate,
+                        endDate: endDate
+                    });
+                }
+            } else {
+                // Add as standalone
+                scheduleData.standaloneBacklogs.push({
+                    backlogId: newBacklogRef.id,
+                    startDate: startDate,
+                    endDate: endDate
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            // If added to a module, recalculate module dates
+            if (moduleId) {
+                await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            }
+            
+            // Close modal
+            const modal = document.getElementById('add-first-review-backlog-modal');
+            if (modal) modal.remove();
+            
+            // Reload
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+            
+            alert('Product backlog added to first review schedule!');
+        } catch (error) {
+            console.error('Error saving first review backlog:', error);
+            alert('Error saving backlog. Please try again.');
+        }
+    },
+    
+    async editFirstReviewBacklog(backlogId, moduleId) {
+        // Load backlog data
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Check if can edit (not submitted, or submitted and verified, and not frozen)
+            const checkScheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (checkScheduleDoc.exists()) {
+                const checkScheduleData = checkScheduleDoc.data();
+                const isSubmitted = checkScheduleData.submitted === true;
+                const isVerified = checkScheduleData.verified === true;
+                const isFrozen = checkScheduleData.frozen === true;
+                
+                if (isSubmitted && !isVerified) {
+                    alert('The schedule is locked for editing until admin verification.');
+                    return;
+                }
+                
+                if (isFrozen) {
+                    alert('The schedule is frozen. Product backlogs cannot be edited. Please contact admin to unfreeze.');
+                    return;
+                }
+            }
+            
+            // All backlogs should be in firstReviewBacklogs
+            let backlogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            let backlogData = backlogDoc.exists() ? backlogDoc.data() : null;
+            
+            // If not found, it might be from project planning (for backward compatibility)
+            // Copy it to firstReviewBacklogs
+            if (!backlogData) {
+                const productBacklogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                if (productBacklogDoc.exists()) {
+                    const productBacklogData = productBacklogDoc.data();
+                    // Copy to firstReviewBacklogs
+                    await setDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                        teamId: team.id,
+                        task: productBacklogData.task || productBacklogData.description || '',
+                        priority: productBacklogData.priority || 'medium',
+                        difficulty: productBacklogData.difficulty || 'medium',
+                        storyText: productBacklogData.storyText || '',
+                        moduleId: moduleId || null,
+                        createdAt: serverTimestamp(),
+                        copiedFromProjectPlanning: true,
+                        originalBacklogId: backlogId
+                    });
+                    backlogData = {
+                        task: productBacklogData.task || productBacklogData.description || '',
+                        priority: productBacklogData.priority || 'medium',
+                        difficulty: productBacklogData.difficulty || 'medium',
+                        storyText: productBacklogData.storyText || ''
+                    };
+                } else {
+                    alert('Backlog not found.');
+                    return;
+                }
+            }
+            
+            // Get schedule dates
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [] };
+            
+            let startDate = '';
+            let endDate = '';
+            
+            if (moduleId) {
+                const module = scheduleData.modules.find(m => m.moduleId === moduleId);
+                if (module) {
+                    const backlogSchedule = module.productBacklogs?.find(pb => String(pb.backlogId) === String(backlogId));
+                    if (backlogSchedule) {
+                        startDate = backlogSchedule.startDate || '';
+                        endDate = backlogSchedule.endDate || '';
+                    }
+                }
+            } else {
+                const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogSchedule) {
+                    startDate = backlogSchedule.startDate || '';
+                    endDate = backlogSchedule.endDate || '';
+                }
+            }
+            
+            // Create edit modal - show all fields (all backlogs are now in firstReviewBacklogs)
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'edit-first-review-backlog-modal';
+            modal.style.display = 'flex';
+            
+            // Show all fields for editing (all backlogs are now in firstReviewBacklogs)
+            modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 600px;">
+                        <div class="modal-header">
+                            <h2>Edit Product Backlog</h2>
+                            <button class="btn-icon" onclick="this.closest('.modal').remove()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="edit-first-review-backlog-form" onsubmit="app.updateFirstReviewBacklog(event, '${backlogId}', '${moduleId || ''}')">
+                                <div class="form-group">
+                                    <label for="edit-first-review-backlog-task">Task/Description *</label>
+                                    <input type="text" id="edit-first-review-backlog-task" class="form-input" required value="${this.escapeHtml(backlogData.task || backlogData.description || '')}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-first-review-backlog-start-date">Start Date</label>
+                                    <input type="date" id="edit-first-review-backlog-start-date" class="form-input" value="${startDate}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-first-review-backlog-end-date">End Date</label>
+                                    <input type="date" id="edit-first-review-backlog-end-date" class="form-input" value="${endDate}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-first-review-backlog-priority">Priority</label>
+                                    <select id="edit-first-review-backlog-priority" class="form-input">
+                                        <option value="low" ${backlogData.priority === 'low' ? 'selected' : ''}>Low</option>
+                                        <option value="medium" ${backlogData.priority === 'medium' || !backlogData.priority ? 'selected' : ''}>Medium</option>
+                                        <option value="high" ${backlogData.priority === 'high' ? 'selected' : ''}>High</option>
+                                        <option value="critical" ${backlogData.priority === 'critical' ? 'selected' : ''}>Critical</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-first-review-backlog-difficulty">Difficulty</label>
+                                    <select id="edit-first-review-backlog-difficulty" class="form-input">
+                                        <option value="easy" ${backlogData.difficulty === 'easy' ? 'selected' : ''}>Easy</option>
+                                        <option value="medium" ${backlogData.difficulty === 'medium' || !backlogData.difficulty ? 'selected' : ''}>Medium</option>
+                                        <option value="hard" ${backlogData.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
+                                        <option value="very-hard" ${backlogData.difficulty === 'very-hard' ? 'selected' : ''}>Very Hard</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Update Backlog</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error loading backlog for editing:', error);
+            alert('Error loading backlog. Please try again.');
+        }
+    },
+    
+    async updateFirstReviewBacklogDates(event, backlogId, moduleId) {
+        event.preventDefault();
+        
+        const startDate = document.getElementById('edit-first-review-backlog-start-date').value;
+        const endDate = document.getElementById('edit-first-review-backlog-end-date').value;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Check if can edit
+            const checkScheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (checkScheduleDoc.exists()) {
+                const checkScheduleData = checkScheduleDoc.data();
+                if (checkScheduleData.submitted === true && checkScheduleData.verified !== true) {
+                    alert('The schedule is locked for editing until admin verification.');
+                    return;
+                }
+            }
+            
+            // Update schedule dates only (for project planning backlogs)
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (scheduleDoc.exists()) {
+                const scheduleData = scheduleDoc.data();
+                
+                if (moduleId) {
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                    if (moduleIndex !== -1) {
+                        if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                            scheduleData.modules[moduleIndex].productBacklogs = [];
+                        }
+                        const backlogIndex = scheduleData.modules[moduleIndex].productBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                        if (backlogIndex === -1) {
+                            scheduleData.modules[moduleIndex].productBacklogs.push({
+                                backlogId: String(backlogId),
+                                startDate: startDate,
+                                endDate: endDate
+                            });
+                        } else {
+                            const existingBacklog = scheduleData.modules[moduleIndex].productBacklogs[backlogIndex];
+                            scheduleData.modules[moduleIndex].productBacklogs[backlogIndex] = {
+                                backlogId: String(existingBacklog.backlogId),
+                                startDate: startDate,
+                                endDate: endDate
+                            };
+                        }
+                        // Recalculate module dates
+                        await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+                    }
+                } else {
+                    if (!scheduleData.standaloneBacklogs) {
+                        scheduleData.standaloneBacklogs = [];
+                    }
+                    const backlogIndex = scheduleData.standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                    if (backlogIndex === -1) {
+                        scheduleData.standaloneBacklogs.push({
+                            backlogId: String(backlogId),
+                            startDate: startDate,
+                            endDate: endDate
+                        });
+                    } else {
+                        const existingBacklog = scheduleData.standaloneBacklogs[backlogIndex];
+                        scheduleData.standaloneBacklogs[backlogIndex] = {
+                            backlogId: String(existingBacklog.backlogId),
+                            startDate: startDate,
+                            endDate: endDate
+                        };
+                    }
+                }
+                
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            }
+            
+            // Close modal and reload
+            const modal = document.getElementById('edit-first-review-backlog-modal');
+            if (modal) modal.remove();
+            
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+            
+            alert('Schedule dates updated successfully!');
+        } catch (error) {
+            console.error('Error updating backlog dates:', error);
+            alert('Error updating dates. Please try again.');
+        }
+    },
+    
+    async updateFirstReviewBacklog(event, backlogId, moduleId) {
+        event.preventDefault();
+        
+        const task = document.getElementById('edit-first-review-backlog-task').value.trim();
+        const startDate = document.getElementById('edit-first-review-backlog-start-date').value;
+        const endDate = document.getElementById('edit-first-review-backlog-end-date').value;
+        const priority = document.getElementById('edit-first-review-backlog-priority').value;
+        const difficulty = document.getElementById('edit-first-review-backlog-difficulty').value;
+        
+        if (!task) {
+            alert('Please enter a task description.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            // Check if can edit (not submitted, or submitted and verified, and not frozen)
+            const checkScheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (checkScheduleDoc.exists()) {
+                const checkScheduleData = checkScheduleDoc.data();
+                const isSubmitted = checkScheduleData.submitted === true;
+                const isVerified = checkScheduleData.verified === true;
+                const isFrozen = checkScheduleData.frozen === true;
+                
+                if (isSubmitted && !isVerified) {
+                    alert('The schedule is locked for editing until admin verification.');
+                    return;
+                }
+                
+                if (isFrozen) {
+                    alert('The schedule is frozen. Product backlogs cannot be edited. Please contact admin to unfreeze.');
+                    return;
+                }
+            }
+            
+            // Update backlog (only for firstReviewBacklogs)
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('This backlog cannot be edited here.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                updatedAt: serverTimestamp()
+            });
+            
+            // Update schedule dates
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (scheduleDoc.exists()) {
+                const scheduleData = scheduleDoc.data();
+                
+                if (moduleId) {
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                    if (moduleIndex !== -1) {
+                        if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                            scheduleData.modules[moduleIndex].productBacklogs = [];
+                        }
+                        let backlogSchedule = scheduleData.modules[moduleIndex].productBacklogs.find(pb => pb.backlogId === backlogId);
+                        if (!backlogSchedule) {
+                            backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                            scheduleData.modules[moduleIndex].productBacklogs.push(backlogSchedule);
+                        }
+                        backlogSchedule.startDate = startDate;
+                        backlogSchedule.endDate = endDate;
+                        
+                        // Recalculate module dates from child backlogs
+                        await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+                    }
+                } else {
+                    let backlogSchedule = scheduleData.standaloneBacklogs.find(pb => pb.backlogId === backlogId);
+                    if (!backlogSchedule) {
+                        backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                        scheduleData.standaloneBacklogs.push(backlogSchedule);
+                    }
+                    backlogSchedule.startDate = startDate;
+                    backlogSchedule.endDate = endDate;
+                }
+                
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            }
+            
+            // Close modal
+            const modal = document.getElementById('edit-first-review-backlog-modal');
+            if (modal) modal.remove();
+            
+            // Reload
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+            
+            alert('Product backlog updated!');
+        } catch (error) {
+            console.error('Error updating backlog:', error);
+            alert('Error updating backlog. Please try again.');
+        }
+    },
+    
+    async removeFirstReviewBacklog(backlogId, moduleId) {
+        if (!confirm('Are you sure you want to remove this product backlog from first review schedule?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            // All backlogs in first review schedule should be in firstReviewBacklogs
+            // If it's not there, it means it's from project planning and needs to be copied first
+            const firstReviewBacklogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            
+            if (!firstReviewBacklogDoc.exists()) {
+                // This backlog is from project planning - copy it to firstReviewBacklogs
+                const productBacklogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                if (productBacklogDoc.exists()) {
+                    const productBacklogData = productBacklogDoc.data();
+                    
+                    // Get the current dates from schedule
+                    let startDate = '';
+                    let endDate = '';
+                    
+                    if (moduleId) {
+                        const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                        if (moduleIndex !== -1 && scheduleData.modules[moduleIndex].productBacklogs) {
+                            const backlogSchedule = scheduleData.modules[moduleIndex].productBacklogs.find(pb => String(pb.backlogId) === String(backlogId));
+                            if (backlogSchedule) {
+                                startDate = backlogSchedule.startDate || '';
+                                endDate = backlogSchedule.endDate || '';
+                            }
+                        }
+                    } else {
+                        if (scheduleData.standaloneBacklogs) {
+                            const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlogId));
+                            if (backlogSchedule) {
+                                startDate = backlogSchedule.startDate || '';
+                                endDate = backlogSchedule.endDate || '';
+                            }
+                        }
+                    }
+                    
+                    // Create a copy in firstReviewBacklogs using the same ID
+                    await setDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                        teamId: team.id,
+                        task: productBacklogData.task || productBacklogData.description || '',
+                        priority: productBacklogData.priority || 'medium',
+                        difficulty: productBacklogData.difficulty || 'medium',
+                        storyText: productBacklogData.storyText || '',
+                        moduleId: moduleId || null,
+                        createdAt: serverTimestamp(),
+                        copiedFromProjectPlanning: true,
+                        originalBacklogId: backlogId
+                    });
+                } else {
+                    alert('Backlog not found. It may have already been removed.');
+                    return;
+                }
+            }
+            
+            // Remove from schedule using string comparison
+            if (moduleId) {
+                // Remove from module
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = scheduleData.modules[moduleIndex].productBacklogs.filter(pb => String(pb.backlogId) !== String(backlogId));
+                    }
+                }
+            } else {
+                // Remove from standalone
+                if (scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = scheduleData.standaloneBacklogs.filter(pb => String(pb.backlogId) !== String(backlogId));
+                }
+            }
+            
+            // Delete from firstReviewBacklogs (all backlogs in first review are in this collection)
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            if (backlogDoc.exists()) {
+                await deleteDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            
+            // If removed from a module, recalculate module dates
+            if (moduleId) {
+                await this.recalculateModuleDatesFromBacklogs(team.id, moduleId, scheduleData);
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
+            }
+            
+            await this.loadFirstReviewSchedule();
+            await this.renderFirstReviewGanttChart();
+            
+            alert('Product backlog removed from first review schedule successfully!');
+        } catch (error) {
+            console.error('Error removing backlog:', error);
+            alert('Error removing backlog. Please try again.');
+        }
+    },
+    
+    async submitFirstReviewSchedule() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) {
+                alert('No schedule to submit.');
+                return;
+            }
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
+                alert('Please add at least one module or product backlog before submitting.');
+                return;
+            }
+            
+            // Validate that all product backlogs have start and end dates
+            const missingDates = [];
+            
+            // Check modules
+            for (const scheduleModule of scheduleData.modules) {
+                // Get all backlogs for this module
+                const assignmentsQuery = query(
+                    collection(window.firebaseDb, 'cardSortingAssignments'),
+                    where('teamId', '==', team.id),
+                    where('moduleId', '==', scheduleModule.moduleId)
+                );
+                const assignmentsSnapshot = await getDocs(assignmentsQuery);
+                const backlogIds = [];
+                assignmentsSnapshot.forEach(doc => {
+                    backlogIds.push(doc.data().backlogId);
+                });
+                
+                // Check first review backlogs with this moduleId
+                const firstReviewBacklogsQuery = query(
+                    collection(window.firebaseDb, 'firstReviewBacklogs'),
+                    where('teamId', '==', team.id),
+                    where('moduleId', '==', scheduleModule.moduleId)
+                );
+                const firstReviewBacklogsSnapshot = await getDocs(firstReviewBacklogsQuery);
+                firstReviewBacklogsSnapshot.forEach(doc => {
+                    backlogIds.push(doc.id);
+                });
+                
+                // Check each backlog has dates
+                for (const backlogId of backlogIds) {
+                    const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlogId);
+                    if (!backlogSchedule || !backlogSchedule.startDate || !backlogSchedule.endDate) {
+                        // Check if module dates are set (which auto-assigns)
+                        if (!scheduleModule.startDate || !scheduleModule.endDate) {
+                            // Try to get backlog name
+                            let backlogName = 'Unknown Task';
+                            try {
+                                const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                                if (backlogDoc.exists()) {
+                                    backlogName = backlogDoc.data().task || backlogDoc.data().description || 'Unknown Task';
+                                } else {
+                                    const firstReviewDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+                                    if (firstReviewDoc.exists()) {
+                                        backlogName = firstReviewDoc.data().task || 'Unknown Task';
+                                    }
+                                }
+                            } catch (e) {}
+                            
+                            missingDates.push({
+                                type: 'module',
+                                moduleName: scheduleModule.moduleId,
+                                backlogName: backlogName
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Check standalone backlogs
+            for (const standaloneBacklog of scheduleData.standaloneBacklogs) {
+                if (!standaloneBacklog.startDate || !standaloneBacklog.endDate) {
+                    let backlogName = 'Unknown Task';
+                    try {
+                        const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', standaloneBacklog.backlogId));
+                        if (backlogDoc.exists()) {
+                            backlogName = backlogDoc.data().task || backlogDoc.data().description || 'Unknown Task';
+                        } else {
+                            const firstReviewDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', standaloneBacklog.backlogId));
+                            if (firstReviewDoc.exists()) {
+                                backlogName = firstReviewDoc.data().task || 'Unknown Task';
+                            }
+                        }
+                    } catch (e) {}
+                    
+                    missingDates.push({
+                        type: 'standalone',
+                        backlogName: backlogName
+                    });
+                }
+            }
+            
+            if (missingDates.length > 0) {
+                const missingList = missingDates.map(item => {
+                    if (item.type === 'module') {
+                        return `• ${this.escapeHtml(item.backlogName)} (in module)`;
+                    } else {
+                        return `• ${this.escapeHtml(item.backlogName)} (standalone)`;
+                    }
+                }).join('\n');
+                
+                alert(`Please set start and end dates for all product backlogs before submitting:\n\n${missingList}`);
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to submit the first review schedule agreement? This will mark it as submitted for review.')) {
+                return;
+            }
+            
+            // Mark as submitted (reset verification status)
+            await updateDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), {
+                submitted: true,
+                submittedAt: serverTimestamp(),
+                verified: false,
+                verifiedAt: null,
+                adminComments: '',
+                verifiedBy: null
+            });
+            
+            // Reload
+            await this.loadFirstReviewSchedule();
+            
+            alert('First review schedule agreement submitted successfully! It is now locked for editing until admin verification.');
+        } catch (error) {
+            console.error('Error submitting first review schedule:', error);
+            alert('Error submitting schedule. Please try again.');
+        }
+    },
+    
+    async renderFirstReviewGanttChart() {
+        const ganttContainer = document.getElementById('first-review-gantt-chart');
+        if (!ganttContainer) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                ganttContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load schedule data
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) {
+                ganttContainer.innerHTML = '<p class="empty-state">No schedule data available.</p>';
+                return;
+            }
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Load all backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const allBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+            });
+            
+            const firstReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                where('teamId', '==', team.id)
+            );
+            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+            firstReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'firstReview' });
+            });
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogToModule = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                backlogToModule[data.backlogId] = data.moduleId;
+            });
+            
+            // Collect all items with dates for Gantt chart
+            const ganttItems = [];
+            
+            // Add modules
+            scheduleData.modules.forEach(scheduleModule => {
+                const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                if (module && scheduleModule.startDate && scheduleModule.endDate) {
+                    ganttItems.push({
+                        type: 'module',
+                        name: module.name || 'Unnamed Module',
+                        startDate: new Date(scheduleModule.startDate),
+                        endDate: new Date(scheduleModule.endDate),
+                        color: '#3b82f6',
+                        moduleId: scheduleModule.moduleId
+                    });
+                }
+            });
+            
+            // Add backlogs from modules - ONLY from schedule's productBacklogs (which are from firstReviewBacklogs)
+            scheduleData.modules.forEach(scheduleModule => {
+                if (!scheduleModule.productBacklogs || scheduleModule.productBacklogs.length === 0) return;
+                
+                // Get backlog IDs from schedule
+                const scheduledBacklogIds = scheduleModule.productBacklogs.map(pb => String(pb.backlogId));
+                
+                // Only get backlogs from firstReviewBacklogs that are in the schedule
+                const moduleBacklogs = allBacklogs.filter(b => 
+                    b.source === 'firstReview' && 
+                    scheduledBacklogIds.includes(String(b.id))
+                );
+                
+                moduleBacklogs.forEach(backlog => {
+                    const scheduleBacklog = scheduleModule.productBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    const startDate = scheduleBacklog?.startDate || scheduleModule.startDate;
+                    const endDate = scheduleBacklog?.endDate || scheduleModule.endDate;
+                    
+                    if (startDate && endDate) {
+                        ganttItems.push({
+                            type: 'backlog',
+                            name: backlog.task || backlog.description || 'Untitled Task',
+                            startDate: new Date(startDate),
+                            endDate: new Date(endDate),
+                            color: this.getPriorityColor(backlog.priority || 'medium'),
+                            moduleId: scheduleModule.moduleId,
+                            priority: backlog.priority || 'medium'
+                        });
+                    }
+                });
+            });
+            
+            // Add standalone backlogs - ONLY from firstReviewBacklogs
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                const standaloneBacklogIds = scheduleData.standaloneBacklogs.map(b => String(b.backlogId));
+                const standaloneBacklogs = allBacklogs.filter(b => 
+                    b.source === 'firstReview' && 
+                    standaloneBacklogIds.includes(String(b.id))
+                );
+                
+                standaloneBacklogs.forEach(backlog => {
+                    const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    const startDate = scheduleBacklog?.startDate || '';
+                    const endDate = scheduleBacklog?.endDate || '';
+                    
+                    if (startDate && endDate) {
+                        ganttItems.push({
+                            type: 'backlog',
+                            name: backlog.task || backlog.description || 'Untitled Task',
+                            startDate: new Date(startDate),
+                            endDate: new Date(endDate),
+                            color: this.getPriorityColor(backlog.priority || 'medium'),
+                            moduleId: null,
+                            priority: backlog.priority || 'medium'
+                        });
+                    }
+                });
+            }
+            
+            if (ganttItems.length === 0) {
+                ganttContainer.innerHTML = '<p class="empty-state">Add modules and set dates to view the Gantt chart.</p>';
+                return;
+            }
+            
+            // Calculate date range from ALL items (including all backlogs)
+            const allDates = ganttItems.flatMap(item => [item.startDate, item.endDate]);
+            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+            
+            // Add padding to ensure all items are visible (more padding on the end)
+            minDate.setDate(minDate.getDate() - 7);
+            maxDate.setDate(maxDate.getDate() + 14); // Extra padding on the end to prevent cropping
+            
+            const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+            const dayWidth = Math.max(30, 800 / totalDays); // Minimum 30px per day
+            
+            // Group by module
+            const moduleGroups = {};
+            const standaloneItems = [];
+            
+            ganttItems.forEach(item => {
+                if (item.type === 'module') {
+                    if (!moduleGroups[item.moduleId]) {
+                        moduleGroups[item.moduleId] = {
+                            module: item,
+                            backlogs: []
+                        };
+                    }
+                } else if (item.moduleId) {
+                    if (!moduleGroups[item.moduleId]) {
+                        moduleGroups[item.moduleId] = { backlogs: [] };
+                    }
+                    moduleGroups[item.moduleId].backlogs.push(item);
+                } else {
+                    standaloneItems.push(item);
+                }
+            });
+            
+            // Render Gantt chart with proper width to show all dates
+            const chartWidth = Math.max(totalDays * dayWidth, 1200); // Ensure minimum width
+            let html = `
+                <div style="position: relative; min-width: ${chartWidth}px; width: ${chartWidth}px;">
+                    <!-- Timeline header -->
+                    <div style="position: sticky; top: 0; background: white; z-index: 10; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; padding-bottom: 0.5rem; width: ${chartWidth}px;">
+                        <div style="display: flex; align-items: center; height: 40px;">
+                            <div style="width: 200px; flex-shrink: 0; font-weight: 600; color: var(--text-primary);">Task</div>
+                            <div style="flex: 1; position: relative; height: 100%; min-width: ${chartWidth - 200}px;">
+                                ${this.renderGanttTimelineHeader(minDate, maxDate, dayWidth)}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Gantt bars -->
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; width: ${chartWidth}px;">
+            `;
+            
+            // Render modules and their backlogs
+            Object.values(moduleGroups).forEach((group, groupIndex) => {
+                if (group.module) {
+                    html += this.renderGanttBar(group.module, minDate, dayWidth, 200, true);
+                }
+                group.backlogs.forEach(backlog => {
+                    html += this.renderGanttBar(backlog, minDate, dayWidth, 200, false);
+                });
+            });
+            
+            // Render standalone items
+            standaloneItems.forEach(item => {
+                html += this.renderGanttBar(item, minDate, dayWidth, 200, false);
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            ganttContainer.innerHTML = html;
+        } catch (error) {
+            console.error('Error rendering Gantt chart:', error);
+            ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart. Please try again.</p>';
+        }
+    },
+    
+    renderGanttTimelineHeader(minDate, maxDate, dayWidth) {
+        let html = '';
+        const currentDate = new Date(minDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Add vertical grid lines for all days
+        while (currentDate <= maxDate) {
+            const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
+            const isMonthStart = currentDate.getDate() === 1;
+            const isToday = currentDate.getTime() === today.getTime();
+            const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const daysDiff = Math.floor((currentDate - minDate) / (1000 * 60 * 60 * 24));
+            const leftPos = daysDiff * dayWidth;
+            
+            // Vertical dashed line for each day
+            const lineStyle = isMonthStart ? '2px solid #3b82f6' : (isToday ? '2px solid #10b981' : '1px dashed #cbd5e1');
+            const bgColor = isToday ? '#ecfdf5' : (isWeekend ? '#f8fafc' : 'transparent');
+            
+            html += `
+                <div style="position: absolute; left: ${leftPos}px; width: ${dayWidth}px; height: 100%; border-left: ${lineStyle}; background: ${bgColor};">
+                    <div style="position: absolute; top: 0; left: 2px; font-size: 0.75rem; color: ${isMonthStart ? '#3b82f6' : (isToday ? '#10b981' : 'var(--text-secondary)')}; font-weight: ${isMonthStart || isToday ? '600' : '400'};">
+                        ${isMonthStart ? dateStr : (isToday ? 'Today' : currentDate.getDate())}
+                    </div>
+                </div>
+            `;
+            
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        return html;
+    },
+    
+    renderGanttBar(item, minDate, dayWidth, labelWidth, isModule) {
+        const daysFromStart = Math.floor((item.startDate - minDate) / (1000 * 60 * 60 * 24));
+        const duration = Math.ceil((item.endDate - item.startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const left = daysFromStart * dayWidth;
+        const width = duration * dayWidth;
+        
+        const barHeight = isModule ? '32px' : '24px';
+        const barColor = isModule ? item.color : item.color;
+        const textColor = isModule ? 'white' : 'white';
+        const fontSize = isModule ? '0.85rem' : '0.75rem';
+        
+        // Calculate date range for tooltip
+        const startDateStr = item.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const endDateStr = item.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        
+        return `
+            <div style="display: flex; align-items: center; height: ${isModule ? '40px' : '32px'}; margin-bottom: ${isModule ? '0.5rem' : '0.25rem'}; position: relative;">
+                <div style="width: ${labelWidth}px; flex-shrink: 0; padding-right: 1rem; font-size: ${fontSize}; font-weight: ${isModule ? '600' : '500'}; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.escapeHtml(item.name)}">
+                    ${isModule ? '<i class="fas fa-folder" style="color: #3b82f6; margin-right: 0.5rem;"></i>' : ''}
+                    ${this.escapeHtml(item.name)}
+                </div>
+                <div style="flex: 1; position: relative; height: ${barHeight}; background: repeating-linear-gradient(90deg, #f1f5f9 0px, #f1f5f9 ${dayWidth - 1}px, #e2e8f0 ${dayWidth - 1}px, #e2e8f0 ${dayWidth}px);">
+                    <!-- Vertical dashed lines for each day -->
+                    ${Array.from({ length: duration + 1 }, (_, i) => {
+                        const lineLeft = left + (i * dayWidth);
+                        return `<div style="position: absolute; left: ${lineLeft}px; top: 0; bottom: 0; width: 1px; border-left: 1px dashed #cbd5e1; pointer-events: none;"></div>`;
+                    }).join('')}
+                    <div style="position: absolute; left: ${left}px; width: ${Math.max(width, 60)}px; height: 100%; background: linear-gradient(135deg, ${barColor} 0%, ${this.darkenColor(barColor, 10)} 100%); border-radius: 4px; display: flex; align-items: center; padding: 0 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.15); border: ${isModule ? '2px solid #1e40af' : '1px solid rgba(255,255,255,0.3)'}; z-index: 5; cursor: pointer; overflow: visible;" title="${this.escapeHtml(item.name)} - ${startDateStr} to ${endDateStr}">
+                        <span style="color: ${textColor}; font-size: ${fontSize}; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3); width: 100%; display: block; line-height: 1.2;">
+                            ${width > 50 ? this.escapeHtml(item.name) : (width > 20 ? '...' : '')}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+    
+    darkenColor(color, percent) {
+        // Simple color darkening for gradient
+        const num = parseInt(color.replace('#', ''), 16);
+        const r = Math.max(0, Math.floor((num >> 16) * (1 - percent / 100)));
+        const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent / 100)));
+        const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent / 100)));
+        return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+    },
+    
+    getPriorityColor(priority) {
+        const colors = {
+            low: '#6b7280',
+            medium: '#3b82f6',
+            high: '#f59e0b',
+            critical: '#ef4444'
+        };
+        return colors[priority] || colors.medium;
+    },
+    
+    // Admin First Review Verification Functions
+    async showAdminAddBacklogModal(teamId, moduleId) {
+        if (!this.isAdmin) return;
+        
+        const existingModal = document.getElementById('admin-add-backlog-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'admin-add-backlog-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 550px; padding: 1rem;">
+                <h2 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-plus" style="font-size: 0.9rem; color: #3b82f6;"></i> Add Product Backlog
+                </h2>
+                <form onsubmit="app.saveAdminBacklog(event, '${teamId}', '${moduleId || ''}')">
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Task Description *</label>
+                        <textarea id="admin-backlog-task" class="form-input" rows="2" required style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;"></textarea>
+                    </div>
+                    <div class="form-row" style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+                        <div class="form-group" style="flex: 1;">
+                            <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Priority</label>
+                            <select id="admin-backlog-priority" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Difficulty</label>
+                            <select id="admin-backlog-difficulty" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                                <option value="very-hard">Very Hard</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row" style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+                        <div class="form-group" style="flex: 1;">
+                            <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Start Date</label>
+                            <input type="date" id="admin-backlog-start-date" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">End Date</label>
+                            <input type="date" id="admin-backlog-end-date" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-add-backlog-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+                            <i class="fas fa-save" style="font-size: 0.75rem;"></i> Save
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    },
+    
+    async saveAdminBacklog(event, teamId, moduleId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const task = document.getElementById('admin-backlog-task').value.trim();
+        const priority = document.getElementById('admin-backlog-priority').value;
+        const difficulty = document.getElementById('admin-backlog-difficulty').value;
+        const startDate = document.getElementById('admin-backlog-start-date').value;
+        const endDate = document.getElementById('admin-backlog-end-date').value;
+        
+        if (!task) {
+            alert('Please enter a task description.');
+            return;
+        }
+        
+        try {
+            // Create backlog in firstReviewBacklogs collection
+            const newBacklogRef = await addDoc(collection(window.firebaseDb, 'firstReviewBacklogs'), {
+                teamId: teamId,
+                moduleId: moduleId || null,
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                createdAt: serverTimestamp()
+            });
+            
+            // Update schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            if (moduleId) {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    scheduleData.modules[moduleIndex].productBacklogs.push({
+                        backlogId: newBacklogRef.id,
+                        startDate: startDate,
+                        endDate: endDate
+                    });
+                }
+            } else {
+                scheduleData.standaloneBacklogs.push({
+                    backlogId: newBacklogRef.id,
+                    startDate: startDate,
+                    endDate: endDate
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            
+            // Recalculate module dates if in module
+            if (moduleId) {
+                await this.recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData);
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            }
+            
+            // Close modal
+            document.getElementById('admin-add-backlog-modal').remove();
+            
+            // Reload schedule
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Product backlog added successfully!');
+        } catch (error) {
+            console.error('Error saving backlog:', error);
+            alert('Error saving backlog. Please try again.');
+        }
+    },
+    
+    async updateAdminModuleDate(teamId, moduleId, dateType, dateValue) {
+        if (!this.isAdmin) return;
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+            if (moduleIndex === -1) return;
+            
+            // Recalculate module dates from child backlogs
+            await this.recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData);
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            
+            // Reload schedule
+            await this.loadAdminFirstReviewSchedule(teamId);
+        } catch (error) {
+            console.error('Error updating module date:', error);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    async updateAdminBacklogDate(backlogId, moduleId, teamId, dateType, dateValue) {
+        if (!this.isAdmin) return;
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (moduleId) {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    let backlogSchedule = scheduleData.modules[moduleIndex].productBacklogs.find(pb => pb.backlogId === backlogId);
+                    if (!backlogSchedule) {
+                        backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                        scheduleData.modules[moduleIndex].productBacklogs.push(backlogSchedule);
+                    }
+                    backlogSchedule[dateType] = dateValue;
+                    
+                    // Recalculate module dates
+                    await this.recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData);
+                }
+            } else {
+                let backlogSchedule = scheduleData.standaloneBacklogs.find(pb => pb.backlogId === backlogId);
+                if (!backlogSchedule) {
+                    backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                    scheduleData.standaloneBacklogs.push(backlogSchedule);
+                }
+                backlogSchedule[dateType] = dateValue;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            
+            // Reload schedule
+            await this.loadAdminFirstReviewSchedule(teamId);
+        } catch (error) {
+            console.error('Error updating backlog date:', error);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    async editAdminBacklog(backlogId, moduleId, teamId) {
+        if (!this.isAdmin) return;
+        
+        try {
+            // Load backlog
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Backlog not found.');
+                return;
+            }
+            
+            const backlogData = backlogDoc.data();
+            
+            // Load schedule to get dates
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [] };
+            
+            let backlogSchedule = null;
+            if (moduleId) {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    backlogSchedule = scheduleData.modules[moduleIndex].productBacklogs?.find(pb => pb.backlogId === backlogId);
+                }
+            } else {
+                backlogSchedule = scheduleData.standaloneBacklogs.find(pb => pb.backlogId === backlogId);
+            }
+            
+            // Show edit modal
+            const existingModal = document.getElementById('admin-edit-backlog-modal');
+            if (existingModal) existingModal.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'admin-edit-backlog-modal';
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 550px; padding: 1rem;">
+                    <h2 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-edit" style="font-size: 0.9rem; color: #3b82f6;"></i> Edit Product Backlog
+                    </h2>
+                    <form onsubmit="app.updateAdminBacklogDetails(event, '${backlogId}', '${moduleId || ''}', '${teamId}')">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Task Description *</label>
+                            <textarea id="admin-edit-backlog-task" class="form-input" rows="2" required style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${this.escapeHtml(backlogData.task || '')}</textarea>
+                        </div>
+                        <div class="form-row" style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Priority</label>
+                                <select id="admin-edit-backlog-priority" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                    <option value="low" ${backlogData.priority === 'low' ? 'selected' : ''}>Low</option>
+                                    <option value="medium" ${backlogData.priority === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="high" ${backlogData.priority === 'high' ? 'selected' : ''}>High</option>
+                                    <option value="critical" ${backlogData.priority === 'critical' ? 'selected' : ''}>Critical</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Difficulty</label>
+                                <select id="admin-edit-backlog-difficulty" class="form-input" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                    <option value="easy" ${backlogData.difficulty === 'easy' ? 'selected' : ''}>Easy</option>
+                                    <option value="medium" ${backlogData.difficulty === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="hard" ${backlogData.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
+                                    <option value="very-hard" ${backlogData.difficulty === 'very-hard' ? 'selected' : ''}>Very Hard</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row" style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">Start Date</label>
+                                <input type="date" id="admin-edit-backlog-start-date" class="form-input" value="${backlogSchedule?.startDate || ''}" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label style="font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.3rem; display: block;">End Date</label>
+                                <input type="date" id="admin-edit-backlog-end-date" class="form-input" value="${backlogSchedule?.endDate || ''}" style="padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-edit-backlog-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+                                <i class="fas fa-save" style="font-size: 0.75rem;"></i> Update
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error loading backlog for editing:', error);
+            alert('Error loading backlog. Please try again.');
+        }
+    },
+    
+    async updateAdminBacklogDetails(event, backlogId, moduleId, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const task = document.getElementById('admin-edit-backlog-task').value.trim();
+        const priority = document.getElementById('admin-edit-backlog-priority').value;
+        const difficulty = document.getElementById('admin-edit-backlog-difficulty').value;
+        const startDate = document.getElementById('admin-edit-backlog-start-date').value;
+        const endDate = document.getElementById('admin-edit-backlog-end-date').value;
+        
+        if (!task) {
+            alert('Please enter a task description.');
+            return;
+        }
+        
+        try {
+            // Update backlog
+            await updateDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId), {
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                updatedAt: serverTimestamp()
+            });
+            
+            // Update schedule dates
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (scheduleDoc.exists()) {
+                const scheduleData = scheduleDoc.data();
+                
+                if (moduleId) {
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                    if (moduleIndex !== -1) {
+                        if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                            scheduleData.modules[moduleIndex].productBacklogs = [];
+                        }
+                        let backlogSchedule = scheduleData.modules[moduleIndex].productBacklogs.find(pb => pb.backlogId === backlogId);
+                        if (!backlogSchedule) {
+                            backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                            scheduleData.modules[moduleIndex].productBacklogs.push(backlogSchedule);
+                        }
+                        backlogSchedule.startDate = startDate;
+                        backlogSchedule.endDate = endDate;
+                        
+                        // Recalculate module dates
+                        await this.recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData);
+                    }
+                } else {
+                    let backlogSchedule = scheduleData.standaloneBacklogs.find(pb => pb.backlogId === backlogId);
+                    if (!backlogSchedule) {
+                        backlogSchedule = { backlogId: backlogId, startDate: '', endDate: '' };
+                        scheduleData.standaloneBacklogs.push(backlogSchedule);
+                    }
+                    backlogSchedule.startDate = startDate;
+                    backlogSchedule.endDate = endDate;
+                }
+                
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            }
+            
+            // Close modal
+            document.getElementById('admin-edit-backlog-modal').remove();
+            
+            // Reload schedule
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Product backlog updated successfully!');
+        } catch (error) {
+            console.error('Error updating backlog:', error);
+            alert('Error updating backlog. Please try again.');
+        }
+    },
+    
+    async deleteAdminBacklog(backlogId, moduleId, teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to remove this product backlog from the first review schedule? This will not affect the original project planning.')) {
+            return;
+        }
+        
+        try {
+            // Load schedule first to check current state
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            const scheduleData = scheduleDoc.data();
+            let scheduleUpdated = false;
+            
+            // Check if backlog exists in firstReviewBacklogs (can be deleted)
+            // Only delete from firstReviewBacklogs if it was created for first review
+            const firstReviewBacklogDoc = await getDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            const isFromFirstReview = firstReviewBacklogDoc.exists();
+            
+            // Remove from schedule
+            if (moduleId) {
+                // Remove from module's productBacklogs
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    // Initialize productBacklogs array if it doesn't exist
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    
+                    const beforeLength = scheduleData.modules[moduleIndex].productBacklogs.length;
+                    // Remove the backlog from the module's productBacklogs
+                    scheduleData.modules[moduleIndex].productBacklogs = scheduleData.modules[moduleIndex].productBacklogs.filter(pb => pb.backlogId !== backlogId);
+                    
+                    // If backlog wasn't in productBacklogs but is from project planning and shown in module,
+                    // we need to add it to productBacklogs with empty dates first, then remove it
+                    // This ensures it's properly tracked in the schedule
+                    if (scheduleData.modules[moduleIndex].productBacklogs.length === beforeLength && !isFromFirstReview) {
+                        // Backlog from project planning wasn't in schedule - add it temporarily then remove
+                        // Actually, if it's not in productBacklogs, it means it's being shown due to module assignment
+                        // but not explicitly in the schedule. We should add it to productBacklogs with empty dates
+                        // to mark it as "excluded" from the schedule, or we can just ensure it's removed.
+                        // For now, let's add it with a special marker, then immediately remove it.
+                        // Actually, simpler: just ensure it's not in the list by filtering again.
+                        // The issue is it's being shown but not tracked. Let's add it to track exclusion.
+                        scheduleData.modules[moduleIndex].productBacklogs.push({
+                            backlogId: backlogId,
+                            startDate: '',
+                            endDate: '',
+                            excluded: true // Mark as excluded
+                        });
+                        // Now remove it
+                        scheduleData.modules[moduleIndex].productBacklogs = scheduleData.modules[moduleIndex].productBacklogs.filter(pb => pb.backlogId !== backlogId);
+                        scheduleUpdated = true;
+                    } else if (scheduleData.modules[moduleIndex].productBacklogs.length < beforeLength) {
+                        scheduleUpdated = true;
+                    }
+                    
+                    // Recalculate module dates after removal
+                    await this.recalculateModuleDatesFromBacklogs(teamId, moduleId, scheduleData);
+                    scheduleUpdated = true; // Dates might have changed
+                }
+            } else {
+                // Remove from standalone backlogs
+                if (!scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = [];
+                }
+                const beforeLength = scheduleData.standaloneBacklogs.length;
+                scheduleData.standaloneBacklogs = scheduleData.standaloneBacklogs.filter(pb => pb.backlogId !== backlogId);
+                if (scheduleData.standaloneBacklogs.length < beforeLength) {
+                    scheduleUpdated = true;
+                }
+            }
+            
+            // Save schedule if it was updated
+            if (scheduleUpdated) {
+                await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), scheduleData, { merge: true });
+            }
+            
+            // Delete from firstReviewBacklogs if it was created for first review
+            if (isFromFirstReview) {
+                // Delete from firstReviewBacklogs collection (this is safe - it's not from project planning)
+                await deleteDoc(doc(window.firebaseDb, 'firstReviewBacklogs', backlogId));
+            }
+            // If it's from productBacklog (project planning), we don't delete it - it stays in project planning
+            // We've already removed it from the schedule above
+            
+            // Reload schedule
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Product backlog removed from first review schedule successfully!');
+        } catch (error) {
+            console.error('Error deleting backlog:', error);
+            alert('Error deleting backlog. Please try again.');
+        }
+    },
+    
+    async verifyFirstReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const comments = document.getElementById('admin-verification-comments')?.value.trim() || '';
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            
+            await updateDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), {
+                verified: true,
+                verifiedAt: serverTimestamp(),
+                verifiedBy: adminName,
+                adminComments: comments
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Schedule verified successfully! Students can now edit the schedule.');
+        } catch (error) {
+            console.error('Error verifying schedule:', error);
+            alert('Error verifying schedule. Please try again.');
+        }
+    },
+    
+    async revertFirstReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const comments = document.getElementById('admin-revert-comments')?.value.trim() || '';
+        
+        if (!confirm('Are you sure you want to revert this schedule back to the student for editing? The verification and submission status will be reset, allowing the student to edit again.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            
+            await updateDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), {
+                submitted: false,
+                submittedAt: null,
+                verified: false,
+                verifiedAt: null,
+                verifiedBy: null,
+                adminComments: comments || null,
+                revertedAt: serverTimestamp(),
+                revertedBy: adminName
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Schedule reverted successfully! Student can now edit the schedule again.');
+        } catch (error) {
+            console.error('Error reverting schedule:', error);
+            alert('Error reverting schedule. Please try again.');
+        }
+    },
+    
+    async freezeFirstReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to freeze this schedule? Students will not be able to edit any product backlogs after freezing. This action finalizes the schedule.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), {
+                frozen: true,
+                frozenAt: serverTimestamp(),
+                frozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Schedule frozen successfully! Students can no longer edit product backlogs.');
+        } catch (error) {
+            console.error('Error freezing schedule:', error);
+            alert('Error freezing schedule. Please try again.');
+        }
+    },
+    
+    async unfreezeFirstReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to unfreeze this schedule? Students will be able to edit product backlogs again.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId), {
+                frozen: false,
+                frozenAt: null,
+                frozenBy: null,
+                unfrozenAt: serverTimestamp(),
+                unfrozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminFirstReviewSchedule(teamId);
+            
+            alert('Schedule unfrozen successfully! Students can now edit product backlogs again.');
+        } catch (error) {
+            console.error('Error unfreezing schedule:', error);
+            alert('Error unfreezing schedule. Please try again.');
+        }
+    }
 };
 
 // Merge extracted modules into app object

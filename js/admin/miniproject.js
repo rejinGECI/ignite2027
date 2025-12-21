@@ -1,6 +1,6 @@
 // Admin MiniProject module
 import { escapeHtml } from '../utils/helpers.js';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 export function createAdminMiniProjectModule(app) {
     return {
@@ -229,6 +229,452 @@ export function createAdminMiniProjectModule(app) {
                 console.error('Error loading user stories status:', error);
                 container.innerHTML = '<p class="error-message">Error loading user stories status.</p>';
             }
+        },
+        
+        async loadAdminFirstReviewVerification() {
+            if (!app.isAdmin) return;
+            
+            const container = document.getElementById('admin-first-review-teams-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="loading-state">Loading teams...</div>';
+            
+            try {
+                // Load all teams
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const teamDoc of teamsSnapshot.docs) {
+                    const teamData = teamDoc.data();
+                    if (teamData.deleted) continue;
+                    
+                    // Load first review schedule
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamDoc.id));
+                    const hasSchedule = scheduleDoc.exists();
+                    const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                    
+                    teams.push({
+                        id: teamDoc.id,
+                        name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                        guideId: teamData.guideId || '',
+                        guideName: teamData.guideName || 'No Guide',
+                        hasSchedule: hasSchedule,
+                        submitted: scheduleData?.submitted || false,
+                        submittedAt: scheduleData?.submittedAt || null,
+                        modulesCount: scheduleData?.modules?.length || 0,
+                        standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0
+                    });
+                }
+                
+                if (teams.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No teams found.</p>';
+                    return;
+                }
+                
+                // Apply team order - convert to format expected by applyTeamOrder
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.name
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                
+                // Map back to original team objects maintaining the order
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Render teams list
+                container.innerHTML = sortedTeams.map(team => `
+                    <div class="team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem; cursor: pointer;" onclick="app.loadAdminFirstReviewSchedule('${team.id}')">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                    ${escapeHtml(team.name)}
+                                </h4>
+                                <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem;">
+                                    <i class="fas fa-user-tie"></i> Guide: ${escapeHtml(team.guideName)}
+                                </p>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                    <span style="padding: 0.25rem 0.75rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                        ${team.hasSchedule ? '<i class="fas fa-check"></i> Has Schedule' : '<i class="fas fa-times"></i> No Schedule'}
+                                    </span>
+                                    ${team.submitted ? `
+                                        <span style="padding: 0.25rem 0.75rem; background: #3b82f6; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                            <i class="fas fa-paper-plane"></i> Submitted
+                                        </span>
+                                    ` : ''}
+                                    <span style="padding: 0.25rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 12px; font-size: 0.85rem;">
+                                        <i class="fas fa-folder"></i> ${team.modulesCount} Modules
+                                    </span>
+                                    <span style="padding: 0.25rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 12px; font-size: 0.85rem;">
+                                        <i class="fas fa-tasks"></i> ${team.standaloneBacklogsCount} Standalone
+                                    </span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); app.loadAdminFirstReviewSchedule('${team.id}')">
+                                <i class="fas fa-eye"></i> View & Manage
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Setup search
+                const searchInput = document.getElementById('search-first-review-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const teamCards = container.querySelectorAll('.team-card');
+                        teamCards.forEach(card => {
+                            const teamName = card.textContent.toLowerCase();
+                            card.style.display = teamName.includes(searchTerm) ? 'block' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading first review teams:', error);
+                container.innerHTML = '<p class="error-message">Error loading teams. Please try again.</p>';
+            }
+        },
+        
+        async loadAdminFirstReviewSchedule(teamId) {
+            if (!app.isAdmin) return;
+            
+            // Create modal for viewing/editing schedule
+            const existingModal = document.getElementById('admin-first-review-modal');
+            if (existingModal) existingModal.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'admin-first-review-modal';
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            
+            try {
+                // Load team data
+                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+                if (!teamDoc.exists()) {
+                    alert('Team not found.');
+                    return;
+                }
+                const teamData = teamDoc.data();
+                const teamName = teamData.name || teamData.groupName || `Team ${teamId.substring(0, 8)}`;
+                
+                // Load schedule
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+                const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                    modules: [],
+                    standaloneBacklogs: [],
+                    submitted: false
+                };
+                
+                // Load modules
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', teamId)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                const allModules = [];
+                modulesSnapshot.forEach(doc => {
+                    allModules.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Load all backlogs
+                const backlogQuery = query(
+                    collection(window.firebaseDb, 'productBacklog'),
+                    where('teamId', '==', teamId)
+                );
+                const backlogSnapshot = await getDocs(backlogQuery);
+                const allBacklogs = [];
+                backlogSnapshot.forEach(doc => {
+                    allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+                });
+                
+                const firstReviewBacklogQuery = query(
+                    collection(window.firebaseDb, 'firstReviewBacklogs'),
+                    where('teamId', '==', teamId)
+                );
+                const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                firstReviewBacklogSnapshot.forEach(doc => {
+                    allBacklogs.push({ id: doc.id, ...doc.data(), source: 'firstReview' });
+                });
+                
+                // Load assignments
+                const assignmentsQuery = query(
+                    collection(window.firebaseDb, 'cardSortingAssignments'),
+                    where('teamId', '==', teamId)
+                );
+                const assignmentsSnapshot = await getDocs(assignmentsQuery);
+                const backlogToModule = {};
+                assignmentsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    backlogToModule[data.backlogId] = data.moduleId;
+                });
+                
+                // Render modal content
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 95vw; max-height: 95vh; overflow-y: auto; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                            <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-check-circle" style="color: #3b82f6; font-size: 1rem;"></i> First Review Schedule - ${escapeHtml(teamName)}
+                            </h2>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-first-review-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                <i class="fas fa-times" style="font-size: 0.85rem;"></i> Close
+                            </button>
+                        </div>
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem;">
+                                <span style="padding: 0.35rem 0.75rem; background: ${scheduleData.submitted ? (scheduleData.verified ? '#3b82f6' : '#10b981') : '#f59e0b'}; color: white; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                    Status: ${scheduleData.verified ? 'Verified' : (scheduleData.submitted ? 'Submitted' : 'Draft')}
+                                </span>
+                                ${scheduleData.submittedAt ? `
+                                    <span style="padding: 0.35rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 4px; font-size: 0.75rem;">
+                                        Submitted: ${scheduleData.submittedAt.toDate ? scheduleData.submittedAt.toDate().toLocaleString() : 'Unknown'}
+                                    </span>
+                                ` : ''}
+                                ${scheduleData.verifiedAt ? `
+                                    <span style="padding: 0.35rem 0.75rem; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.75rem;">
+                                        Verified: ${scheduleData.verifiedAt.toDate ? scheduleData.verifiedAt.toDate().toLocaleString() : 'Unknown'}
+                                        ${scheduleData.verifiedBy ? ` by ${escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                    </span>
+                                ` : ''}
+                            </div>
+                            ${scheduleData.submitted && !scheduleData.verified ? `
+                            <div style="padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 0.75rem;">
+                                <div style="font-size: 0.8rem; font-weight: 600; color: #92400e; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-info-circle"></i> Verification Required
+                                </div>
+                                <form onsubmit="app.verifyFirstReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div>
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Admin Comments:</label>
+                                        <textarea id="admin-verification-comments" class="form-input" rows="3" placeholder="Add comments for the team..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                        <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                            <i class="fas fa-check-circle" style="font-size: 0.7rem;"></i> Verify & Unlock
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            ` : scheduleData.verified ? `
+                            <div style="padding: 0.75rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">
+                                ${scheduleData.adminComments ? `
+                                    <div style="font-size: 0.75rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                        <i class="fas fa-comment-alt"></i> Admin Comments:
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 0.75rem;">
+                                        ${escapeHtml(scheduleData.adminComments)}
+                                    </div>
+                                ` : ''}
+                                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+                                    ${scheduleData.frozen ? `
+                                        <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                            <i class="fas fa-lock"></i> Frozen - Students cannot edit
+                                        </span>
+                                        <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                            <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
+                                        </button>
+                                    ` : `
+                                        <button type="button" class="btn btn-warning btn-sm" onclick="app.freezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                            <i class="fas fa-lock" style="font-size: 0.7rem;"></i> Freeze Backlogs
+                                        </button>
+                                    `}
+                                </div>
+                                <form onsubmit="app.revertFirstReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div>
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Update Comments (optional):</label>
+                                        <textarea id="admin-revert-comments" class="form-input" rows="3" placeholder="Add comments for reverting back to student..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                        <button type="submit" class="btn btn-warning btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                            <i class="fas fa-undo" style="font-size: 0.7rem;"></i> Revert to Student
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div id="admin-first-review-schedule-content">
+                            <!-- Schedule content will be loaded here -->
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Load schedule content
+                await app.renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule);
+                
+            } catch (error) {
+                console.error('Error loading first review schedule:', error);
+                alert('Error loading schedule. Please try again.');
+                modal.remove();
+            }
+        },
+        
+        async renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule) {
+            const container = document.getElementById('admin-first-review-schedule-content');
+            if (!container) return;
+            
+            try {
+                let html = '';
+                
+                // Render modules
+                if (scheduleData.modules && scheduleData.modules.length > 0) {
+                    html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-folder" style="font-size: 0.9rem; color: #3b82f6;"></i> Modules</h3>';
+                    
+                    for (const scheduleModule of scheduleData.modules) {
+                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                        if (!module) continue;
+                        
+                        // Get backlogs that are explicitly in the schedule's productBacklogs array
+                        // Only show backlogs from firstReviewBacklogs (all backlogs in schedule are from firstReviewBacklogs)
+                        const scheduledBacklogIds = new Set((scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId)));
+                        
+                        // Only get backlogs from firstReviewBacklogs that are in the schedule
+                        const moduleBacklogs = allBacklogs.filter(b => 
+                            b.source === 'firstReview' && 
+                            scheduledBacklogIds.has(String(b.id))
+                        );
+                        
+                        html += `
+                            <div class="admin-card" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                    <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+                                        <i class="fas fa-folder" style="color: #3b82f6; font-size: 0.85rem;"></i> ${escapeHtml(module.name || 'Unnamed Module')}
+                                    </h4>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="app.showAdminAddBacklogModal('${teamId}', '${scheduleModule.moduleId}')" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
+                                        <i class="fas fa-plus" style="font-size: 0.7rem;"></i> Add
+                                    </button>
+                                </div>
+                                
+                                <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem; align-items: end;">
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">Start Date</label>
+                                        <input type="date" class="form-input" value="${scheduleModule.startDate || ''}" 
+                                               onchange="app.updateAdminModuleDate('${teamId}', '${scheduleModule.moduleId}', 'startDate', this.value)"
+                                               style="width: 100%; padding: 0.4rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">End Date</label>
+                                        <input type="date" class="form-input" value="${scheduleModule.endDate || ''}" 
+                                               onchange="app.updateAdminModuleDate('${teamId}', '${scheduleModule.moduleId}', 'endDate', this.value)"
+                                               style="width: 100%; padding: 0.4rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                    </div>
+                                </div>
+                                
+                                <div id="admin-module-backlogs-${scheduleModule.moduleId}">
+                                    ${moduleBacklogs.map(backlog => {
+                                        const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
+                                        return app.renderAdminBacklogItem(backlog, backlogSchedule, scheduleModule.moduleId, teamId);
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Render standalone backlogs - ONLY from firstReviewBacklogs
+                if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                    html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-tasks" style="font-size: 0.9rem; color: #3b82f6;"></i> Standalone Product Backlogs</h3>';
+                    html += '<div class="admin-card" style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">';
+                    html += '<button type="button" class="btn btn-primary btn-sm" onclick="app.showAdminAddBacklogModal(\'' + teamId + '\', null)" style="margin-bottom: 0.75rem; padding: 0.3rem 0.6rem; font-size: 0.75rem;">';
+                    html += '<i class="fas fa-plus" style="font-size: 0.7rem;"></i> Add Backlog';
+                    html += '</button>';
+                    
+                    // Only show backlogs from firstReviewBacklogs
+                    const standaloneBacklogIds = new Set(scheduleData.standaloneBacklogs.map(b => String(b.backlogId)));
+                    const standaloneBacklogs = allBacklogs.filter(b => 
+                        b.source === 'firstReview' && 
+                        standaloneBacklogIds.has(String(b.id))
+                    );
+                    
+                    standaloneBacklogs.forEach(backlog => {
+                        const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                        if (backlogSchedule) {
+                            html += app.renderAdminBacklogItem(backlog, backlogSchedule, null, teamId);
+                        }
+                    });
+                    
+                    html += '</div>';
+                } else {
+                    html += '<div class="admin-card" style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">';
+                    html += '<p class="empty-state" style="font-size: 0.85rem; margin: 0;">No standalone backlogs. <button type="button" class="btn btn-primary btn-sm" onclick="app.showAdminAddBacklogModal(\'' + teamId + '\', null)" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; margin-left: 0.5rem;">Add One</button></p>';
+                    html += '</div>';
+                }
+                
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error rendering schedule content:', error);
+                container.innerHTML = '<p class="error-message">Error rendering schedule. Please try again.</p>';
+            }
+        },
+        
+        renderAdminBacklogItem(backlog, backlogSchedule, moduleId, teamId) {
+            const startDate = backlogSchedule?.startDate || '';
+            const endDate = backlogSchedule?.endDate || '';
+            const priority = backlog.priority || 'medium';
+            const difficulty = backlog.difficulty || 'medium';
+            
+            // Priority colors
+            const priorityColors = {
+                low: '#6b7280',
+                medium: '#3b82f6',
+                high: '#f59e0b',
+                critical: '#ef4444'
+            };
+            const priorityColor = priorityColors[priority] || '#3b82f6';
+            
+            // Difficulty colors
+            const difficultyColors = {
+                easy: '#10b981',
+                medium: '#3b82f6',
+                hard: '#f59e0b',
+                'very-hard': '#ef4444'
+            };
+            const difficultyColor = difficultyColors[difficulty] || '#3b82f6';
+            
+            return `
+                <div style="padding: 0.75rem; background: #ffffff; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; gap: 0.5rem;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem; font-size: 0.85rem; line-height: 1.3;">
+                                ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                            </div>
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                <span style="padding: 0.2rem 0.4rem; background: ${priorityColor}; color: white; border-radius: 8px; font-size: 0.65rem; font-weight: 500;">
+                                    <i class="fas fa-flag" style="font-size: 0.6rem;"></i> ${priority}
+                                </span>
+                                <span style="padding: 0.2rem 0.4rem; background: ${difficultyColor}; color: white; border-radius: 8px; font-size: 0.65rem; font-weight: 500;">
+                                    <i class="fas fa-signal" style="font-size: 0.6rem;"></i> ${difficulty}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.3rem; flex-shrink: 0;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editAdminBacklog('${backlog.id}', '${moduleId || ''}', '${teamId}')" style="padding: 0.3rem 0.5rem; font-size: 0.7rem; min-width: auto;">
+                                <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="app.deleteAdminBacklog('${backlog.id}', '${moduleId || ''}', '${teamId}')" style="padding: 0.3rem 0.5rem; font-size: 0.7rem; min-width: auto;">
+                                <i class="fas fa-trash" style="font-size: 0.7rem;"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; align-items: end;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.2rem;">Start Date</label>
+                            <input type="date" class="form-input" value="${startDate}" 
+                                   onchange="app.updateAdminBacklogDate('${backlog.id}', '${moduleId || ''}', '${teamId}', 'startDate', this.value)"
+                                   style="width: 100%; padding: 0.35rem; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.2rem;">End Date</label>
+                            <input type="date" class="form-input" value="${endDate}" 
+                                   onchange="app.updateAdminBacklogDate('${backlog.id}', '${moduleId || ''}', '${teamId}', 'endDate', this.value)"
+                                   style="width: 100%; padding: 0.35rem; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                        </div>
+                    </div>
+                </div>
+            `;
         }
     };
 }
