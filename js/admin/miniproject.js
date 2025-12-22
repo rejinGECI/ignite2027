@@ -234,10 +234,12 @@ export function createAdminMiniProjectModule(app) {
         async loadAdminFirstReviewVerification() {
             if (!app.isAdmin) return;
             
+            const consolidatedView = document.getElementById('admin-first-review-consolidated-view');
             const container = document.getElementById('admin-first-review-teams-list');
-            if (!container) return;
             
-            container.innerHTML = '<div class="loading-state">Loading teams...</div>';
+            if (!consolidatedView) return;
+            
+            consolidatedView.innerHTML = '<div class="loading-state">Loading consolidated view...</div>';
             
             try {
                 // Load all teams
@@ -254,6 +256,15 @@ export function createAdminMiniProjectModule(app) {
                     const hasSchedule = scheduleDoc.exists();
                     const scheduleData = hasSchedule ? scheduleDoc.data() : null;
                     
+                    // Calculate total backlogs
+                    let totalBacklogs = 0;
+                    if (scheduleData?.modules) {
+                        scheduleData.modules.forEach(module => {
+                            totalBacklogs += (module.productBacklogs?.length || 0);
+                        });
+                    }
+                    totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
+                    
                     teams.push({
                         id: teamDoc.id,
                         name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
@@ -261,18 +272,23 @@ export function createAdminMiniProjectModule(app) {
                         guideName: teamData.guideName || 'No Guide',
                         hasSchedule: hasSchedule,
                         submitted: scheduleData?.submitted || false,
+                        verified: scheduleData?.verified || false,
+                        frozen: scheduleData?.frozen || false,
                         submittedAt: scheduleData?.submittedAt || null,
+                        verifiedAt: scheduleData?.verifiedAt || null,
+                        frozenAt: scheduleData?.frozenAt || null,
                         modulesCount: scheduleData?.modules?.length || 0,
-                        standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0
+                        standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                        totalBacklogs: totalBacklogs
                     });
                 }
                 
                 if (teams.length === 0) {
-                    container.innerHTML = '<p class="empty-state">No teams found.</p>';
+                    consolidatedView.innerHTML = '<p class="empty-state">No teams found.</p>';
                     return;
                 }
                 
-                // Apply team order - convert to format expected by applyTeamOrder
+                // Apply team order
                 const teamsForOrdering = teams.map(t => ({
                     id: t.id,
                     groupName: t.name
@@ -283,56 +299,123 @@ export function createAdminMiniProjectModule(app) {
                 const teamMap = new Map(teams.map(t => [t.id, t]));
                 const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
                 
-                // Render teams list
-                container.innerHTML = sortedTeams.map(team => `
-                    <div class="team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem; cursor: pointer;" onclick="app.loadAdminFirstReviewSchedule('${team.id}')">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div style="flex: 1;">
-                                <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
-                                    ${escapeHtml(team.name)}
+                // Calculate statistics
+                const stats = {
+                    total: sortedTeams.length,
+                    hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                    submitted: sortedTeams.filter(t => t.submitted).length,
+                    verified: sortedTeams.filter(t => t.verified).length,
+                    frozen: sortedTeams.filter(t => t.frozen).length
+                };
+                
+                // Render consolidated view
+                consolidatedView.innerHTML = `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <h4 style="margin: 0 0 1rem 0; color: #1e40af; font-size: 1.1rem; font-weight: 600;">
+                            <i class="fas fa-chart-bar"></i> Statistics
                                 </h4>
-                                <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem;">
-                                    <i class="fas fa-user-tie"></i> Guide: ${escapeHtml(team.guideName)}
-                                </p>
-                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                                    <span style="padding: 0.25rem 0.75rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
-                                        ${team.hasSchedule ? '<i class="fas fa-check"></i> Has Schedule' : '<i class="fas fa-times"></i> No Schedule'}
-                                    </span>
-                                    ${team.submitted ? `
-                                        <span style="padding: 0.25rem 0.75rem; background: #3b82f6; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
-                                            <i class="fas fa-paper-plane"></i> Submitted
-                                        </span>
-                                    ` : ''}
-                                    <span style="padding: 0.25rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 12px; font-size: 0.85rem;">
-                                        <i class="fas fa-folder"></i> ${team.modulesCount} Modules
-                                    </span>
-                                    <span style="padding: 0.25rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 12px; font-size: 0.85rem;">
-                                        <i class="fas fa-tasks"></i> ${team.standaloneBacklogsCount} Standalone
-                                    </span>
-                                </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.total}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Total Teams</div>
                             </div>
-                            <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); app.loadAdminFirstReviewSchedule('${team.id}')">
-                                <i class="fas fa-eye"></i> View & Manage
-                            </button>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.hasSchedule}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Has Schedule</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.submitted}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Submitted</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.verified}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Verified</div>
+                                </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin-bottom: 0.25rem;">${stats.frozen}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Frozen</div>
+                            </div>
                         </div>
                     </div>
-                `).join('');
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                                    <th style="padding: 1rem; text-align: left; font-weight: 600;">Team Name</th>
+                                    <th style="padding: 1rem; text-align: left; font-weight: 600;">Guide</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Schedule</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Status</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Freeze</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Modules</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Backlogs</th>
+                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sortedTeams.map((team, index) => {
+                                    const statusColor = team.verified ? '#10b981' : (team.submitted ? '#3b82f6' : '#6b7280');
+                                    const statusText = team.verified ? 'Verified' : (team.submitted ? 'Submitted' : 'Not Submitted');
+                                    const freezeColor = team.frozen ? '#f59e0b' : '#6b7280';
+                                    const freezeText = team.frozen ? 'Frozen' : 'Active';
+                                    
+                                    return `
+                                        <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
+                                            <td style="padding: 1rem; font-weight: 600; color: var(--text-primary);">
+                                                ${escapeHtml(team.name)}
+                                            </td>
+                                            <td style="padding: 1rem; color: var(--text-secondary);">
+                                                ${escapeHtml(team.guideName)}
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center;">
+                                                <span style="padding: 0.4rem 0.8rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                                    ${team.hasSchedule ? '<i class="fas fa-check"></i> Yes' : '<i class="fas fa-times"></i> No'}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center;">
+                                                <span style="padding: 0.4rem 0.8rem; background: ${statusColor}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                                    ${statusText}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center;">
+                                                <span style="padding: 0.4rem 0.8rem; background: ${freezeColor}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                                    <i class="fas ${team.frozen ? 'fa-lock' : 'fa-unlock'}"></i> ${freezeText}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center; color: var(--text-primary);">
+                                                ${team.modulesCount}
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center; color: var(--text-primary);">
+                                                ${team.totalBacklogs}
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center;">
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminFirstReviewSchedule('${team.id}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                                    <i class="fas fa-eye"></i> View
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
                 
                 // Setup search
                 const searchInput = document.getElementById('search-first-review-teams');
                 if (searchInput) {
                     searchInput.oninput = (e) => {
                         const searchTerm = e.target.value.toLowerCase();
-                        const teamCards = container.querySelectorAll('.team-card');
-                        teamCards.forEach(card => {
-                            const teamName = card.textContent.toLowerCase();
-                            card.style.display = teamName.includes(searchTerm) ? 'block' : 'none';
+                        const rows = consolidatedView.querySelectorAll('tbody tr');
+                        rows.forEach(row => {
+                            const teamName = row.textContent.toLowerCase();
+                            row.style.display = teamName.includes(searchTerm) ? '' : 'none';
                         });
                     };
                 }
             } catch (error) {
-                console.error('Error loading first review teams:', error);
-                container.innerHTML = '<p class="error-message">Error loading teams. Please try again.</p>';
+                console.error('Error loading first sprint consolidated view:', error);
+                consolidatedView.innerHTML = '<p class="error-message">Error loading consolidated view. Please try again.</p>';
             }
         },
         
@@ -414,7 +497,7 @@ export function createAdminMiniProjectModule(app) {
                     <div class="modal-content" style="max-width: 95vw; max-height: 95vh; overflow-y: auto; padding: 1rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">
                             <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                                <i class="fas fa-check-circle" style="color: #3b82f6; font-size: 1rem;"></i> First Review Schedule - ${escapeHtml(teamName)}
+                                <i class="fas fa-check-circle" style="color: #3b82f6; font-size: 1rem;"></i> First Sprint Schedule - ${escapeHtml(teamName)}
                             </h2>
                             <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-first-review-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
                                 <i class="fas fa-times" style="font-size: 0.85rem;"></i> Close

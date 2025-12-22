@@ -8018,8 +8018,8 @@ const app = {
                 return;
             }
             
-            // Check if this is First Review stage and if schedule is frozen
-            const isFirstReviewStage = stage.name && stage.name.toLowerCase().includes('first review');
+            // Check if this is First Sprint stage and if schedule is frozen
+            const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
             let firstReviewScheduleData = null;
             let firstReviewBacklogs = [];
             let checkedBacklogIds = [];
@@ -8269,10 +8269,10 @@ const app = {
                     ` : ''}
                     
                     ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewBacklogs.length > 0 ? `
-                        <!-- First Review Product Backlog Checklist -->
+                        <!-- First Sprint Product Backlog Checklist -->
                         <div class="evaluation-section" style="margin-top: 1.5rem; margin-bottom: 1.5rem; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1.5rem;">
                             <h5 style="margin-bottom: 1rem; color: #059669; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
-                                <i class="fas fa-check-circle" style="color: #10b981;"></i> First Review - Product Backlog Completion
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i> First Sprint - Product Backlog Completion
                                 <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: auto;">
                                     <i class="fas fa-lock"></i> Schedule Frozen
                                 </span>
@@ -14175,6 +14175,382 @@ const app = {
         setTimeout(() => {
             printWindow.print();
         }, 250);
+    },
+    
+    // Generate First Sprint Schedule Agreement Report
+    async generateFirstSprintScheduleReport() {
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            for (const teamDoc of teamsSnapshot.docs) {
+                const teamData = teamDoc.data();
+                if (teamData.deleted) continue;
+                
+                // Load first sprint schedule
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamDoc.id));
+                const hasSchedule = scheduleDoc.exists();
+                const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                
+                teams.push({
+                    id: teamDoc.id,
+                    name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                    guideName: teamData.guideName || 'No Guide',
+                    hasSchedule: hasSchedule,
+                    submitted: scheduleData?.submitted || false,
+                    verified: scheduleData?.verified || false,
+                    frozen: scheduleData?.frozen || false,
+                    submittedAt: scheduleData?.submittedAt || null,
+                    verifiedAt: scheduleData?.verifiedAt || null,
+                    frozenAt: scheduleData?.frozenAt || null,
+                    modulesCount: scheduleData?.modules?.length || 0,
+                    standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                    totalBacklogs: (scheduleData?.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData?.standaloneBacklogs?.length || 0)
+                });
+            }
+            
+            if (teams.length === 0) {
+                alert('No teams found to generate report.');
+                return;
+            }
+            
+            // Apply team order
+            const teamsForOrdering = teams.map(t => ({
+                id: t.id,
+                groupName: t.name
+            }));
+            const sortedTeamsForOrdering = await this.applyTeamOrder(teamsForOrdering);
+            const teamMap = new Map(teams.map(t => [t.id, t]));
+            const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+            
+            // Calculate statistics
+            const stats = {
+                total: sortedTeams.length,
+                hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                submitted: sortedTeams.filter(t => t.submitted).length,
+                verified: sortedTeams.filter(t => t.verified).length,
+                frozen: sortedTeams.filter(t => t.frozen).length
+            };
+            
+            const printWindow = window.open('', '_blank');
+            const currentDate = new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            let html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>First Sprint Schedule Agreement Report</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page {
+                                margin: 1.5cm;
+                                size: A4 landscape;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .no-print {
+                                display: none;
+                            }
+                            * {
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                        }
+                        * {
+                            margin: 0;
+                            padding: 0;
+                            box-sizing: border-box;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        body {
+                            font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            margin: 0;
+                            padding: 30px;
+                            color: #1e293b;
+                            background: #ffffff;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header {
+                            text-align: center;
+                            margin-bottom: 35px;
+                            padding: 25px;
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            background-color: #6366f1;
+                            border-radius: 12px;
+                            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+                            color: white;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header h1 {
+                            margin: 0 0 15px 0;
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 32px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 1.5px;
+                            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                        }
+                        .header .subtitle {
+                            font-size: 16px;
+                            font-weight: 400;
+                            opacity: 0.95;
+                            margin: 8px 0;
+                        }
+                        .header .stats {
+                            display: flex;
+                            justify-content: center;
+                            gap: 30px;
+                            margin-top: 20px;
+                            flex-wrap: wrap;
+                        }
+                        .header .stat-item {
+                            background: rgba(255, 255, 255, 0.2);
+                            padding: 10px 20px;
+                            border-radius: 8px;
+                            backdrop-filter: blur(10px);
+                        }
+                        .header .stat-label {
+                            font-size: 12px;
+                            opacity: 0.9;
+                            text-transform: uppercase;
+                            letter-spacing: 1px;
+                        }
+                        .header .stat-value {
+                            font-size: 24px;
+                            font-weight: 700;
+                            margin-top: 5px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: separate;
+                            border-spacing: 0;
+                            margin-top: 25px;
+                            font-size: 13px;
+                            background: white;
+                            border-radius: 10px;
+                            overflow: hidden;
+                            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        th {
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            background-color: #6366f1;
+                            color: white !important;
+                            padding: 16px 12px;
+                            text-align: left;
+                            font-weight: 700;
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 13px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            border: none;
+                            position: relative;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        th:not(:last-child)::after {
+                            content: '';
+                            position: absolute;
+                            right: 0;
+                            top: 20%;
+                            height: 60%;
+                            width: 1px;
+                            background: rgba(255, 255, 255, 0.3);
+                        }
+                        td {
+                            padding: 14px 12px;
+                            border-bottom: 1px solid #cbd5e1;
+                            vertical-align: top;
+                            font-family: 'Lato', sans-serif;
+                        }
+                        tr:last-child td {
+                            border-bottom: none;
+                        }
+                        tr:nth-child(even) {
+                            background: #eff6ff;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        tr:hover {
+                            background: #dbeafe;
+                            transition: background 0.2s;
+                        }
+                        .badge {
+                            display: inline-block;
+                            padding: 6px 12px;
+                            border-radius: 6px;
+                            font-size: 11px;
+                            font-weight: 600;
+                            font-family: 'Montserrat', sans-serif;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            margin-bottom: 5px;
+                        }
+                        .badge-yes {
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            background-color: #10b981;
+                            color: white !important;
+                            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+                        }
+                        .badge-no {
+                            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+                            background-color: #6b7280;
+                            color: white !important;
+                        }
+                        .badge-submitted {
+                            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                            background-color: #3b82f6;
+                            color: white !important;
+                        }
+                        .badge-verified {
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            background-color: #10b981;
+                            color: white !important;
+                        }
+                        .badge-frozen {
+                            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                            background-color: #f59e0b;
+                            color: white !important;
+                        }
+                        .badge-active {
+                            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+                            background-color: #6b7280;
+                            color: white !important;
+                        }
+                        .team-name {
+                            font-weight: 700;
+                            font-family: 'Montserrat', sans-serif;
+                            color: #6366f1;
+                            font-size: 14px;
+                        }
+                        .guide-name {
+                            color: #1e40af;
+                            font-weight: 500;
+                        }
+                        .footer {
+                            margin-top: 40px;
+                            text-align: center;
+                            font-size: 12px;
+                            color: #1e40af;
+                            border-top: 2px solid #cbd5e1;
+                            padding-top: 20px;
+                            font-family: 'Lato', sans-serif;
+                        }
+                        .footer .logo-text {
+                            font-family: 'Montserrat', sans-serif;
+                            font-weight: 700;
+                            font-size: 16px;
+                            color: #6366f1;
+                            margin-bottom: 5px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>First Sprint Schedule Agreement Report</h1>
+                        <p class="subtitle">IGNITE Mini Project Management System</p>
+                        <div class="stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Generated On</div>
+                                <div class="stat-value" style="font-size: 14px; font-weight: 600;">${currentDate}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Total Teams</div>
+                                <div class="stat-value">${stats.total}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Has Schedule</div>
+                                <div class="stat-value">${stats.hasSchedule}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Submitted</div>
+                                <div class="stat-value">${stats.submitted}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Verified</div>
+                                <div class="stat-value">${stats.verified}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Frozen</div>
+                                <div class="stat-value">${stats.frozen}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Team Name</th>
+                                <th>Guide</th>
+                                <th>Schedule</th>
+                                <th>Status</th>
+                                <th>Freeze Status</th>
+                                <th>Modules</th>
+                                <th>Total Backlogs</th>
+                                <th>Submitted Date</th>
+                                <th>Verified Date</th>
+                                <th>Frozen Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedTeams.map((team, index) => {
+                                const submittedDate = team.submittedAt ? new Date(team.submittedAt.seconds ? team.submittedAt.seconds * 1000 : team.submittedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                const verifiedDate = team.verifiedAt ? new Date(team.verifiedAt.seconds ? team.verifiedAt.seconds * 1000 : team.verifiedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                const frozenDate = team.frozenAt ? new Date(team.frozenAt.seconds ? team.frozenAt.seconds * 1000 : team.frozenAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                
+                                return `
+                                    <tr>
+                                        <td class="team-name">${this.escapeHtml(team.name)}</td>
+                                        <td class="guide-name">${this.escapeHtml(team.guideName)}</td>
+                                        <td><span class="badge ${team.hasSchedule ? 'badge-yes' : 'badge-no'}">${team.hasSchedule ? 'Yes' : 'No'}</span></td>
+                                        <td>
+                                            ${team.verified ? '<span class="badge badge-verified">Verified</span>' : 
+                                              team.submitted ? '<span class="badge badge-submitted">Submitted</span>' : 
+                                              '<span class="badge badge-no">Not Submitted</span>'}
+                                        </td>
+                                        <td><span class="badge ${team.frozen ? 'badge-frozen' : 'badge-active'}">${team.frozen ? 'Frozen' : 'Active'}</span></td>
+                                        <td style="text-align: center;">${team.modulesCount}</td>
+                                        <td style="text-align: center;">${team.totalBacklogs}</td>
+                                        <td>${submittedDate}</td>
+                                        <td>${verifiedDate}</td>
+                                        <td>${frozenDate}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    
+                    <div class="footer">
+                        <div class="logo-text">IGNITE</div>
+                        <p>Mini Project Management System - First Sprint Schedule Agreement Report</p>
+                        <p>Generated on ${currentDate}</p>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.print();
+        } catch (error) {
+            console.error('Error generating first sprint schedule report:', error);
+            alert('Error generating report. Please try again.');
+        }
     },
     
     async approveProblemStatement(problemStatementId, teamId) {
@@ -25438,7 +25814,7 @@ const app = {
     }
     */
     
-    // ========== FIRST REVIEW FUNCTIONS ==========
+    // ========== FIRST SPRINT FUNCTIONS ==========
     
     async loadFirstReviewSchedule() {
         const modulesListContainer = document.getElementById('first-review-modules-list');
@@ -25458,7 +25834,7 @@ const app = {
         }
         
         try {
-            modulesListContainer.innerHTML = '<div class="loading-state">Loading first review schedule...</div>';
+            modulesListContainer.innerHTML = '<div class="loading-state">Loading first sprint schedule...</div>';
             
             const team = await this.getUserTeam();
             if (!team) {
@@ -25471,8 +25847,123 @@ const app = {
             const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
                 modules: [],
                 standaloneBacklogs: [],
-                submitted: false
+                submitted: false,
+                verified: false,
+                frozen: false
             };
+            
+            // Check submission status FIRST - before loading other data
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            // DEBUG: Log status for troubleshooting
+            console.log('First Sprint Schedule Status:', { isSubmitted, isVerified, isFrozen, hasSchedule: scheduleDoc.exists() });
+            
+            // If submitted but not verified, show message immediately - THIS IS CRITICAL
+            if (isSubmitted && !isVerified) {
+                console.log('Showing submitted-for-verification message');
+                // Always show the message in the main container - this is the key fix
+                modulesListContainer.innerHTML = `
+                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);">
+                        <div style="text-align: center; margin-bottom: 1.5rem;">
+                            <i class="fas fa-hourglass-half" style="font-size: 3rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        </div>
+                        <h3 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1.3rem; font-weight: 600; text-align: center;">
+                            Admin Verification In Progress
+                        </h3>
+                        <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem; line-height: 1.6;">
+                                <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
+                                Your first sprint schedule has been submitted and is currently under admin review.
+                            </p>
+                            <p style="margin: 0.75rem 0; color: #92400e; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                <strong>Submitted on:</strong> ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                            </p>
+                        </div>
+                        <div style="padding: 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 6px; border-left: 3px solid #f59e0b;">
+                            <p style="margin: 0; color: #92400e; font-size: 0.9rem; font-style: italic; text-align: center;">
+                                <i class="fas fa-lock" style="margin-right: 0.5rem;"></i>
+                                The schedule is locked for editing until admin verifies and adds comments. You will be notified once verification is complete.
+                            </p>
+                        </div>
+                    </div>
+                `;
+                
+                // Update status container
+                if (statusContainer) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Submitted - Awaiting Admin Verification</strong>
+                            </div>
+                            <p style="margin: 0.25rem 0; color: #92400e; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                            <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
+                                <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                // Hide editing sections
+                const firstReviewTab = document.getElementById('first-review-tab');
+                if (firstReviewTab) {
+                    const addModuleSection = firstReviewTab.querySelector('div[style*="Add Module from Project Planning"]') || 
+                                           Array.from(firstReviewTab.querySelectorAll('div')).find(div => {
+                                               const h4 = div.querySelector('h4');
+                                               return h4 && h4.textContent.includes('Add Module from Project Planning');
+                                           });
+                    if (addModuleSection) {
+                        addModuleSection.style.display = 'none';
+                    }
+                    
+                    const standaloneSection = Array.from(firstReviewTab.querySelectorAll('div')).find(div => {
+                        const h4 = div.querySelector('h4');
+                        return h4 && h4.textContent.includes('Standalone Product Backlogs');
+                    });
+                    if (standaloneSection) {
+                        standaloneSection.style.display = 'none';
+                    }
+                }
+                
+                // Clear standalone backlogs container
+                if (standaloneBacklogsContainer) {
+                    standaloneBacklogsContainer.innerHTML = '';
+                }
+                
+                // Disable all editing controls
+                if (moduleSelect) {
+                    moduleSelect.disabled = true;
+                    moduleSelect.style.opacity = '0.6';
+                    moduleSelect.style.cursor = 'not-allowed';
+                }
+                
+                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToFirstReview()"]');
+                if (addModuleBtn) {
+                    addModuleBtn.disabled = true;
+                    addModuleBtn.style.opacity = '0.6';
+                    addModuleBtn.style.cursor = 'not-allowed';
+                }
+                
+                // Hide submit button
+                if (submitBtn) {
+                    submitBtn.style.display = 'none';
+                }
+                
+                // Render Gantt chart and return early
+                try {
+                    await this.renderFirstReviewGanttChart();
+                } catch (ganttError) {
+                    console.error('Error rendering Gantt chart:', ganttError);
+                }
+                
+                return; // Exit early - don't continue with module rendering
+            }
             
             // Load modules from project planning (cardSortingModules)
             const modulesQuery = query(
@@ -25518,84 +26009,9 @@ const app = {
                 backlogToModule[data.backlogId] = data.moduleId;
             });
             
-            // Load submission and verification status (calculate canEdit first)
-            const isSubmitted = scheduleData.submitted === true;
-            const isVerified = scheduleData.verified === true;
-            const isFrozen = scheduleData.frozen === true; // Check if schedule is frozen
+            // Calculate canEdit - already checked submission status above
             // Can edit only if NOT submitted, OR if submitted AND verified, AND not frozen
             const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
-            
-            // IMPORTANT: If submitted but not verified, show message immediately and return early
-            if (isSubmitted && !isVerified) {
-                // Show verification in progress message FIRST - this is critical
-                if (modulesListContainer) {
-                    modulesListContainer.innerHTML = `
-                        <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2); text-align: center;">
-                            <div style="margin-bottom: 1rem;">
-                                <i class="fas fa-hourglass-half" style="font-size: 3rem; color: #f59e0b;"></i>
-                            </div>
-                            <h3 style="margin: 0 0 0.5rem 0; color: #92400e; font-size: 1.2rem; font-weight: 600;">
-                                Admin Verification In Progress
-                            </h3>
-                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem;">
-                                Your first review schedule has been submitted and is currently under admin review.
-                            </p>
-                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 0.9rem;">
-                                <i class="fas fa-clock"></i> Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
-                            </p>
-                            <p style="margin: 1rem 0 0 0; color: #92400e; font-size: 0.9rem; font-style: italic;">
-                                You will be able to edit the schedule once admin verifies and adds comments. The Gantt chart below shows your current schedule.
-                            </p>
-                        </div>
-                    `;
-                }
-                
-                // Hide "Add Module from Project Planning" section
-                const firstReviewTab = document.getElementById('first-review-tab');
-                if (firstReviewTab) {
-                    const allDivs = firstReviewTab.querySelectorAll('div');
-                    allDivs.forEach(div => {
-                        const h4 = div.querySelector('h4');
-                        if (h4) {
-                            const h4Text = h4.textContent || '';
-                            if (h4Text.includes('Add Module from Project Planning')) {
-                                div.style.display = 'none';
-                            }
-                            if (h4Text.includes('Standalone Product Backlogs')) {
-                                div.style.display = 'none';
-                            }
-                        }
-                    });
-                }
-                
-                // Clear standalone backlogs container
-                if (standaloneBacklogsContainer) {
-                    standaloneBacklogsContainer.innerHTML = '';
-                }
-                
-                // Disable all editing controls
-                if (moduleSelect) {
-                    moduleSelect.disabled = true;
-                    moduleSelect.style.opacity = '0.6';
-                    moduleSelect.style.cursor = 'not-allowed';
-                }
-                
-                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToFirstReview()"]');
-                if (addModuleBtn) {
-                    addModuleBtn.disabled = true;
-                    addModuleBtn.style.opacity = '0.6';
-                    addModuleBtn.style.cursor = 'not-allowed';
-                }
-                
-                // Render Gantt chart and return early
-                try {
-                    await this.renderFirstReviewGanttChart();
-                } catch (ganttError) {
-                    console.error('Error rendering Gantt chart:', ganttError);
-                }
-                
-                return; // Exit early - don't continue with module rendering
-            }
             
             // Populate module dropdown (only modules not already added)
             if (moduleSelect) {
@@ -25713,7 +26129,7 @@ const app = {
                         <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
                                 <i class="fas fa-edit" style="font-size: 1.1rem;"></i>
-                                <strong style="font-size: 0.95rem;">Draft - Schedule your first review tasks</strong>
+                                <strong style="font-size: 0.95rem;">Draft - Schedule your first sprint tasks</strong>
                             </div>
                         </div>
                     `;
@@ -25763,8 +26179,22 @@ const app = {
             // Only render if not in verification state (skip if submitted but not verified)
             // IMPORTANT: If submitted but not verified, we already set the message above, so skip rendering
             if (!(isSubmitted && !isVerified)) {
-                if (scheduleData.modules.length === 0) {
-                    modulesListContainer.innerHTML = '<p class="empty-state">No modules added yet. Add modules from project planning to schedule first review tasks.</p>';
+                // Show empty state if no modules and no standalone backlogs
+                if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
+                    modulesListContainer.innerHTML = `
+                        <div style="padding: 3rem 2rem; text-align: center; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 12px; border: 2px dashed #3b82f6; margin: 2rem 0;">
+                            <i class="fas fa-clipboard-list" style="font-size: 3rem; color: #3b82f6; margin-bottom: 1rem;"></i>
+                            <h3 style="margin: 0 0 0.75rem 0; color: #1e40af; font-size: 1.2rem; font-weight: 600;">
+                                No First Sprint Schedule Yet
+                            </h3>
+                            <p style="margin: 0.5rem 0; color: #1e40af; font-size: 1rem; line-height: 1.6;">
+                                Add modules from project planning to schedule your first sprint tasks.
+                            </p>
+                            <p style="margin: 1rem 0 0 0; color: #64748b; font-size: 0.9rem;">
+                                Use the "Add Module from Project Planning" section above to get started.
+                            </p>
+                        </div>
+                    `;
                 } else {
                     // Sort modules by order if available
                     const sortedModules = [...scheduleData.modules].sort((a, b) => {
@@ -25996,7 +26426,7 @@ const app = {
                 }
             }
         } catch (error) {
-            console.error('Error loading first review schedule:', error);
+            console.error('Error loading first sprint schedule:', error);
             if (modulesListContainer) {
                 // Check if it's a submitted but not verified state - show appropriate message
                 try {
@@ -26018,7 +26448,7 @@ const app = {
                                             Admin Verification In Progress
                                         </h3>
                                         <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem;">
-                                            Your first review schedule has been submitted and is currently under admin review.
+                                            Your first sprint schedule has been submitted and is currently under admin review.
                                         </p>
                                         <p style="margin: 0.5rem 0; color: #92400e; font-size: 0.9rem;">
                                             <i class="fas fa-clock"></i> Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
@@ -26041,7 +26471,7 @@ const app = {
                 } catch (checkError) {
                     console.error('Error checking schedule status:', checkError);
                 }
-                modulesListContainer.innerHTML = '<p class="error-message">Error loading first review schedule. Please try again.</p>';
+                modulesListContainer.innerHTML = '<p class="error-message">Error loading first sprint schedule. Please try again.</p>';
             }
         }
         
@@ -26305,7 +26735,7 @@ const app = {
             
             // Check if module already added
             if (scheduleData.modules.some(m => m.moduleId === moduleId)) {
-                alert('This module is already added to first review schedule.');
+                alert('This module is already added to first sprint schedule.');
                 return;
             }
             
@@ -26377,7 +26807,7 @@ const app = {
             await this.loadFirstReviewSchedule();
             await this.renderFirstReviewGanttChart();
             
-            alert('Module added to first review schedule!');
+            alert('Module added to first sprint schedule!');
         } catch (error) {
             console.error('Error adding module to first review:', error);
             alert('Error adding module. Please try again.');
@@ -26588,7 +27018,7 @@ const app = {
     },
     
     async removeFirstReviewModule(moduleId) {
-        if (!confirm('Are you sure you want to remove this module from first review schedule?')) {
+        if (!confirm('Are you sure you want to remove this module from first sprint schedule?')) {
             return;
         }
         
@@ -26668,7 +27098,7 @@ const app = {
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 600px;">
                 <div class="modal-header">
-                    <h2>Add Product Backlog to First Review</h2>
+                    <h2>Add Product Backlog to First Sprint</h2>
                     <button class="btn-icon" onclick="this.closest('.modal').remove()">
                         <i class="fas fa-times"></i>
                     </button>
@@ -26815,7 +27245,7 @@ const app = {
             await this.loadFirstReviewSchedule();
             await this.renderFirstReviewGanttChart();
             
-            alert('Product backlog added to first review schedule!');
+            alert('Product backlog added to first sprint schedule!');
         } catch (error) {
             console.error('Error saving first review backlog:', error);
             alert('Error saving backlog. Please try again.');
@@ -27156,7 +27586,7 @@ const app = {
     },
     
     async removeFirstReviewBacklog(backlogId, moduleId) {
-        if (!confirm('Are you sure you want to remove this product backlog from first review schedule?')) {
+        if (!confirm('Are you sure you want to remove this product backlog from first sprint schedule?')) {
             return;
         }
         
@@ -27381,7 +27811,7 @@ const app = {
                 return;
             }
             
-            if (!confirm('Are you sure you want to submit the first review schedule agreement? This will mark it as submitted for review.')) {
+            if (!confirm('Are you sure you want to submit the first sprint schedule agreement? This will mark it as submitted for review.')) {
                 return;
             }
             
@@ -27398,7 +27828,7 @@ const app = {
             // Reload
             await this.loadFirstReviewSchedule();
             
-            alert('First review schedule agreement submitted successfully! It is now locked for editing until admin verification.');
+            alert('First sprint schedule agreement submitted successfully! It is now locked for editing until admin verification.');
         } catch (error) {
             console.error('Error submitting first review schedule:', error);
             alert('Error submitting schedule. Please try again.');
@@ -28329,7 +28759,7 @@ const app = {
         }
     },
     
-    // Drag and Drop Functions for First Review Schedule
+    // Drag and Drop Functions for First Sprint Schedule
     handleModuleDragStart(event, moduleId) {
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', moduleId);

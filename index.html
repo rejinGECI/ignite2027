@@ -806,17 +806,17 @@ Bob Johnson,GHI789</pre>
                     </div>
                     
                     <div class="admin-card">
-                        <h3><i class="fas fa-check-circle"></i> First Review Evaluation Settings</h3>
-                        <p>Configure marks for first review evaluation based on completed product backlogs</p>
+                        <h3><i class="fas fa-check-circle"></i> First Sprint Evaluation Settings</h3>
+                        <p>Configure marks for first sprint evaluation based on completed product backlogs</p>
                         <div class="settings-item">
                             <div class="form-group">
-                                <label for="first-review-total-marks" style="display: block; margin-bottom: 8px; font-weight: 600;">Total Marks for First Review</label>
+                                <label for="first-review-total-marks" style="display: block; margin-bottom: 8px; font-weight: 600;">Total Marks for First Sprint</label>
                                 <input type="number" id="first-review-total-marks" class="form-input" min="0" step="0.5" 
                                        placeholder="Enter total marks (e.g., 50)" 
                                        onchange="app.saveFirstReviewTotalMarks()"
                                        style="max-width: 300px;">
                                 <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
-                                    Total marks that can be awarded for first review evaluation. Marks will be calculated based on percentage of completed product backlogs.
+                                    Total marks that can be awarded for first sprint evaluation. Marks will be calculated based on percentage of completed product backlogs.
                                 </p>
                             </div>
                         </div>
@@ -849,7 +849,7 @@ Bob Johnson,GHI789</pre>
                         <i class="fas fa-tasks"></i> Project Planning
                     </button>
                     <button class="tab-btn" data-tab="first-review" onclick="app.switchAdminMiniProjectTab('first-review')">
-                        <i class="fas fa-check-circle"></i> First Review Verification
+                        <i class="fas fa-check-circle"></i> First Sprint Verification
                     </button>
                 </div>
                 
@@ -1023,19 +1023,26 @@ Bob Johnson,GHI789</pre>
                         </div>
                     </div>
                     
-                    <!-- First Review Verification Tab -->
+                    <!-- First Sprint Verification Tab -->
                     <div id="admin-miniproject-first-review-tab" class="admin-tab-content">
                         <div class="admin-card">
-                            <h3><i class="fas fa-check-circle"></i> First Review Schedule Verification</h3>
+                            <h3><i class="fas fa-check-circle"></i> First Sprint Schedule Agreement - Consolidated View</h3>
                             <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
-                                Review and manage first review schedules submitted by teams. You can add, edit, or delete product backlogs and update schedules.
+                                Consolidated view of all teams' first sprint schedule agreements. Review status, freeze status, and generate reports.
                             </p>
                             
-                            <div class="admin-controls" style="margin-bottom: 1.5rem;">
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
                                 <input type="text" id="search-first-review-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateFirstSprintScheduleReport()">
+                                    <i class="fas fa-file-download"></i> Generate Report
+                                </button>
                             </div>
                             
-                            <div id="admin-first-review-teams-list" class="admin-teams-list">
+                            <div id="admin-first-review-consolidated-view" style="margin-bottom: 1.5rem;">
+                                <div class="loading-state">Loading consolidated view...</div>
+                            </div>
+                            
+                            <div id="admin-first-review-teams-list" class="admin-teams-list" style="display: none;">
                                 <div class="loading-state">Loading teams...</div>
                             </div>
                         </div>
@@ -1174,7 +1181,7 @@ Bob Johnson,GHI789</pre>
                         <i class="fas fa-tasks"></i> Project Planning
                     </button>
                     <button class="tab-btn" data-tab="first-review" onclick="app.switchMiniProjectTab('first-review')">
-                        <i class="fas fa-clipboard-check"></i> First Review
+                        <i class="fas fa-clipboard-check"></i> First Sprint
                     </button>
                 </div>
                 
@@ -1334,13 +1341,13 @@ Bob Johnson,GHI789</pre>
                     </div>
                 </div>
                 
-                <!-- First Review Tab -->
+                <!-- First Sprint Tab -->
                 <div id="first-review-tab" class="admin-tab-content">
                     <div class="project-planning-container">
                         <div class="project-planning-section">
-                            <h3><i class="fas fa-clipboard-check"></i> First Review Schedule</h3>
+                            <h3><i class="fas fa-clipboard-check"></i> First Sprint Schedule</h3>
                             <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
-                                Schedule your first review tasks by adding modules from project planning and setting start/end dates for product backlogs.
+                                Schedule your first sprint tasks by adding modules from project planning and setting start/end dates for product backlogs.
                             </p>
                             
                             <div id="first-review-submission-status" style="margin-bottom: 1.5rem;"></div>
@@ -1363,7 +1370,7 @@ Bob Johnson,GHI789</pre>
                             
                             <!-- Modules List -->
                             <div id="first-review-modules-list" style="margin-bottom: 2rem;">
-                                <div class="loading-state">Loading first review schedule...</div>
+                                <div class="loading-state">Loading first sprint schedule...</div>
                             </div>
                             
                             <!-- Standalone Product Backlogs (not in modules) -->
@@ -1394,7 +1401,7 @@ Bob Johnson,GHI789</pre>
                             <!-- Submit Button -->
                             <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
                                 <button type="button" class="btn btn-success" id="submit-first-review-btn" onclick="app.submitFirstReviewSchedule()" style="display: none;">
-                                    <i class="fas fa-paper-plane"></i> Submit First Review Schedule Agreement
+                                    <i class="fas fa-paper-plane"></i> Submit First Sprint Schedule Agreement
                                 </button>
                             </div>
                         </div>
