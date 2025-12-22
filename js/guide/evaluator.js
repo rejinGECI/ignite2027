@@ -118,15 +118,26 @@ export function createGuideEvaluatorModule(app) {
                     }
                 }));
                 
-                // Render teams list
+                // Render teams list with proper styling
                 teamsList.innerHTML = teamsWithStatus.map(team => {
-                    const statusClass = team.evaluatorSubmitted ? 'submitted' : 'pending';
+                    const statusClass = team.evaluatorSubmitted ? 'completed' : 'pending';
                     const statusText = team.evaluatorSubmitted ? '✓ Evaluated' : 'Pending';
+                    const statusIcon = team.evaluatorSubmitted ? 'fa-check-circle' : 'fa-clock';
                     
                     return `
-                        <div class="guide-evaluator-team-item" onclick="app.loadGuideEvaluatorEvaluationForm('${team.id}', '${stageIndex}')">
-                            <h4>${escapeHtml(team.groupName || 'Unnamed Team')}</h4>
-                            <span class="status-badge ${statusClass}">${statusText}</span>
+                        <div class="eval-team-card eval-team-${statusClass}" onclick="app.loadGuideEvaluatorEvaluationForm('${team.id}', '${stageIndex}')">
+                            <div class="eval-team-name">${escapeHtml(team.groupName || 'Unnamed Team')}</div>
+                            <div class="eval-team-info">
+                                ${team.members && team.members.length > 0 ? `
+                                    <span><i class="fas fa-users"></i> ${team.members.length} member${team.members.length !== 1 ? 's' : ''}</span>
+                                ` : ''}
+                                ${team.guideName ? `
+                                    <span><i class="fas fa-user-tie"></i> ${escapeHtml(team.guideName)}</span>
+                                ` : ''}
+                                <span class="eval-status-badge">
+                                    <i class="fas ${statusIcon}"></i> ${statusText}
+                                </span>
+                            </div>
                         </div>
                     `;
                 }).join('');

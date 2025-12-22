@@ -3697,11 +3697,71 @@ const app = {
         // Load evaluator stage dropdown
         await this.loadEvaluatorStageDropdown();
         
+        // Load all evaluator assignments
+        await this.loadAllEvaluatorAssignments();
+        
         // Load team order settings
         await this.loadTeamOrderSettings();
         
         // Load important dates
         await this.loadImportantDates();
+        
+        // Load first review total marks
+        await this.loadFirstReviewTotalMarks();
+    },
+    
+    async loadFirstReviewTotalMarks() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const firstReviewTotalMarks = settingsDoc.exists() ? (settingsDoc.data().firstReviewTotalMarks || 0) : 0;
+            const input = document.getElementById('first-review-total-marks');
+            if (input) {
+                input.value = firstReviewTotalMarks;
+            }
+        } catch (error) {
+            console.error('Error loading first review total marks:', error);
+        }
+    },
+    
+    async saveFirstReviewTotalMarks() {
+        if (!this.isAdmin) {
+            alert('Only administrators can change this setting.');
+            return;
+        }
+        
+        const input = document.getElementById('first-review-total-marks');
+        if (!input) return;
+        
+        const totalMarks = parseFloat(input.value) || 0;
+        
+        if (totalMarks < 0) {
+            alert('Total marks cannot be negative.');
+            input.value = 0;
+            return;
+        }
+        
+        try {
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                firstReviewTotalMarks: totalMarks,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            }, { merge: true });
+            
+            alert('First review total marks saved successfully!');
+        } catch (error) {
+            console.error('Error saving first review total marks:', error);
+            alert('Error saving first review total marks. Please try again.');
+        }
+    },
+    
+    async getFirstReviewTotalMarks() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            return settingsDoc.exists() ? (settingsDoc.data().firstReviewTotalMarks || 0) : 0;
+        } catch (error) {
+            console.error('Error getting first review total marks:', error);
+            return 0;
+        }
     },
     
     async loadTeamOrderSettings() {
@@ -4165,6 +4225,117 @@ const app = {
         }
     },
     
+    async loadAllEvaluatorAssignments() {
+        const container = document.getElementById('all-evaluator-assignments-container');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<p class="empty-state" style="text-align: center; color: #666;">Loading evaluator assignments...</p>';
+            
+            // Load all evaluation stages
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            
+            if (stages.length === 0) {
+                container.innerHTML = '<p class="empty-state" style="text-align: center; color: #666;">No evaluation stages found. Please add stages first.</p>';
+                return;
+            }
+            
+            // Load all faculty members
+            const facultyQuery = query(
+                collection(window.firebaseDb, 'users'),
+                where('role', '==', 'guide')
+            );
+            const facultySnapshot = await getDocs(facultyQuery);
+            
+            const facultyMap = new Map();
+            facultySnapshot.forEach(doc => {
+                const data = doc.data();
+                facultyMap.set(doc.id, {
+                    id: doc.id,
+                    name: data.name || data.username || 'Unknown',
+                    email: data.email || ''
+                });
+            });
+            
+            // Load assignments for all stages
+            const assignmentsData = await Promise.all(
+                stages.map(async (stage, index) => {
+                    try {
+                        const assignmentDoc = await getDoc(
+                            doc(window.firebaseDb, 'evaluatorAssignments', `stage_${index}`)
+                        );
+                        const assignedEvaluatorIds = assignmentDoc.exists() 
+                            ? (assignmentDoc.data().evaluatorIds || [])
+                            : [];
+                        
+                        const assignedEvaluators = assignedEvaluatorIds
+                            .map(id => facultyMap.get(id))
+                            .filter(e => e !== undefined);
+                        
+                        return {
+                            stageIndex: index,
+                            stageName: stage.name || `Stage ${index + 1}`,
+                            assignedEvaluators: assignedEvaluators,
+                            assignedCount: assignedEvaluators.length
+                        };
+                    } catch (error) {
+                        console.error(`Error loading assignments for stage ${index}:`, error);
+                        return {
+                            stageIndex: index,
+                            stageName: stage.name || `Stage ${index + 1}`,
+                            assignedEvaluators: [],
+                            assignedCount: 0
+                        };
+                    }
+                })
+            );
+            
+            // Render all assignments
+            container.innerHTML = assignmentsData.map(data => {
+                return `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: white; border: 1px solid #ddd; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;">
+                                ${data.stageIndex + 1}. ${this.escapeHtml(data.stageName)}
+                            </h4>
+                            <span style="padding: 4px 12px; background: ${data.assignedCount > 0 ? '#d1fae5' : '#fee2e2'}; color: ${data.assignedCount > 0 ? '#065f46' : '#991b1b'}; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                ${data.assignedCount} Evaluator${data.assignedCount !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        ${data.assignedEvaluators.length > 0 ? `
+                            <div style="margin-top: 0.75rem;">
+                                ${data.assignedEvaluators.map(evaluator => `
+                                    <div style="padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; background: #f9fafb; border-radius: 6px; border-left: 3px solid #10b981; display: flex; align-items: center; gap: 0.75rem;">
+                                        <i class="fas fa-user-check" style="color: #10b981;"></i>
+                                        <div style="flex: 1;">
+                                            <div style="font-weight: 500; color: var(--text-primary); font-size: 0.9rem;">
+                                                ${this.escapeHtml(evaluator.name)}
+                                            </div>
+                                            ${evaluator.email ? `
+                                                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                                    ${this.escapeHtml(evaluator.email)}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; text-align: center; color: #991b1b; font-size: 0.9rem;">
+                                <i class="fas fa-exclamation-circle"></i> No evaluators assigned
+                            </div>
+                        `}
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading all evaluator assignments:', error);
+            container.innerHTML = '<p class="error-message" style="text-align: center; color: #d32f2f;">Error loading evaluator assignments. Please try again.</p>';
+        }
+    },
+    
     async loadEvaluatorsForStage() {
         const stageSelect = document.getElementById('evaluator-stage-select');
         const assignmentSection = document.getElementById('evaluator-assignment-section');
@@ -4291,6 +4462,9 @@ const app = {
             
             // Reload the list to show updated status
             await this.loadEvaluatorsForStage();
+            
+            // Reload all assignments view
+            await this.loadAllEvaluatorAssignments();
             
             // Clear status message after 3 seconds
             setTimeout(() => {
@@ -7844,6 +8018,80 @@ const app = {
                 return;
             }
             
+            // Check if this is First Review stage and if schedule is frozen
+            const isFirstReviewStage = stage.name && stage.name.toLowerCase().includes('first review');
+            let firstReviewScheduleData = null;
+            let firstReviewBacklogs = [];
+            let checkedBacklogIds = [];
+            
+            if (isFirstReviewStage) {
+                try {
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+                    if (scheduleDoc.exists()) {
+                        firstReviewScheduleData = scheduleDoc.data();
+                        const isFrozen = firstReviewScheduleData.frozen === true;
+                        
+                        if (isFrozen) {
+                            // Load all product backlogs from firstReviewBacklogs collection
+                            const firstReviewBacklogQuery = query(
+                                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                where('teamId', '==', teamId)
+                            );
+                            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                            const allBacklogs = [];
+                            firstReviewBacklogSnapshot.forEach(doc => {
+                                allBacklogs.push({ id: doc.id, ...doc.data() });
+                            });
+                            
+                            // Load modules for names
+                            const modulesQuery = query(
+                                collection(window.firebaseDb, 'cardSortingModules'),
+                                where('teamId', '==', teamId)
+                            );
+                            const modulesSnapshot = await getDocs(modulesQuery);
+                            const allModules = [];
+                            modulesSnapshot.forEach(doc => {
+                                allModules.push({ id: doc.id, ...doc.data() });
+                            });
+                            
+                            // Get backlogs from modules
+                            if (firstReviewScheduleData.modules) {
+                                firstReviewScheduleData.modules.forEach(module => {
+                                    if (module.productBacklogs) {
+                                        module.productBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                firstReviewBacklogs.push({
+                                                    ...backlog,
+                                                    moduleId: module.moduleId,
+                                                    moduleName: allModules.find(m => m.id === module.moduleId)?.name || 'Unknown Module'
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+                            
+                            // Get standalone backlogs
+                            if (firstReviewScheduleData.standaloneBacklogs) {
+                                firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                    if (backlog) {
+                                        firstReviewBacklogs.push({
+                                            ...backlog,
+                                            moduleId: null,
+                                            moduleName: 'Standalone'
+                                        });
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error loading first review schedule:', error);
+                }
+            }
+            
             // Load existing evaluation data from current evaluator's entry
             let evalData = {};
             let teamComments = '';
@@ -7858,9 +8106,11 @@ const app = {
                         teamMarks: evaluatorData.teamMarks || null,
                         teamMarksData: evaluatorData.teamMarksData || {},
                         teamComments: evaluatorData.teamComments || evaluatorData.comments || '',
-                        individualEvaluations: evaluatorData.individualEvaluations || {}
+                        individualEvaluations: evaluatorData.individualEvaluations || {},
+                        firstReviewCheckedBacklogs: evaluatorData.firstReviewCheckedBacklogs || []
                     };
                     teamComments = evalData.teamComments;
+                    checkedBacklogIds = evalData.firstReviewCheckedBacklogs || [];
                 }
             } catch (error) {
                 console.warn('Error loading evaluator entry:', error);
@@ -8015,6 +8265,64 @@ const app = {
                                     ` : ''}
                                 </div>
                             `).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewBacklogs.length > 0 ? `
+                        <!-- First Review Product Backlog Checklist -->
+                        <div class="evaluation-section" style="margin-top: 1.5rem; margin-bottom: 1.5rem; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1.5rem;">
+                            <h5 style="margin-bottom: 1rem; color: #059669; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i> First Review - Product Backlog Completion
+                                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: auto;">
+                                    <i class="fas fa-lock"></i> Schedule Frozen
+                                </span>
+                            </h5>
+                            
+                            <div style="margin-bottom: 1rem; padding: 0.75rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.95rem;">Progress:</strong>
+                                        <span id="first-review-progress-percentage" style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">0%</span>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <strong style="color: var(--text-primary); font-size: 0.95rem;">Marks:</strong>
+                                        <span id="first-review-marks-display" style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">0</span>
+                                        <span id="first-review-total-marks-display" style="font-size: 0.9rem; color: var(--text-secondary);">/ 0</span>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 0.75rem;">
+                                    <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                                        <div id="first-review-progress-bar" style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: 0%; transition: width 0.3s ease; border-radius: 6px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #d1fae5; border-radius: 6px; padding: 0.75rem; background: white;">
+                                ${firstReviewBacklogs.map((backlog, index) => {
+                                    const isChecked = checkedBacklogIds.includes(String(backlog.id));
+                                    return `
+                                        <div style="padding: 0.75rem; margin-bottom: ${index < firstReviewBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < firstReviewBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: ${isChecked ? '#f0fdf4' : '#fafafa'}; transition: background 0.2s;">
+                                            <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" 
+                                                       class="first-review-backlog-checkbox" 
+                                                       data-backlog-id="${backlog.id}"
+                                                       ${isChecked ? 'checked' : ''}
+                                                       onchange="app.updateFirstReviewProgress()"
+                                                       style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
+                                                <div style="flex: 1;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
+                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    </div>
+                                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                        <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
+                                                        ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     ` : ''}
                     
@@ -8210,9 +8518,46 @@ const app = {
                     });
                 });
             }
+            
+            // Initialize first review progress if applicable
+            if (isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewBacklogs.length > 0) {
+                await this.updateFirstReviewProgress();
+            }
         } catch (error) {
             console.error('Error loading guide evaluator evaluation form:', error);
             alert('Error loading evaluation form. Please try again.');
+        }
+    },
+    
+    async updateFirstReviewProgress() {
+        const checkboxes = document.querySelectorAll('.first-review-backlog-checkbox');
+        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        const totalCount = checkboxes.length;
+        const percentage = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
+        
+        // Update percentage display
+        const percentageEl = document.getElementById('first-review-progress-percentage');
+        if (percentageEl) {
+            percentageEl.textContent = `${percentage}%`;
+        }
+        
+        // Update progress bar
+        const progressBar = document.getElementById('first-review-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = `${percentage}%`;
+        }
+        
+        // Calculate and update marks
+        const totalMarks = await this.getFirstReviewTotalMarks();
+        const calculatedMarks = totalMarks > 0 ? Math.round((percentage / 100) * totalMarks * 100) / 100 : 0;
+        
+        const marksDisplay = document.getElementById('first-review-marks-display');
+        const totalMarksDisplay = document.getElementById('first-review-total-marks-display');
+        if (marksDisplay) {
+            marksDisplay.textContent = calculatedMarks.toFixed(2);
+        }
+        if (totalMarksDisplay) {
+            totalMarksDisplay.textContent = `/ ${totalMarks}`;
         }
     },
     
@@ -8403,6 +8748,16 @@ const app = {
                 individualEvaluations[userId] = individualEval;
             });
             
+            // Get first review checked backlogs if applicable
+            let firstReviewCheckedBacklogs = [];
+            const isFirstReviewStage = stage.name && stage.name.toLowerCase().includes('first review');
+            if (isFirstReviewStage) {
+                const checkboxes = document.querySelectorAll('.first-review-backlog-checkbox');
+                firstReviewCheckedBacklogs = Array.from(checkboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.dataset.backlogId);
+            }
+            
             // Get evaluator info
             const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
             const userData = userDoc.exists() ? userDoc.data() : {};
@@ -8428,6 +8783,7 @@ const app = {
                 individualEvaluations: individualEvaluations,
                 comments: teamComments || '', // For backward compatibility
                 marks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
+                firstReviewCheckedBacklogs: firstReviewCheckedBacklogs,
                 timestamp: serverTimestamp(),
                 updatedAt: serverTimestamp()
             };
@@ -13944,18 +14300,24 @@ const app = {
             }
             
             const approvedPS = problemStatementsSnapshot.docs[0].data();
+            const problemStatementId = problemStatementsSnapshot.docs[0].id;
             section.style.display = 'block';
             
             content.innerHTML = `
-                <div style="margin-bottom: 1rem;">
-                    <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.1rem;">
-                        ${this.escapeHtml(approvedPS.title || 'Untitled')}
-                    </h4>
-                    ${approvedPS.area ? `
-                        <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
-                            <i class="fas fa-tag"></i> ${this.escapeHtml(approvedPS.area)}
-                        </span>
-                    ` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.1rem;">
+                            ${this.escapeHtml(approvedPS.title || 'Untitled')}
+                        </h4>
+                        ${approvedPS.area ? `
+                            <span style="padding: 4px 10px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.85rem; font-weight: 500;">
+                                <i class="fas fa-tag"></i> ${this.escapeHtml(approvedPS.area)}
+                            </span>
+                        ` : ''}
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.showEditProblemStatementModal('${problemStatementId}')" style="margin-left: 1rem;">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
                 </div>
                 <div style="padding: 1rem; background: var(--bg-color); border-radius: 6px; margin-bottom: 1rem;">
                     <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">
@@ -13979,6 +14341,119 @@ const app = {
         } catch (error) {
             console.error('Error loading approved problem statement:', error);
             section.style.display = 'none';
+        }
+    },
+    
+    // Show edit problem statement modal
+    async showEditProblemStatementModal(problemStatementId) {
+        const modal = document.getElementById('edit-problem-statement-modal');
+        if (!modal) return;
+        
+        try {
+            // Load the problem statement data
+            const problemStatementDoc = await getDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
+            if (!problemStatementDoc.exists()) {
+                alert('Problem statement not found.');
+                return;
+            }
+            
+            const problemStatementData = problemStatementDoc.data();
+            
+            // Check if it's approved
+            if (!problemStatementData.approved) {
+                alert('Only approved problem statements can be edited.');
+                return;
+            }
+            
+            // Populate form fields
+            document.getElementById('edit-problem-statement-id').value = problemStatementId;
+            document.getElementById('edit-problem-title').value = problemStatementData.title || '';
+            document.getElementById('edit-problem-statement').value = problemStatementData.problemStatement || '';
+            document.getElementById('edit-problem-area').value = problemStatementData.area || '';
+            document.getElementById('edit-problem-solution').value = problemStatementData.solution || '';
+            
+            // Show modal
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading problem statement for editing:', error);
+            alert('Error loading problem statement. Please try again.');
+        }
+    },
+    
+    // Close edit problem statement modal
+    closeEditProblemStatementModal() {
+        const modal = document.getElementById('edit-problem-statement-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    },
+    
+    // Save edited problem statement
+    async saveEditedProblemStatement() {
+        const problemStatementId = document.getElementById('edit-problem-statement-id').value;
+        const title = document.getElementById('edit-problem-title').value.trim();
+        const problemStatement = document.getElementById('edit-problem-statement').value.trim();
+        const area = document.getElementById('edit-problem-area').value.trim();
+        const solution = document.getElementById('edit-problem-solution').value.trim();
+        
+        if (!title || !problemStatement || !area || !solution) {
+            alert('Please fill in all required fields.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Get current problem statement data
+            const problemStatementDoc = await getDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId));
+            if (!problemStatementDoc.exists()) {
+                alert('Problem statement not found.');
+                return;
+            }
+            
+            const currentData = problemStatementDoc.data();
+            
+            // Check if it's approved
+            if (!currentData.approved) {
+                alert('Only approved problem statements can be edited.');
+                return;
+            }
+            
+            // Update problem statement
+            await updateDoc(doc(window.firebaseDb, 'problemStatements', problemStatementId), {
+                title: title,
+                problemStatement: problemStatement,
+                area: area,
+                solution: solution,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            });
+            
+            // Update team's topic, problem statement, and area in projectGroups
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', team.id), {
+                topic: title,
+                problemStatement: problemStatement,
+                area: area,
+                updatedAt: serverTimestamp()
+            });
+            
+            // Close modal
+            this.closeEditProblemStatementModal();
+            
+            // Reload the approved problem statement display
+            await this.loadApprovedProblemStatement(team.id);
+            
+            // Reload student mini project page to update topic display
+            await this.loadStudentMiniProject();
+            
+            alert('Problem statement updated successfully!');
+        } catch (error) {
+            console.error('Error saving edited problem statement:', error);
+            alert('Error saving problem statement. Please try again.');
         }
     },
     
