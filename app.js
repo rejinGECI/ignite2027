@@ -28328,8 +28328,15 @@ const app = {
             // Collect all items with dates for Gantt chart
             const ganttItems = [];
             
-            // Add modules
-            scheduleData.modules.forEach(scheduleModule => {
+            // Sort modules by order (same as in loadFirstReviewSchedule)
+            const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+            
+            // Add modules (in sorted order)
+            sortedModules.forEach(scheduleModule => {
                 const module = allModules.find(m => m.id === scheduleModule.moduleId);
                 if (module && scheduleModule.startDate && scheduleModule.endDate) {
                     ganttItems.push({
@@ -28338,13 +28345,14 @@ const app = {
                         startDate: new Date(scheduleModule.startDate),
                         endDate: new Date(scheduleModule.endDate),
                         color: '#3b82f6',
-                        moduleId: scheduleModule.moduleId
+                        moduleId: scheduleModule.moduleId,
+                        order: scheduleModule.order !== undefined ? scheduleModule.order : 999999
                     });
                 }
             });
             
             // Add backlogs from modules - ONLY from schedule's productBacklogs (which are from firstReviewBacklogs)
-            scheduleData.modules.forEach(scheduleModule => {
+            sortedModules.forEach(scheduleModule => {
                 if (!scheduleModule.productBacklogs || scheduleModule.productBacklogs.length === 0) return;
                 
                 // Get backlog IDs from schedule
@@ -28356,8 +28364,22 @@ const app = {
                     scheduledBacklogIds.includes(String(b.id))
                 );
                 
-                moduleBacklogs.forEach(backlog => {
+                // Sort backlogs by order (same as in loadFirstReviewSchedule)
+                const sortedBacklogs = moduleBacklogs.map(backlog => {
                     const scheduleBacklog = scheduleModule.productBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedBacklogs.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
                     const startDate = scheduleBacklog?.startDate || scheduleModule.startDate;
                     const endDate = scheduleBacklog?.endDate || scheduleModule.endDate;
                     
@@ -28373,7 +28395,8 @@ const app = {
                                 endDate: end,
                                 color: this.getPriorityColor(backlog.priority || 'medium'),
                                 moduleId: scheduleModule.moduleId,
-                                priority: backlog.priority || 'medium'
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
                             });
                         }
                     }
@@ -28388,8 +28411,22 @@ const app = {
                     standaloneBacklogIds.includes(String(b.id))
                 );
                 
-                standaloneBacklogs.forEach(backlog => {
+                // Sort standalone backlogs by order (same as in loadFirstReviewSchedule)
+                const sortedStandaloneBacklogs = standaloneBacklogs.map(backlog => {
                     const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedStandaloneBacklogs.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
                     const startDate = scheduleBacklog?.startDate || '';
                     const endDate = scheduleBacklog?.endDate || '';
                     
@@ -28405,7 +28442,8 @@ const app = {
                                 endDate: end,
                                 color: this.getPriorityColor(backlog.priority || 'medium'),
                                 moduleId: null,
-                                priority: backlog.priority || 'medium'
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
                             });
                         }
                     }
@@ -28493,6 +28531,32 @@ const app = {
                 }
             });
             
+            // Sort backlogs within each module by order
+            Object.keys(moduleGroups).forEach(moduleId => {
+                if (moduleGroups[moduleId].backlogs) {
+                    moduleGroups[moduleId].backlogs.sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                }
+            });
+            
+            // Sort standalone items by order
+            standaloneItems.sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+            
+            // Convert moduleGroups to sorted array to preserve module order
+            const sortedModuleGroups = Object.values(moduleGroups).sort((a, b) => {
+                // Get module order (or 999999 if no module)
+                const orderA = a.module?.order !== undefined ? a.module.order : 999999;
+                const orderB = b.module?.order !== undefined ? b.module.order : 999999;
+                return orderA - orderB;
+            });
+            
             // Render Gantt chart with proper width to show all dates
             const chartWidth = Math.max(totalDays * dayWidth, 1200); // Ensure minimum width
             let html = `
@@ -28511,8 +28575,8 @@ const app = {
                     <div style="display: flex; flex-direction: column; gap: 0.5rem; width: ${chartWidth}px;">
             `;
             
-            // Render modules and their backlogs
-            Object.values(moduleGroups).forEach((group, groupIndex) => {
+            // Render modules and their backlogs (in sorted order)
+            sortedModuleGroups.forEach((group, groupIndex) => {
                 if (group.module) {
                     html += this.renderGanttBar(group.module, minDate, dayWidth, 200, true);
                 }
@@ -28521,7 +28585,7 @@ const app = {
                 });
             });
             
-            // Render standalone items
+            // Render standalone items (in sorted order)
             standaloneItems.forEach(item => {
                 html += this.renderGanttBar(item, minDate, dayWidth, 200, false);
             });
