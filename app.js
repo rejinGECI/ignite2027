@@ -23,7 +23,8 @@ import {
     orderBy,
     limit,
     serverTimestamp,
-    Timestamp
+    Timestamp,
+    onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
     ref,
@@ -25290,7 +25291,14 @@ const app = {
                 if (scheduleData.modules.length === 0) {
                     modulesListContainer.innerHTML = '<p class="empty-state">No modules added yet. Add modules from project planning to schedule first review tasks.</p>';
                 } else {
-                    const moduleCards = scheduleData.modules.map((scheduleModule) => {
+                    // Sort modules by order if available
+                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    
+                    const moduleCards = sortedModules.map((scheduleModule, moduleIndex) => {
                         const module = allModules.find(m => m.id === scheduleModule.moduleId);
                         if (!module) return '';
                         
@@ -25304,20 +25312,27 @@ const app = {
                             scheduledBacklogIds.includes(String(b.id))
                         );
                         
-                        // Merge with schedule data (dates from first review schedule)
+                        // Merge with schedule data (dates from first review schedule) and sort by order
                         const scheduledBacklogs = moduleBacklogs.map(backlog => {
                             // Ensure string comparison for backlogId matching
                             const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
                             return {
                                 ...backlog,
                                 startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
-                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || ''
+                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
+                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999
                             };
+                        }).sort((a, b) => {
+                            const orderA = a.order !== undefined ? a.order : 999999;
+                            const orderB = b.order !== undefined ? b.order : 999999;
+                            return orderA - orderB;
                         });
                         
-                        return this.renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit);
+                        return this.renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit, moduleIndex);
                     });
                     modulesListContainer.innerHTML = moduleCards.join('');
+                    
+                    // No need for drag and drop initialization - using up/down buttons instead
                 }
             }
             
@@ -25330,24 +25345,36 @@ const app = {
                     standaloneBacklogIds.includes(String(b.id))
                 );
                 
-                const scheduledStandalone = standaloneBacklogs.map(backlog => {
+                const scheduledStandalone = standaloneBacklogs.map((backlog, index) => {
                     // Ensure string comparison for backlogId matching
                     const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
                     return {
                         ...backlog,
                         startDate: scheduleBacklog?.startDate || '',
-                        endDate: scheduleBacklog?.endDate || ''
+                        endDate: scheduleBacklog?.endDate || '',
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        _standaloneIndex: index
                     };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
                 });
                 
                 if (scheduledStandalone.length === 0) {
                     standaloneBacklogsContainer.innerHTML = '<p class="empty-state">No standalone product backlogs yet.</p>';
                 } else {
-                    standaloneBacklogsContainer.innerHTML = scheduledStandalone.map((backlog, index) => {
-                        // Pass canEdit to the rendering
-                        backlog._canEdit = canEdit;
-                        return backlog;
-                    }).map(backlog => {
+                    const standaloneCount = scheduledStandalone.length;
+                    standaloneBacklogsContainer.innerHTML = `
+                        <div class="first-review-standalone-backlogs-container first-review-sortable-container" 
+                             data-module-id="standalone"
+                             style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${scheduledStandalone.map((backlog, index) => {
+                                // Pass canEdit to the rendering
+                                backlog._canEdit = canEdit;
+                                backlog._standaloneIndex = index;
+                                return backlog;
+                            }).map(backlog => {
                         // Priority colors
                         const priorityColors = {
                             low: { bg: '#e5e7eb', text: '#4b5563', border: '#d1d5db' },
@@ -25384,9 +25411,33 @@ const app = {
                             }
                         }
                         
-                        return `
-                            <div class="first-review-backlog-item" style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.75rem;">
+                            return `
+                            <div class="first-review-backlog-item first-review-backlog-card" 
+                                 data-backlog-id="${backlog.id}" 
+                                 data-module-id="standalone"
+                                 data-backlog-order="${backlog.order !== undefined ? backlog.order : backlog._standaloneIndex}"
+                                 style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.75rem;">
                                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                    ${backlog._canEdit ? `
+                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; margin-right: 0.5rem;">
+                                        <button type="button" 
+                                                class="btn btn-sm" 
+                                                onclick="app.moveFirstReviewBacklogUp('${backlog.id}', 'standalone', ${backlog._standaloneIndex})"
+                                                style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                title="Move up"
+                                                ${backlog._standaloneIndex === 0 ? 'disabled' : ''}>
+                                            <i class="fas fa-chevron-up"></i>
+                                        </button>
+                                        <button type="button" 
+                                                class="btn btn-sm" 
+                                                onclick="app.moveFirstReviewBacklogDown('${backlog.id}', 'standalone', ${backlog._standaloneIndex}, ${standaloneCount - 1})"
+                                                style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                title="Move down"
+                                                ${backlog._standaloneIndex === standaloneCount - 1 ? 'disabled' : ''}>
+                                            <i class="fas fa-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                    ` : ''}
                                     <div style="flex: 1;">
                                         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                                             <div style="font-weight: 600; color: var(--text-primary);">
@@ -25440,7 +25491,11 @@ const app = {
                                 </div>
                             </div>
                         `;
-                    }).join('');
+                    }).join('')}
+                        </div>
+                    `;
+                    
+                    // No need for drag and drop initialization - using up/down buttons instead
                 }
             }
             
@@ -25523,15 +25578,28 @@ const app = {
         }
     },
     
-    renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true) {
+    renderFirstReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true, moduleIndex = 0) {
         // Color coding for modules - use gradient border
         const hasDates = scheduleModule.startDate && scheduleModule.endDate;
         const borderColor = hasDates ? '#3b82f6' : '#9ca3af';
         const borderStyle = hasDates ? '2px solid' : '1px solid';
         
         return `
-            <div class="first-review-module-card" style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: ${borderStyle} ${borderColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div class="first-review-module-card" 
+                 data-module-id="${scheduleModule.moduleId}" 
+                 data-module-order="${scheduleModule.order !== undefined ? scheduleModule.order : moduleIndex}"
+                 draggable="${canEdit ? 'true' : 'false'}"
+                 style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: ${borderStyle} ${borderColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); ${canEdit ? 'cursor: move;' : ''}"
+                 ondragstart="${canEdit ? `app.handleModuleDragStart(event, '${scheduleModule.moduleId}')` : ''}"
+                 ondragover="${canEdit ? `app.handleModuleDragOver(event)` : ''}"
+                 ondrop="${canEdit ? `app.handleModuleDrop(event, '${scheduleModule.moduleId}')` : ''}"
+                 ondragend="${canEdit ? `app.handleModuleDragEnd(event)` : ''}">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    ${canEdit ? `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem;">
+                        <i class="fas fa-grip-vertical" style="color: #9ca3af; cursor: move; font-size: 1rem;" title="Drag to reorder module"></i>
+                    </div>
+                    ` : ''}
                     <div style="flex: 1;">
                         <h4 style="margin: 0 0 0.5rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
                             <i class="fas fa-folder" style="color: #3b82f6;"></i> ${this.escapeHtml(module.name || 'Unnamed Module')}
@@ -25589,9 +25657,12 @@ const app = {
                     
                     ${scheduledBacklogs.length === 0 ? '<p class="empty-state" style="font-size: 0.9rem;">No product backlogs in this module.</p>' : ''}
                     
-                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        ${scheduledBacklogs.map(backlog => {
+                    <div class="first-review-backlogs-container first-review-sortable-container" 
+                         data-module-id="${scheduleModule.moduleId}"
+                         style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${scheduledBacklogs.map((backlog, backlogIndex) => {
                             backlog._canEdit = canEdit;
+                            backlog._backlogIndex = backlogIndex;
                             return backlog;
                         }).map(backlog => {
                             // Priority colors
@@ -25634,8 +25705,32 @@ const app = {
                             }
                             
                             return `
-                                <div class="first-review-backlog-item" style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div class="first-review-backlog-item first-review-backlog-card" 
+                                     data-backlog-id="${backlog.id}" 
+                                     data-module-id="${scheduleModule.moduleId}"
+                                     data-backlog-order="${backlog.order !== undefined ? backlog.order : backlog._backlogIndex}"
+                                     style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                        ${backlog._canEdit ? `
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; margin-right: 0.5rem;">
+                                            <button type="button" 
+                                                    class="btn btn-sm" 
+                                                    onclick="app.moveFirstReviewBacklogUp('${backlog.id}', '${scheduleModule.moduleId}', ${backlog._backlogIndex})"
+                                                    style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                    title="Move up"
+                                                    ${backlog._backlogIndex === 0 ? 'disabled' : ''}>
+                                                <i class="fas fa-chevron-up"></i>
+                                            </button>
+                                            <button type="button" 
+                                                    class="btn btn-sm" 
+                                                    onclick="app.moveFirstReviewBacklogDown('${backlog.id}', '${scheduleModule.moduleId}', ${backlog._backlogIndex}, ${scheduledBacklogs.length - 1})"
+                                                    style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                    title="Move down"
+                                                    ${backlog._backlogIndex === scheduledBacklogs.length - 1 ? 'disabled' : ''}>
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </div>
+                                        ` : ''}
                                         <div style="flex: 1;">
                                             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                                                 <div style="font-weight: 600; color: var(--text-primary);">
@@ -27757,6 +27852,623 @@ const app = {
             console.error('Error unfreezing schedule:', error);
             alert('Error unfreezing schedule. Please try again.');
         }
+    },
+    
+    // Drag and Drop Functions for First Review Schedule
+    handleModuleDragStart(event, moduleId) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', moduleId);
+        event.dataTransfer.setData('type', 'module');
+        event.currentTarget.style.opacity = '0.5';
+    },
+    
+    handleModuleDragOver(event) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        const target = event.currentTarget;
+        if (target.classList.contains('first-review-module-card')) {
+            target.style.borderTop = '3px solid #3b82f6';
+        }
+    },
+    
+    async handleModuleDrop(event, targetModuleId) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const draggedModuleId = event.dataTransfer.getData('text/plain');
+        if (!draggedModuleId || draggedModuleId === targetModuleId) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Modules cannot be reordered. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            const draggedIndex = scheduleData.modules.findIndex(m => m.moduleId === draggedModuleId);
+            const targetIndex = scheduleData.modules.findIndex(m => m.moduleId === targetModuleId);
+            
+            if (draggedIndex === -1 || targetIndex === -1) return;
+            
+            // Reorder modules
+            const [draggedModule] = scheduleData.modules.splice(draggedIndex, 1);
+            scheduleData.modules.splice(targetIndex, 0, draggedModule);
+            
+            // Update order values
+            scheduleData.modules.forEach((module, index) => {
+                module.order = index;
+            });
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            // Reload to show updated order
+            await this.loadFirstReviewSchedule();
+        } catch (error) {
+            console.error('Error reordering modules:', error);
+            alert('Error reordering modules. Please try again.');
+        }
+    },
+    
+    handleModuleDragEnd(event) {
+        event.currentTarget.style.opacity = '1';
+        const allCards = document.querySelectorAll('.first-review-module-card');
+        allCards.forEach(card => {
+            card.style.borderTop = '';
+        });
+    },
+    
+    
+    initializeFirstReviewDragAndDrop(teamId) {
+        // Set up real-time listener only once
+        if (!this.firstReviewUnsubscribe) {
+            this.setupFirstReviewRealtimeListener(teamId);
+        }
+        
+        const cards = document.querySelectorAll('.first-review-backlog-card');
+        const containers = document.querySelectorAll('.first-review-sortable-container');
+        
+        console.log('Initializing first review drag and drop:', { 
+            cardsCount: cards.length, 
+            containersCount: containers.length 
+        });
+        
+        if (containers.length === 0 || cards.length === 0) {
+            console.log('No cards or containers found for drag and drop');
+            return;
+        }
+        
+        // Prevent duplicate initialization if called multiple times quickly
+        if (this._firstReviewDragDropInitializing) {
+            console.log('Drag and drop initialization already in progress, skipping');
+            return;
+        }
+        this._firstReviewDragDropInitializing = true;
+        setTimeout(() => {
+            this._firstReviewDragDropInitializing = false;
+        }, 500);
+        
+        let draggedCard = null;
+        let draggedModuleId = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        const createDropIndicator = () => {
+            const indicator = document.createElement('div');
+            indicator.className = 'first-review-drop-indicator';
+            indicator.style.cssText = 'height: 3px; background: #3b82f6; margin: 0.5rem 0; border-radius: 2px; opacity: 0; transition: opacity 0.2s;';
+            return indicator;
+        };
+        
+        cards.forEach((card, index) => {
+            console.log(`Setting up drag listeners for card ${index + 1}:`, {
+                backlogId: card.dataset.backlogId,
+                moduleId: card.dataset.moduleId,
+                draggable: card.draggable
+            });
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                draggedModuleId = card.dataset.moduleId;
+                e.dataTransfer.setData('text/plain', card.dataset.backlogId);
+                e.dataTransfer.effectAllowed = 'move';
+                card.style.opacity = '0.5';
+                card.style.transform = 'rotate(2deg) scale(1.05)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+                card.style.zIndex = '1000';
+                
+                // Create drop indicator
+                dropIndicator = createDropIndicator();
+            });
+            
+            card.addEventListener('dragend', (e) => {
+                card.style.opacity = '1';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+                card.style.zIndex = '';
+                
+                // Remove all drop indicators
+                document.querySelectorAll('.first-review-drop-indicator').forEach(ind => ind.remove());
+                
+                draggedCard = null;
+                draggedModuleId = null;
+                dropIndicator = null;
+            });
+            
+            // Handle drag over for sorting within same module
+            card.addEventListener('dragover', (e) => {
+                if (!draggedCard || !dropIndicator) return;
+                
+                const cardModuleId = card.dataset.moduleId;
+                
+                // Only allow sorting within the same module
+                if (draggedModuleId && cardModuleId === draggedModuleId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    // Get the container for this module
+                    const container = card.closest('.first-review-sortable-container');
+                    if (!container) return;
+                    
+                    // Remove all existing indicators in this container
+                    container.querySelectorAll('.first-review-drop-indicator').forEach(ind => {
+                        if (ind !== dropIndicator) {
+                            ind.remove();
+                        }
+                    });
+                    
+                    // Insert indicator above or below the card
+                    if (mouseY < midpoint) {
+                        // Insert above
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        card.parentElement.insertBefore(dropIndicator, card);
+                    } else {
+                        // Insert below
+                        if (dropIndicator.parentElement) {
+                            dropIndicator.remove();
+                        }
+                        if (card.nextSibling) {
+                            card.parentElement.insertBefore(dropIndicator, card.nextSibling);
+                        } else {
+                            card.parentElement.appendChild(dropIndicator);
+                        }
+                    }
+                    
+                    dropIndicator.style.opacity = '1';
+                }
+            });
+            
+            card.addEventListener('dragleave', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    const container = card.closest('.first-review-sortable-container');
+                    if (container) {
+                        const indicator = container.querySelector('.first-review-drop-indicator');
+                        if (indicator && indicator !== dropIndicator) {
+                            indicator.style.opacity = '0';
+                        }
+                    }
+                }
+            });
+            
+            // Handle drop for sorting within same module
+            card.addEventListener('drop', async (e) => {
+                if (!draggedCard) return;
+                
+                const cardModuleId = card.dataset.moduleId;
+                
+                // Only handle sorting within the same module
+                if (draggedModuleId && cardModuleId === draggedModuleId && draggedCard !== card) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const backlogId = e.dataTransfer.getData('text/plain');
+                    const targetBacklogId = card.dataset.backlogId;
+                    
+                    if (backlogId === targetBacklogId) return;
+                    
+                    // Remove drop indicator
+                    document.querySelectorAll('.first-review-drop-indicator').forEach(ind => ind.remove());
+                    
+                    // Get the container for this module
+                    const container = card.closest('.first-review-sortable-container');
+                    if (!container) return;
+                    
+                    // Get all cards in this module group
+                    const allCards = Array.from(container.querySelectorAll('.first-review-backlog-card'));
+                    
+                    // Find the drop position
+                    const rect = card.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const insertBefore = mouseY < midpoint;
+                    
+                    // Reorder cards array
+                    const draggedIndex = allCards.findIndex(c => c.dataset.backlogId === backlogId);
+                    const targetIndex = allCards.findIndex(c => c.dataset.backlogId === targetBacklogId);
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                        // Remove dragged card from array
+                        const [dragged] = allCards.splice(draggedIndex, 1);
+                        
+                        // Calculate new index
+                        let newIndex;
+                        if (draggedIndex < targetIndex) {
+                            // Moving down
+                            newIndex = insertBefore ? targetIndex - 1 : targetIndex;
+                        } else {
+                            // Moving up
+                            newIndex = insertBefore ? targetIndex : targetIndex + 1;
+                        }
+                        
+                        // Clamp to valid range
+                        newIndex = Math.max(0, Math.min(newIndex, allCards.length));
+                        
+                        // Insert at new position
+                        allCards.splice(newIndex, 0, dragged);
+                        
+                        // Update sortOrder for all backlogs in this module
+                        await this.updateFirstReviewBacklogSortOrder(cardModuleId, allCards.map(c => c.dataset.backlogId));
+                    }
+                }
+            });
+        });
+    },
+    
+    // Move backlog up in order
+    async moveFirstReviewBacklogUp(backlogId, moduleId, currentIndex) {
+        if (currentIndex === 0) return; // Already at top
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Product backlogs cannot be reordered. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            // Set flag to prevent real-time listener from triggering
+            this.firstReviewIsUpdating = true;
+            
+            if (moduleId === 'standalone') {
+                // Handle standalone backlogs
+                if (!scheduleData.standaloneBacklogs || scheduleData.standaloneBacklogs.length < 2) return;
+                
+                // Swap with previous item
+                const backlogIndex = scheduleData.standaloneBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
+                if (backlogIndex === -1 || backlogIndex === 0) return;
+                
+                const temp = scheduleData.standaloneBacklogs[backlogIndex];
+                scheduleData.standaloneBacklogs[backlogIndex] = scheduleData.standaloneBacklogs[backlogIndex - 1];
+                scheduleData.standaloneBacklogs[backlogIndex - 1] = temp;
+                
+                // Update order values
+                scheduleData.standaloneBacklogs.forEach((backlog, index) => {
+                    backlog.order = index;
+                });
+            } else {
+                // Handle module backlogs
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                
+                const module = scheduleData.modules[moduleIndex];
+                if (!module.productBacklogs || module.productBacklogs.length < 2) return;
+                
+                // Swap with previous item
+                const backlogIndex = module.productBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
+                if (backlogIndex === -1 || backlogIndex === 0) return;
+                
+                const temp = module.productBacklogs[backlogIndex];
+                module.productBacklogs[backlogIndex] = module.productBacklogs[backlogIndex - 1];
+                module.productBacklogs[backlogIndex - 1] = temp;
+                
+                // Update order values
+                module.productBacklogs.forEach((backlog, index) => {
+                    backlog.order = index;
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            // Clear flag after delay
+            setTimeout(() => {
+                this.firstReviewIsUpdating = false;
+            }, 1000);
+            
+            // Reload to show new order
+            await this.loadFirstReviewSchedule();
+        } catch (error) {
+            console.error('Error moving backlog up:', error);
+            alert('Error reordering backlog. Please try again.');
+            this.firstReviewIsUpdating = false;
+        }
+    },
+    
+    // Move backlog down in order
+    async moveFirstReviewBacklogDown(backlogId, moduleId, currentIndex, maxIndex) {
+        if (currentIndex >= maxIndex) return; // Already at bottom
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Product backlogs cannot be reordered. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            // Set flag to prevent real-time listener from triggering
+            this.firstReviewIsUpdating = true;
+            
+            if (moduleId === 'standalone') {
+                // Handle standalone backlogs
+                if (!scheduleData.standaloneBacklogs || scheduleData.standaloneBacklogs.length < 2) return;
+                
+                // Swap with next item
+                const backlogIndex = scheduleData.standaloneBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
+                if (backlogIndex === -1 || backlogIndex >= scheduleData.standaloneBacklogs.length - 1) return;
+                
+                const temp = scheduleData.standaloneBacklogs[backlogIndex];
+                scheduleData.standaloneBacklogs[backlogIndex] = scheduleData.standaloneBacklogs[backlogIndex + 1];
+                scheduleData.standaloneBacklogs[backlogIndex + 1] = temp;
+                
+                // Update order values
+                scheduleData.standaloneBacklogs.forEach((backlog, index) => {
+                    backlog.order = index;
+                });
+            } else {
+                // Handle module backlogs
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                
+                const module = scheduleData.modules[moduleIndex];
+                if (!module.productBacklogs || module.productBacklogs.length < 2) return;
+                
+                // Swap with next item
+                const backlogIndex = module.productBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
+                if (backlogIndex === -1 || backlogIndex >= module.productBacklogs.length - 1) return;
+                
+                const temp = module.productBacklogs[backlogIndex];
+                module.productBacklogs[backlogIndex] = module.productBacklogs[backlogIndex + 1];
+                module.productBacklogs[backlogIndex + 1] = temp;
+                
+                // Update order values
+                module.productBacklogs.forEach((backlog, index) => {
+                    backlog.order = index;
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            // Clear flag after delay
+            setTimeout(() => {
+                this.firstReviewIsUpdating = false;
+            }, 1000);
+            
+            // Reload to show new order
+            await this.loadFirstReviewSchedule();
+        } catch (error) {
+            console.error('Error moving backlog down:', error);
+            alert('Error reordering backlog. Please try again.');
+            this.firstReviewIsUpdating = false;
+        }
+    },
+    
+    // Update sortOrder for first review backlogs within a module
+    async updateFirstReviewBacklogSortOrder(moduleId, backlogIds) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Product backlogs cannot be reordered. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            // Set flag to prevent real-time listener from triggering
+            this.firstReviewIsUpdating = true;
+            
+            if (moduleId === 'standalone') {
+                // Handle standalone backlogs
+                if (!scheduleData.standaloneBacklogs) return;
+                
+                // Update order based on new backlogIds array
+                const updatedStandalone = backlogIds.map((backlogId, index) => {
+                    const existing = scheduleData.standaloneBacklogs.find(b => String(b.backlogId) === String(backlogId));
+                    if (existing) {
+                        return { ...existing, order: index };
+                    }
+                    return null;
+                }).filter(Boolean);
+                
+                scheduleData.standaloneBacklogs = updatedStandalone;
+            } else {
+                // Handle module backlogs
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                
+                const module = scheduleData.modules[moduleIndex];
+                if (!module.productBacklogs) return;
+                
+                // Update order based on new backlogIds array
+                const updatedBacklogs = backlogIds.map((backlogId, index) => {
+                    const existing = module.productBacklogs.find(b => String(b.backlogId) === String(backlogId));
+                    if (existing) {
+                        return { ...existing, order: index };
+                    }
+                    return null;
+                }).filter(Boolean);
+                
+                module.productBacklogs = updatedBacklogs;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            // Clear flag after delay
+            setTimeout(() => {
+                this.firstReviewIsUpdating = false;
+            }, 1000);
+            
+            // Reload to show new order
+            await this.loadFirstReviewSchedule();
+        } catch (error) {
+            console.error('Error updating first review backlog sort order:', error);
+            alert('Error updating backlog order. Please try again.');
+            this.firstReviewIsUpdating = false;
+        }
+    },
+    
+    setupFirstReviewRealtimeListener(teamId) {
+        // Remove existing listener if any
+        if (this.firstReviewUnsubscribe) {
+            this.firstReviewUnsubscribe();
+        }
+        
+        // Store last schedule data to prevent unnecessary reloads
+        let lastScheduleData = null;
+        let isReloading = false;
+        
+        // Set up real-time listener for schedule changes
+        const scheduleRef = doc(window.firebaseDb, 'firstReviewSchedule', teamId);
+        this.firstReviewUnsubscribe = onSnapshot(scheduleRef, async (docSnapshot) => {
+            // Ignore if we're making our own changes
+            if (this.firstReviewIsUpdating) {
+                return;
+            }
+            
+            if (docSnapshot.exists() && !isReloading) {
+                const currentData = docSnapshot.data();
+                
+                // Create a simplified comparison string for order changes
+                const currentDataString = JSON.stringify({
+                    modules: currentData.modules?.map(m => ({ 
+                        moduleId: m.moduleId, 
+                        order: m.order,
+                        productBacklogs: m.productBacklogs?.map(pb => ({ backlogId: pb.backlogId, order: pb.order })) || []
+                    })) || [],
+                    standaloneBacklogs: currentData.standaloneBacklogs?.map(b => ({ backlogId: b.backlogId, order: b.order })) || []
+                });
+                
+                // Only reload if order data actually changed (and not first load)
+                if (lastScheduleData !== null && lastScheduleData !== currentDataString) {
+                    // Clear any pending reload
+                    if (reloadTimeout) {
+                        clearTimeout(reloadTimeout);
+                    }
+                    
+                    // Debounce reload to prevent rapid reloads
+                    reloadTimeout = setTimeout(async () => {
+                        if (isReloading || this.firstReviewIsUpdating) return;
+                        
+                        lastScheduleData = currentDataString;
+                        isReloading = true;
+                        
+                        // Save current scroll position
+                        const savedScrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+                        
+                        // Temporarily prevent listener setup during reload
+                        const wasUpdating = this.firstReviewIsUpdating;
+                        this.firstReviewIsUpdating = true;
+                        
+                        // Reload the schedule to show updated order
+                        await this.loadFirstReviewSchedule();
+                        
+                        // Re-enable listener after a delay
+                        setTimeout(() => {
+                            this.firstReviewIsUpdating = wasUpdating;
+                        }, 500);
+                        
+                        // Restore scroll position after DOM updates
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                window.scrollTo({
+                                    top: savedScrollPosition,
+                                    behavior: 'auto'
+                                });
+                                isReloading = false;
+                            });
+                        });
+                    }, 500); // 500ms debounce
+                } else if (lastScheduleData === null) {
+                    // First load - just store the data, don't reload
+                    lastScheduleData = currentDataString;
+                }
+            }
+        }, (error) => {
+            console.error('Error in real-time listener:', error);
+        });
     }
 };
 

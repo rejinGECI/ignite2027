@@ -523,9 +523,16 @@ export function createAdminMiniProjectModule(app) {
                 if (scheduleData.modules && scheduleData.modules.length > 0) {
                     html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-folder" style="font-size: 0.9rem; color: #3b82f6;"></i> Modules</h3>';
                     
-                    for (const scheduleModule of scheduleData.modules) {
+                    // Sort modules by order
+                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    
+                    sortedModules.forEach((scheduleModule, moduleIndex) => {
                         const module = allModules.find(m => m.id === scheduleModule.moduleId);
-                        if (!module) continue;
+                        if (!module) return;
                         
                         // Get backlogs that are explicitly in the schedule's productBacklogs array
                         // Only show backlogs from firstReviewBacklogs (all backlogs in schedule are from firstReviewBacklogs)
@@ -537,12 +544,36 @@ export function createAdminMiniProjectModule(app) {
                             scheduledBacklogIds.has(String(b.id))
                         );
                         
+                        // Sort backlogs by order
+                        const sortedBacklogs = [...moduleBacklogs].map(backlog => {
+                            const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
+                            return {
+                                ...backlog,
+                                order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
+                            };
+                        }).sort((a, b) => {
+                            const orderA = a.order !== undefined ? a.order : 999999;
+                            const orderB = b.order !== undefined ? b.order : 999999;
+                            return orderA - orderB;
+                        });
+                        
                         html += `
-                            <div class="admin-card" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">
+                            <div class="admin-module-card" 
+                                 data-module-id="${scheduleModule.moduleId}" 
+                                 data-module-order="${scheduleModule.order !== undefined ? scheduleModule.order : moduleIndex}"
+                                 draggable="true"
+                                 style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc; cursor: move;"
+                                 ondragstart="app.handleAdminModuleDragStart(event, '${scheduleModule.moduleId}', '${teamId}')"
+                                 ondragover="app.handleAdminModuleDragOver(event)"
+                                 ondrop="app.handleAdminModuleDrop(event, '${scheduleModule.moduleId}', '${teamId}')"
+                                 ondragend="app.handleAdminModuleDragEnd(event)">
                                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
-                                    <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
-                                        <i class="fas fa-folder" style="color: #3b82f6; font-size: 0.85rem;"></i> ${escapeHtml(module.name || 'Unnamed Module')}
-                                    </h4>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="fas fa-grip-vertical" style="color: #9ca3af; cursor: move; font-size: 0.9rem;" title="Drag to reorder module"></i>
+                                        <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+                                            <i class="fas fa-folder" style="color: #3b82f6; font-size: 0.85rem;"></i> ${escapeHtml(module.name || 'Unnamed Module')}
+                                        </h4>
+                                    </div>
                                     <button type="button" class="btn btn-primary btn-sm" onclick="app.showAdminAddBacklogModal('${teamId}', '${scheduleModule.moduleId}')" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
                                         <i class="fas fa-plus" style="font-size: 0.7rem;"></i> Add
                                     </button>
@@ -563,15 +594,18 @@ export function createAdminMiniProjectModule(app) {
                                     </div>
                                 </div>
                                 
-                                <div id="admin-module-backlogs-${scheduleModule.moduleId}">
-                                    ${moduleBacklogs.map(backlog => {
+                                <div id="admin-module-backlogs-${scheduleModule.moduleId}" 
+                                     class="admin-backlogs-container"
+                                     data-module-id="${scheduleModule.moduleId}"
+                                     style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${sortedBacklogs.map(backlog => {
                                         const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
                                         return app.renderAdminBacklogItem(backlog, backlogSchedule, scheduleModule.moduleId, teamId);
                                     }).join('')}
                                 </div>
                             </div>
                         `;
-                    }
+                    });
                 }
                 
                 // Render standalone backlogs - ONLY from firstReviewBacklogs
@@ -635,8 +669,20 @@ export function createAdminMiniProjectModule(app) {
             const difficultyColor = difficultyColors[difficulty] || '#3b82f6';
             
             return `
-                <div style="padding: 0.75rem; background: #ffffff; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div class="admin-backlog-item" 
+                     data-backlog-id="${backlog.id}" 
+                     data-module-id="${moduleId || 'standalone'}"
+                     data-backlog-order="${backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999}"
+                     draggable="true"
+                     style="padding: 0.75rem; background: #ffffff; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: move;"
+                     ondragstart="app.handleAdminBacklogDragStart(event, '${backlog.id}', '${moduleId || 'standalone'}', '${teamId}')"
+                     ondragover="app.handleAdminBacklogDragOver(event)"
+                     ondrop="app.handleAdminBacklogDrop(event, '${backlog.id}', '${moduleId || 'standalone'}', '${teamId}')"
+                     ondragend="app.handleAdminBacklogDragEnd(event)">
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; gap: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem;">
+                            <i class="fas fa-grip-vertical" style="color: #9ca3af; cursor: move; font-size: 0.8rem;" title="Drag to reorder"></i>
+                        </div>
                         <div style="flex: 1; min-width: 0;">
                             <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem; font-size: 0.85rem; line-height: 1.3;">
                                 ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
