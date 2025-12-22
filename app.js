@@ -21065,9 +21065,41 @@ const app = {
             return;
         }
         
-        // Calculate date range
-        let minDate = new Date(Math.min(...scheduledItems.map(item => item.startDate.getTime())));
-        let maxDate = new Date(Math.max(...scheduledItems.map(item => item.endDate.getTime())));
+        // Filter out invalid date ranges (where endDate < startDate) to prevent infinite loops
+        const validScheduledItems = scheduledItems.filter(item => {
+            const isValid = item.startDate && item.endDate && item.endDate >= item.startDate;
+            if (!isValid) {
+                console.warn(`Invalid date range detected: startDate=${item.startDate}, endDate=${item.endDate} for item ${item.name}`);
+            }
+            return isValid;
+        });
+        
+        if (validScheduledItems.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 2rem;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                    <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Ranges Detected</p>
+                    <p style="color: #92400e;">Some items have end dates that are earlier than start dates. Please contact an administrator to fix the dates.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Calculate date range from valid items only
+        let minDate = new Date(Math.min(...validScheduledItems.map(item => item.startDate.getTime())));
+        let maxDate = new Date(Math.max(...validScheduledItems.map(item => item.endDate.getTime())));
+        
+        // Validate date range to prevent infinite loops
+        if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime()) || maxDate < minDate) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 2rem;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                    <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                    <p style="color: #92400e;">Unable to render Gantt chart due to invalid date ranges. Please contact an administrator to fix the dates.</p>
+                </div>
+            `;
+            return;
+        }
         
         // Add some padding
         minDate.setDate(minDate.getDate() - 7);
@@ -21075,6 +21107,16 @@ const app = {
         
         // Calculate days
         const daysDiff = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 0 || !isFinite(daysDiff)) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 2rem;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                    <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                    <p style="color: #92400e;">Unable to calculate date range. Please contact an administrator to fix the dates.</p>
+                </div>
+            `;
+            return;
+        }
         const dayWidth = Math.max(30, Math.min(50, 1200 / daysDiff));
         
         // Build Gantt chart
@@ -21086,9 +21128,11 @@ const app = {
                         <div style="display: flex; position: absolute; width: 100%; height: 100%;">
         `;
         
-        // Date headers
+        // Date headers with safety check to prevent infinite loops
         const currentDate = new Date(minDate);
-        while (currentDate <= maxDate) {
+        let loopCount = 0;
+        const maxLoopIterations = 10000; // Safety limit (about 27 years of days)
+        while (currentDate <= maxDate && loopCount < maxLoopIterations) {
             const isToday = currentDate.toDateString() === today.toDateString();
             html += `
                 <div style="width: ${dayWidth}px; border-right: 1px solid #e5e7eb; text-align: center; padding: 0.5rem 0.25rem; font-size: 0.75rem; ${isToday ? 'background: #dbeafe; font-weight: 600;' : ''}">
@@ -21097,6 +21141,19 @@ const app = {
                 </div>
             `;
             currentDate.setDate(currentDate.getDate() + 1);
+            loopCount++;
+        }
+        
+        if (loopCount >= maxLoopIterations) {
+            console.error('Gantt chart date loop exceeded safety limit. This indicates invalid date ranges.');
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 2rem;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #ef4444; margin-bottom: 1rem;"></i>
+                    <p style="color: #991b1b; font-weight: 600; margin-bottom: 0.5rem;">Date Range Error</p>
+                    <p style="color: #991b1b;">The date range is too large or invalid. Please contact an administrator to fix the dates.</p>
+                </div>
+            `;
+            return;
         }
         
         html += `
@@ -21105,8 +21162,8 @@ const app = {
                 </div>
         `;
         
-        // Task rows
-        scheduledItems.forEach((item, index) => {
+        // Task rows - only render valid items
+        validScheduledItems.forEach((item, index) => {
             const startOffset = Math.ceil((item.startDate - minDate) / (1000 * 60 * 60 * 24));
             const duration = Math.ceil((item.endDate - item.startDate) / (1000 * 60 * 60 * 24)) + 1;
             const barWidth = duration * dayWidth;
@@ -26835,10 +26892,22 @@ const app = {
             
             const module = scheduleData.modules[moduleIndex];
             
-            // Update the module date
+            // Validate date range before updating
             if (dateType === 'startDate') {
+                if (module.endDate && dateValue && new Date(dateValue) > new Date(module.endDate)) {
+                    alert('Start date cannot be later than end date. Please fix the end date first or enter a valid start date.');
+                    // Reload to reset the input
+                    await this.loadFirstReviewSchedule();
+                    return;
+                }
                 scheduleData.modules[moduleIndex].startDate = dateValue;
             } else if (dateType === 'endDate') {
+                if (module.startDate && dateValue && new Date(dateValue) < new Date(module.startDate)) {
+                    alert('End date cannot be earlier than start date. Please fix the start date first or enter a valid end date.');
+                    // Reload to reset the input
+                    await this.loadFirstReviewSchedule();
+                    return;
+                }
                 scheduleData.modules[moduleIndex].endDate = dateValue;
             }
             
@@ -26905,10 +26974,22 @@ const app = {
                 } else {
                     // Update existing backlog schedule entry - create completely new object and array to avoid any reference issues
                     const existingBacklog = scheduleData.modules[moduleIndex].productBacklogs[backlogIndex];
+                    
+                    // Validate date range before updating
+                    const newStartDate = dateType === 'startDate' ? dateValue : (existingBacklog.startDate || '');
+                    const newEndDate = dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '');
+                    
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        // Reload to reset the input
+                        await this.loadFirstReviewSchedule();
+                        return;
+                    }
+                    
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
-                        startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
-                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '')
+                        startDate: newStartDate,
+                        endDate: newEndDate
                     };
                     // Replace the entire array with a new array, ensuring all objects are new (deep copy)
                     const newProductBacklogs = scheduleData.modules[moduleIndex].productBacklogs.map((pb, idx) => {
@@ -26938,14 +27019,37 @@ const app = {
                 const backlogIndex = scheduleData.standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
                 if (backlogIndex === -1) {
                     // Create new backlog schedule entry
+                    const newStartDate = dateType === 'startDate' ? dateValue : '';
+                    const newEndDate = dateType === 'endDate' ? dateValue : '';
+                    
+                    // Validate date range
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        // Reload to reset the input
+                        await this.loadFirstReviewSchedule();
+                        return;
+                    }
+                    
                     scheduleData.standaloneBacklogs.push({ 
                         backlogId: String(backlogId), 
-                        startDate: dateType === 'startDate' ? dateValue : '', 
-                        endDate: dateType === 'endDate' ? dateValue : '' 
+                        startDate: newStartDate, 
+                        endDate: newEndDate 
                     });
                 } else {
                     // Update existing backlog schedule entry - create completely new object to avoid any reference issues
                     const existingBacklog = scheduleData.standaloneBacklogs[backlogIndex];
+                    
+                    // Validate date range before updating
+                    const newStartDate = dateType === 'startDate' ? dateValue : (existingBacklog.startDate || '');
+                    const newEndDate = dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '');
+                    
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        // Reload to reset the input
+                        await this.loadFirstReviewSchedule();
+                        return;
+                    }
+                    
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
@@ -27935,15 +28039,20 @@ const app = {
                     const endDate = scheduleBacklog?.endDate || scheduleModule.endDate;
                     
                     if (startDate && endDate) {
-                        ganttItems.push({
-                            type: 'backlog',
-                            name: backlog.task || backlog.description || 'Untitled Task',
-                            startDate: new Date(startDate),
-                            endDate: new Date(endDate),
-                            color: this.getPriorityColor(backlog.priority || 'medium'),
-                            moduleId: scheduleModule.moduleId,
-                            priority: backlog.priority || 'medium'
-                        });
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        // Only add if endDate >= startDate to prevent infinite loops
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: scheduleModule.moduleId,
+                                priority: backlog.priority || 'medium'
+                            });
+                        }
                     }
                 });
             });
@@ -27962,15 +28071,20 @@ const app = {
                     const endDate = scheduleBacklog?.endDate || '';
                     
                     if (startDate && endDate) {
-                        ganttItems.push({
-                            type: 'backlog',
-                            name: backlog.task || backlog.description || 'Untitled Task',
-                            startDate: new Date(startDate),
-                            endDate: new Date(endDate),
-                            color: this.getPriorityColor(backlog.priority || 'medium'),
-                            moduleId: null,
-                            priority: backlog.priority || 'medium'
-                        });
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        // Only add if endDate >= startDate to prevent infinite loops
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: null,
+                                priority: backlog.priority || 'medium'
+                            });
+                        }
                     }
                 });
             }
@@ -27980,23 +28094,65 @@ const app = {
                 return;
             }
             
-            // Calculate date range from ALL items (including all backlogs)
-            const allDates = ganttItems.flatMap(item => [item.startDate, item.endDate]);
+            // Filter out invalid date ranges before calculating min/max
+            const validGanttItems = ganttItems.filter(item => {
+                const isValid = item.startDate && item.endDate && item.endDate >= item.startDate;
+                if (!isValid) {
+                    console.warn(`Invalid date range in Gantt chart: startDate=${item.startDate}, endDate=${item.endDate} for item ${item.name}`);
+                }
+                return isValid;
+            });
+            
+            if (validGanttItems.length === 0) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Ranges Detected</p>
+                        <p style="color: #92400e;">Some items have end dates that are earlier than start dates. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Calculate date range from valid items only
+            const allDates = validGanttItems.flatMap(item => [item.startDate, item.endDate]);
             const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
             const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+            
+            // Validate date range to prevent infinite loops
+            if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime()) || maxDate < minDate) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                        <p style="color: #92400e;">Unable to render Gantt chart due to invalid date ranges. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
             
             // Add padding to ensure all items are visible (more padding on the end)
             minDate.setDate(minDate.getDate() - 7);
             maxDate.setDate(maxDate.getDate() + 14); // Extra padding on the end to prevent cropping
             
             const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+            if (totalDays <= 0 || !isFinite(totalDays)) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                        <p style="color: #92400e;">Unable to calculate date range. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
             const dayWidth = Math.max(30, 800 / totalDays); // Minimum 30px per day
             
-            // Group by module
+            // Group by module - use valid items only
             const moduleGroups = {};
             const standaloneItems = [];
             
-            ganttItems.forEach(item => {
+            validGanttItems.forEach(item => {
                 if (item.type === 'module') {
                     if (!moduleGroups[item.moduleId]) {
                         moduleGroups[item.moduleId] = {
@@ -28065,8 +28221,16 @@ const app = {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        // Add vertical grid lines for all days
-        while (currentDate <= maxDate) {
+        // Validate dates to prevent infinite loops
+        if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime()) || maxDate < minDate) {
+            console.error('Invalid date range in renderGanttTimelineHeader:', { minDate, maxDate });
+            return '<div style="color: #ef4444; padding: 1rem;">Invalid date range detected. Please contact an administrator.</div>';
+        }
+        
+        // Add vertical grid lines for all days with safety check
+        let loopCount = 0;
+        const maxLoopIterations = 10000; // Safety limit (about 27 years of days)
+        while (currentDate <= maxDate && loopCount < maxLoopIterations) {
             const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
             const isMonthStart = currentDate.getDate() === 1;
             const isToday = currentDate.getTime() === today.getTime();
@@ -28087,6 +28251,12 @@ const app = {
             `;
             
             currentDate.setDate(currentDate.getDate() + 1);
+            loopCount++;
+        }
+        
+        if (loopCount >= maxLoopIterations) {
+            console.error('Timeline header date loop exceeded safety limit. This indicates invalid date ranges.');
+            return '<div style="color: #ef4444; padding: 1rem;">Date range error detected. Please contact an administrator.</div>';
         }
         
         return html;
