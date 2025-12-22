@@ -6225,6 +6225,38 @@ const app = {
             const teamsCountEl = document.getElementById('guide-teams-count');
             if (teamsCountEl) teamsCountEl.textContent = teams.length;
             
+            // Calculate pending reports (teams with submitted but not verified items)
+            const planningDocs = await Promise.all(
+                teamsWithEvaluations.map(team => 
+                    getDoc(doc(window.firebaseDb, 'projectPlanning', team.id)).catch(() => null)
+                )
+            );
+            
+            let pendingReportsCount = 0;
+            planningDocs.forEach((planningDoc, index) => {
+                if (!planningDoc || !planningDoc.exists()) return;
+                const planningData = planningDoc.data();
+                
+                const userStoriesSubmitted = planningData.userStoriesSubmitted === true;
+                const userStoriesVerified = planningData.userStoriesVerified === true;
+                const productBacklogSubmitted = planningData.productBacklogSubmitted === true;
+                const productBacklogVerified = planningData.productBacklogVerified === true;
+                const cardSortingSubmitted = planningData.cardSortingSubmitted === true;
+                const cardSortingVerified = planningData.cardSortingVerified === true;
+                const scheduleSubmitted = planningData.scheduleSubmitted === true;
+                const scheduleVerified = planningData.scheduleVerified === true;
+                
+                if ((userStoriesSubmitted && !userStoriesVerified) ||
+                    (productBacklogSubmitted && !productBacklogVerified) ||
+                    (cardSortingSubmitted && !cardSortingVerified) ||
+                    (scheduleSubmitted && !scheduleVerified)) {
+                    pendingReportsCount++;
+                }
+            });
+            
+            const pendingReportsEl = document.getElementById('guide-pending-reports');
+            if (pendingReportsEl) pendingReportsEl.textContent = pendingReportsCount;
+            
             if (teams.length === 0) {
                 container.innerHTML = '<p class="empty-state">No teams assigned to you yet.</p>';
                 return;
@@ -16261,11 +16293,16 @@ const app = {
                     modules.push({ id: doc.id, ...doc.data() });
                 });
                 
+                // Load first review schedule
+                const firstReviewScheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+                const firstReviewSchedule = firstReviewScheduleDoc.exists() ? firstReviewScheduleDoc.data() : null;
+                
                 team.planningData = planningData;
                 team.users = users;
                 team.stories = stories;
                 team.backlogs = backlogs;
                 team.modules = modules;
+                team.firstReviewSchedule = firstReviewSchedule;
                 teams.push(team);
             }
             
@@ -16348,13 +16385,27 @@ const app = {
                                             <i class="fas fa-sort"></i> Card Sorting (${team.modules.length} modules)
                                         </span>
                                     ` : ''}
-                                    ${schedSubmitted || schedVerified ? `
-                                        <span style="color: var(--text-secondary); margin-left: 0.5rem;">
-                                            <i class="fas fa-calendar-alt"></i> Schedule
-                                        </span>
-                                        ${schedVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
-                                        ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
-                                    ` : ''}
+                                ${schedSubmitted || schedVerified ? `
+                                    <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                        <i class="fas fa-calendar-alt"></i> Schedule
+                                    </span>
+                                    ${schedVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
+                                    ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
+                                ` : ''}
+                                ${(() => {
+                                    // Check if first sprint schedule exists
+                                    const firstReviewScheduleExists = team.firstReviewSchedule ? true : false;
+                                    if (firstReviewScheduleExists) {
+                                        const isFrozen = team.firstReviewSchedule?.frozen === true;
+                                        return `
+                                            <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                                <i class="fas fa-calendar-check"></i> First Sprint Schedule
+                                            </span>
+                                            ${isFrozen ? `<span style="color: #f59e0b;"><i class="fas fa-lock"></i> Frozen</span>` : ''}
+                                        `;
+                                    }
+                                    return '';
+                                })()}
                                 </div>
                             </div>
                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -16404,6 +16455,11 @@ const app = {
                                 ` : schedSubmitted ? `
                                     <button type="button" class="btn btn-warning" onclick="app.showApproveScheduleModal('${team.id}')">
                                         <i class="fas fa-calendar-check"></i> Review Schedule
+                                    </button>
+                                ` : ''}
+                                ${team.firstReviewSchedule ? `
+                                    <button type="button" class="btn btn-info" onclick="app.loadGuideFirstReviewSchedule('${team.id}')" style="background: #6366f1; color: white; border: none;">
+                                        <i class="fas fa-calendar-alt"></i> View First Sprint Schedule
                                     </button>
                                 ` : ''}
                             </div>
@@ -16520,6 +16576,273 @@ const app = {
         } catch (error) {
             console.error('Error loading guide project planning:', error);
             container.innerHTML = '<p class="error-message">Error loading project planning data.</p>';
+        }
+    },
+    
+    // Load guide view of first sprint schedule
+    async loadGuideFirstReviewSchedule(teamId) {
+        if (!this.isGuide && this.userRole !== 'guide') return;
+        
+        // Create modal for viewing schedule
+        const existingModal = document.getElementById('guide-first-review-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'guide-first-review-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.name || teamData.groupName || `Team ${teamId.substring(0, 8)}`;
+            
+            // Load schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('First sprint schedule not found for this team.');
+                modal.remove();
+                return;
+            }
+            const scheduleData = scheduleDoc.data();
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', teamId)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load all backlogs
+            const firstReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                where('teamId', '==', teamId)
+            );
+            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+            const allBacklogs = [];
+            firstReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            const formatDate = (dateValue) => {
+                if (!dateValue) return 'Not set';
+                const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
+                return date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            };
+            
+            // Render modal content
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 95vw; max-height: 95vh; overflow-y: auto; padding: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <h2 style="margin: 0; font-size: 1.2rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-calendar-check" style="color: #6366f1;"></i> First Sprint Schedule - ${this.escapeHtml(teamName)}
+                        </h2>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('guide-first-review-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem;">
+                            <span style="padding: 0.4rem 0.8rem; background: ${scheduleData.verified ? '#10b981' : (scheduleData.submitted ? '#3b82f6' : '#f59e0b')}; color: white; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
+                                Status: ${scheduleData.verified ? 'Verified' : (scheduleData.submitted ? 'Submitted' : 'Draft')}
+                            </span>
+                            <span style="padding: 0.4rem 0.8rem; background: ${scheduleData.frozen ? '#f59e0b' : '#6b7280'}; color: white; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
+                                <i class="fas ${scheduleData.frozen ? 'fa-lock' : 'fa-unlock'}"></i> ${scheduleData.frozen ? 'Frozen' : 'Active'}
+                            </span>
+                            ${scheduleData.submittedAt ? `
+                                <span style="padding: 0.4rem 0.8rem; background: #f3f4f6; color: var(--text-primary); border-radius: 6px; font-size: 0.8rem;">
+                                    Submitted: ${formatDate(scheduleData.submittedAt)}
+                                </span>
+                            ` : ''}
+                            ${scheduleData.verifiedAt ? `
+                                <span style="padding: 0.4rem 0.8rem; background: #dbeafe; color: #1e40af; border-radius: 6px; font-size: 0.8rem;">
+                                    Verified: ${formatDate(scheduleData.verifiedAt)}
+                                </span>
+                            ` : ''}
+                            ${scheduleData.frozenAt ? `
+                                <span style="padding: 0.4rem 0.8rem; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.8rem;">
+                                    Frozen: ${formatDate(scheduleData.frozenAt)}
+                                </span>
+                            ` : scheduleData.frozen ? `
+                                <span style="padding: 0.4rem 0.8rem; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.8rem;">
+                                    Frozen: ${scheduleData.frozenBy ? `by ${this.escapeHtml(scheduleData.frozenBy)}` : 'N/A'}
+                                </span>
+                            ` : ''}
+                        </div>
+                        ${scheduleData.adminComments ? `
+                            <div style="padding: 1rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-comment-alt"></i> Admin Comments:
+                                </div>
+                                <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">
+                                    ${this.escapeHtml(scheduleData.adminComments)}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div id="guide-first-review-schedule-content">
+                        <!-- Schedule content will be loaded here -->
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Render schedule content
+            const contentContainer = document.getElementById('guide-first-review-schedule-content');
+            if (!contentContainer) return;
+            
+            let html = '';
+            
+            // Render modules
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;"><i class="fas fa-folder" style="color: #3b82f6;"></i> Modules</h3>';
+                
+                // Sort modules by order
+                const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedModules.forEach((scheduleModule, moduleIndex) => {
+                    const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                    if (!module) return;
+                    
+                    const moduleStartDate = formatDate(scheduleModule.startDate);
+                    const moduleEndDate = formatDate(scheduleModule.endDate);
+                    
+                    // Get backlogs for this module
+                    const scheduledBacklogIds = scheduleModule.productBacklogs ? scheduleModule.productBacklogs.map(pb => String(pb.backlogId)) : [];
+                    const moduleBacklogs = allBacklogs.filter(b => scheduledBacklogIds.includes(String(b.id)));
+                    
+                    html += `
+                        <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="margin: 0 0 0.5rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-folder" style="color: #3b82f6;"></i> Module ${moduleIndex + 1}: ${this.escapeHtml(module.name || 'Unnamed Module')}
+                                </h4>
+                                <div style="display: flex; gap: 1rem; font-size: 0.9rem; color: var(--text-secondary);">
+                                    <span><i class="fas fa-calendar-check"></i> Start: ${moduleStartDate}</span>
+                                    <span><i class="fas fa-calendar-times"></i> End: ${moduleEndDate}</span>
+                                </div>
+                            </div>
+                            
+                            ${moduleBacklogs.length > 0 ? `
+                                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                                    <h5 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem;">
+                                        Product Backlog Items (${moduleBacklogs.length})
+                                    </h5>
+                                    ${moduleBacklogs.map((backlog, backlogIndex) => {
+                                        const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                                        const backlogStartDate = scheduleBacklog?.startDate ? formatDate(scheduleBacklog.startDate) : moduleStartDate;
+                                        const backlogEndDate = scheduleBacklog?.endDate ? formatDate(scheduleBacklog.endDate) : moduleEndDate;
+                                        const priority = backlog.priority || 'medium';
+                                        const priorityColors = {
+                                            low: { bg: '#e5e7eb', text: '#374151' },
+                                            medium: { bg: '#dbeafe', text: '#1e40af' },
+                                            high: { bg: '#fef3c7', text: '#92400e' },
+                                            critical: { bg: '#fee2e2', text: '#991b1b' }
+                                        };
+                                        const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                                        
+                                        return `
+                                            <div style="margin: 0.75rem 0; padding: 1rem; background: #ffffff; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
+                                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); flex: 1;">
+                                                        ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    </div>
+                                                    <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize;">
+                                                        ${priority}
+                                                    </span>
+                                                </div>
+                                                ${backlog.acceptanceCriteria ? `
+                                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-style: italic;">
+                                                        ${this.escapeHtml(backlog.acceptanceCriteria)}
+                                                    </div>
+                                                ` : ''}
+                                                <div style="display: flex; gap: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                                    <span><i class="fas fa-calendar-check"></i> ${backlogStartDate}</span>
+                                                    <span><i class="fas fa-calendar-times"></i> ${backlogEndDate}</span>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            ` : '<p style="color: var(--text-secondary); font-size: 0.9rem;">No product backlogs in this module.</p>'}
+                        </div>
+                    `;
+                });
+            }
+            
+            // Render standalone backlogs
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                html += '<h3 style="margin: 1.5rem 0 0.75rem 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;"><i class="fas fa-list" style="color: #f59e0b;"></i> Standalone Backlog Items</h3>';
+                
+                scheduleData.standaloneBacklogs.forEach((scheduleBacklog, backlogIndex) => {
+                    const backlog = allBacklogs.find(b => String(b.id) === String(scheduleBacklog.backlogId));
+                    if (!backlog) return;
+                    
+                    const backlogStartDate = formatDate(scheduleBacklog.startDate);
+                    const backlogEndDate = formatDate(scheduleBacklog.endDate);
+                    const priority = backlog.priority || 'medium';
+                    const priorityColors = {
+                        low: { bg: '#e5e7eb', text: '#374151' },
+                        medium: { bg: '#dbeafe', text: '#1e40af' },
+                        high: { bg: '#fef3c7', text: '#92400e' },
+                        critical: { bg: '#fee2e2', text: '#991b1b' }
+                    };
+                    const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                    
+                    html += `
+                        <div style="margin-bottom: 1rem; padding: 1rem; background: #ffffff; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                <div style="font-weight: 600; color: var(--text-primary); flex: 1;">
+                                    ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                </div>
+                                <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize;">
+                                    ${priority}
+                                </span>
+                            </div>
+                            ${backlog.acceptanceCriteria ? `
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-style: italic;">
+                                    ${this.escapeHtml(backlog.acceptanceCriteria)}
+                                </div>
+                            ` : ''}
+                            <div style="display: flex; gap: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                <span><i class="fas fa-calendar-check"></i> ${backlogStartDate}</span>
+                                <span><i class="fas fa-calendar-times"></i> ${backlogEndDate}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            if (html === '') {
+                html = '<p class="empty-state">No schedule data available.</p>';
+            }
+            
+            contentContainer.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error loading guide first review schedule:', error);
+            alert('Error loading schedule. Please try again.');
+            modal.remove();
         }
     },
     
@@ -28926,6 +29249,576 @@ const app = {
         } catch (error) {
             console.error('Error unfreezing schedule:', error);
             alert('Error unfreezing schedule. Please try again.');
+        }
+    },
+    
+    async generateFirstSprintScheduleContract(teamId) {
+        if (!this.isAdmin) return;
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.name || teamData.groupName || `Team ${teamId.substring(0, 8)}`;
+            const guideName = teamData.guideName || 'Not assigned';
+            const teamMembers = teamData.members || [];
+            
+            // Load schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found. Please ensure the team has submitted a schedule.');
+                return;
+            }
+            const scheduleData = scheduleDoc.data();
+            
+            if (!scheduleData.frozen) {
+                alert('Schedule must be frozen before generating a contract. Please freeze the schedule first.');
+                return;
+            }
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', teamId)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load all backlogs
+            const firstReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                where('teamId', '==', teamId)
+            );
+            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+            const allBacklogs = [];
+            firstReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Format dates
+            const formatDate = (dateValue) => {
+                if (!dateValue) return 'Not specified';
+                const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
+                return date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+            };
+            
+            const formatDateShort = (dateValue) => {
+                if (!dateValue) return '-';
+                const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
+                return date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            };
+            
+            const currentDate = new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            const frozenDate = scheduleData.frozenAt ? formatDate(scheduleData.frozenAt) : currentDate;
+            const submittedDate = scheduleData.submittedAt ? formatDate(scheduleData.submittedAt) : 'Not submitted';
+            const verifiedDate = scheduleData.verifiedAt ? formatDate(scheduleData.verifiedAt) : 'Not verified';
+            
+            // Build contract HTML
+            let contractHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>First Sprint Schedule Agreement - ${this.escapeHtml(teamName)}</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page {
+                                margin: 2cm;
+                                size: A4;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .no-print {
+                                display: none;
+                            }
+                            * {
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                        }
+                        * {
+                            margin: 0;
+                            padding: 0;
+                            box-sizing: border-box;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        body {
+                            font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            margin: 0;
+                            padding: 40px;
+                            color: #1e293b;
+                            background: #ffffff;
+                            line-height: 1.6;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header {
+                            text-align: center;
+                            margin-bottom: 40px;
+                            padding: 30px;
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            background-color: #6366f1;
+                            border-radius: 12px;
+                            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+                            color: white;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header h1 {
+                            margin: 0 0 10px 0;
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 28px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 1.5px;
+                            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                        }
+                        .header .subtitle {
+                            font-size: 16px;
+                            font-weight: 400;
+                            opacity: 0.95;
+                        }
+                        .contract-section {
+                            margin-bottom: 30px;
+                            page-break-inside: avoid;
+                        }
+                        .contract-section h2 {
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 20px;
+                            font-weight: 700;
+                            color: #6366f1;
+                            margin-bottom: 15px;
+                            padding-bottom: 10px;
+                            border-bottom: 2px solid #6366f1;
+                        }
+                        .contract-section h3 {
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #475569;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                        }
+                        .info-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 15px;
+                            margin-bottom: 20px;
+                        }
+                        .info-item {
+                            padding: 12px;
+                            background: #f8fafc;
+                            border-radius: 8px;
+                            border-left: 4px solid #6366f1;
+                        }
+                        .info-label {
+                            font-weight: 600;
+                            color: #475569;
+                            font-size: 12px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            margin-bottom: 5px;
+                        }
+                        .info-value {
+                            font-size: 14px;
+                            color: #1e293b;
+                            font-weight: 500;
+                        }
+                        .module-card {
+                            margin-bottom: 20px;
+                            padding: 20px;
+                            background: #ffffff;
+                            border: 2px solid #e2e8f0;
+                            border-radius: 10px;
+                            border-left: 5px solid #6366f1;
+                        }
+                        .module-header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            margin-bottom: 15px;
+                            padding-bottom: 10px;
+                            border-bottom: 1px solid #e2e8f0;
+                        }
+                        .module-name {
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: #6366f1;
+                        }
+                        .module-dates {
+                            font-size: 13px;
+                            color: #64748b;
+                        }
+                        .backlog-item {
+                            margin: 10px 0;
+                            padding: 12px;
+                            background: #f8fafc;
+                            border-radius: 6px;
+                            border-left: 3px solid #94a3b8;
+                        }
+                        .backlog-header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: start;
+                            margin-bottom: 8px;
+                        }
+                        .backlog-task {
+                            font-weight: 600;
+                            color: #1e293b;
+                            flex: 1;
+                        }
+                        .backlog-meta {
+                            display: flex;
+                            gap: 8px;
+                            flex-wrap: wrap;
+                        }
+                        .badge {
+                            padding: 4px 10px;
+                            border-radius: 4px;
+                            font-size: 11px;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                        }
+                        .badge-priority-low { background: #e5e7eb; color: #374151; }
+                        .badge-priority-medium { background: #dbeafe; color: #1e40af; }
+                        .badge-priority-high { background: #fef3c7; color: #92400e; }
+                        .badge-priority-critical { background: #fee2e2; color: #991b1b; }
+                        .backlog-dates {
+                            margin-top: 8px;
+                            font-size: 12px;
+                            color: #64748b;
+                            display: flex;
+                            gap: 15px;
+                        }
+                        .signature-section {
+                            margin-top: 50px;
+                            page-break-inside: avoid;
+                        }
+                        .signature-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 40px;
+                            margin-top: 30px;
+                        }
+                        .signature-box {
+                            padding: 20px;
+                            border: 2px solid #e2e8f0;
+                            border-radius: 8px;
+                            min-height: 100px;
+                        }
+                        .signature-label {
+                            font-weight: 600;
+                            color: #475569;
+                            margin-bottom: 40px;
+                        }
+                        .footer {
+                            margin-top: 40px;
+                            text-align: center;
+                            font-size: 12px;
+                            color: #64748b;
+                            border-top: 2px solid #e2e8f0;
+                            padding-top: 20px;
+                        }
+                        .footer .logo-text {
+                            font-family: 'Montserrat', sans-serif;
+                            font-weight: 700;
+                            font-size: 16px;
+                            color: #6366f1;
+                            margin-bottom: 5px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin: 15px 0;
+                        }
+                        table th {
+                            background: #6366f1;
+                            color: white;
+                            padding: 12px;
+                            text-align: left;
+                            font-weight: 600;
+                            font-size: 13px;
+                        }
+                        table td {
+                            padding: 10px 12px;
+                            border-bottom: 1px solid #e2e8f0;
+                        }
+                        table tr:last-child td {
+                            border-bottom: none;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>First Sprint Schedule Agreement</h1>
+                        <p class="subtitle">IGNITE Mini Project Management System</p>
+                    </div>
+                    
+                    <div class="contract-section">
+                        <h2>1. Team Information</h2>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Team Name</div>
+                                <div class="info-value">${this.escapeHtml(teamName)}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Guide</div>
+                                <div class="info-value">${this.escapeHtml(guideName)}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Agreement Date</div>
+                                <div class="info-value">${frozenDate}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Schedule Status</div>
+                                <div class="info-value">Frozen (Finalized)</div>
+                            </div>
+                        </div>
+                        
+                        ${teamMembers.length > 0 ? `
+                        <h3>Team Members</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>KTU ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teamMembers.map(member => `
+                                    <tr>
+                                        <td>${this.escapeHtml(member.name || member.ktuid || 'N/A')}</td>
+                                        <td>${this.escapeHtml(member.ktuid || 'N/A')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="contract-section">
+                        <h2>2. Schedule Timeline</h2>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Submitted Date</div>
+                                <div class="info-value">${submittedDate}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Verified Date</div>
+                                <div class="info-value">${verifiedDate}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Frozen Date</div>
+                                <div class="info-value">${frozenDate}</div>
+                            </div>
+                            ${scheduleData.frozenBy ? `
+                            <div class="info-item">
+                                <div class="info-label">Frozen By</div>
+                                <div class="info-value">${this.escapeHtml(scheduleData.frozenBy)}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="contract-section">
+                        <h2>3. Module Schedule</h2>
+            `;
+            
+            // Add modules
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                // Sort modules by order
+                const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedModules.forEach((scheduleModule, moduleIndex) => {
+                    const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                    if (!module) return;
+                    
+                    const moduleStartDate = scheduleModule.startDate ? formatDateShort(scheduleModule.startDate) : 'Not set';
+                    const moduleEndDate = scheduleModule.endDate ? formatDateShort(scheduleModule.endDate) : 'Not set';
+                    
+                    contractHtml += `
+                        <div class="module-card">
+                            <div class="module-header">
+                                <div class="module-name">Module ${moduleIndex + 1}: ${this.escapeHtml(module.name || 'Unnamed Module')}</div>
+                                <div class="module-dates">${moduleStartDate} - ${moduleEndDate}</div>
+                            </div>
+                    `;
+                    
+                    // Add backlogs for this module
+                    if (scheduleModule.productBacklogs && scheduleModule.productBacklogs.length > 0) {
+                        contractHtml += `<h3 style="margin-top: 15px; margin-bottom: 10px; font-size: 14px; color: #64748b;">Product Backlog Items:</h3>`;
+                        
+                        scheduleModule.productBacklogs.forEach((scheduleBacklog, backlogIndex) => {
+                            const backlog = allBacklogs.find(b => String(b.id) === String(scheduleBacklog.backlogId));
+                            if (!backlog) return;
+                            
+                            const backlogStartDate = scheduleBacklog.startDate ? formatDateShort(scheduleBacklog.startDate) : moduleStartDate;
+                            const backlogEndDate = scheduleBacklog.endDate ? formatDateShort(scheduleBacklog.endDate) : moduleEndDate;
+                            const priority = backlog.priority || 'medium';
+                            
+                            contractHtml += `
+                                <div class="backlog-item">
+                                    <div class="backlog-header">
+                                        <div class="backlog-task">${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                        <div class="backlog-meta">
+                                            <span class="badge badge-priority-${priority}">${priority}</span>
+                                        </div>
+                                    </div>
+                                    ${backlog.acceptanceCriteria ? `
+                                        <div style="font-size: 12px; color: #64748b; margin-top: 5px; font-style: italic;">
+                                            ${this.escapeHtml(backlog.acceptanceCriteria)}
+                                        </div>
+                                    ` : ''}
+                                    <div class="backlog-dates">
+                                        <span><strong>Start:</strong> ${backlogStartDate}</span>
+                                        <span><strong>End:</strong> ${backlogEndDate}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    contractHtml += `</div>`;
+                });
+            }
+            
+            // Add standalone backlogs
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                contractHtml += `
+                    <div class="module-card" style="border-left-color: #f59e0b;">
+                        <div class="module-header">
+                            <div class="module-name">Standalone Backlog Items</div>
+                        </div>
+                `;
+                
+                scheduleData.standaloneBacklogs.forEach((scheduleBacklog, backlogIndex) => {
+                    const backlog = allBacklogs.find(b => String(b.id) === String(scheduleBacklog.backlogId));
+                    if (!backlog) return;
+                    
+                    const backlogStartDate = scheduleBacklog.startDate ? formatDateShort(scheduleBacklog.startDate) : 'Not set';
+                    const backlogEndDate = scheduleBacklog.endDate ? formatDateShort(scheduleBacklog.endDate) : 'Not set';
+                    const priority = backlog.priority || 'medium';
+                    
+                    contractHtml += `
+                        <div class="backlog-item">
+                            <div class="backlog-header">
+                                <div class="backlog-task">${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                <div class="backlog-meta">
+                                    <span class="badge badge-priority-${priority}">${priority}</span>
+                                </div>
+                            </div>
+                            ${backlog.acceptanceCriteria ? `
+                                <div style="font-size: 12px; color: #64748b; margin-top: 5px; font-style: italic;">
+                                    ${this.escapeHtml(backlog.acceptanceCriteria)}
+                                </div>
+                            ` : ''}
+                            <div class="backlog-dates">
+                                <span><strong>Start:</strong> ${backlogStartDate}</span>
+                                <span><strong>End:</strong> ${backlogEndDate}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                contractHtml += `</div>`;
+            }
+            
+            contractHtml += `
+                    </div>
+                    
+                    <div class="contract-section">
+                        <h2>4. Agreement Terms</h2>
+                        <p style="margin-bottom: 15px;">
+                            This document represents the finalized First Sprint Schedule Agreement for <strong>${this.escapeHtml(teamName)}</strong>. 
+                            The schedule has been reviewed, verified, and frozen by the administrator on <strong>${frozenDate}</strong>.
+                        </p>
+                        <p style="margin-bottom: 15px;">
+                            By freezing this schedule, the team commits to following the agreed timeline and deliverables as outlined above. 
+                            Product backlog items are now locked and cannot be modified without administrative approval.
+                        </p>
+                        <p style="margin-bottom: 15px;">
+                            Any deviations from this schedule must be discussed with the guide and approved by the administrator.
+                        </p>
+                    </div>
+                    
+                    <div class="signature-section">
+                        <h2>5. Signatures</h2>
+                        <div class="signature-grid">
+                            <div class="signature-box">
+                                <div class="signature-label">Team Representative Signature</div>
+                                <div style="margin-top: 40px;">_________________________</div>
+                                <div style="margin-top: 5px; font-size: 12px; color: #64748b;">Date: _______________</div>
+                            </div>
+                            <div class="signature-box">
+                                <div class="signature-label">Guide Signature</div>
+                                <div style="margin-top: 40px;">_________________________</div>
+                                <div style="margin-top: 5px; font-size: 12px; color: #64748b;">Date: _______________</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="footer">
+                        <div class="logo-text">IGNITE</div>
+                        <p>Mini Project Management System - First Sprint Schedule Agreement</p>
+                        <p>Generated on ${currentDate}</p>
+                    </div>
+                    
+                    <div class="no-print" style="text-align: center; margin-top: 30px; padding: 20px;">
+                        <button onclick="window.print()" style="padding: 12px 30px; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                            <i class="fas fa-print"></i> Print Contract
+                        </button>
+                        <button onclick="window.close()" style="padding: 12px 30px; background: #64748b; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-left: 10px;">
+                            Close
+                        </button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            // Open contract in new window
+            const contractWindow = window.open('', '_blank');
+            contractWindow.document.write(contractHtml);
+            contractWindow.document.close();
+            
+            // Optionally trigger print dialog
+            setTimeout(() => {
+                contractWindow.focus();
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error generating contract:', error);
+            alert('Error generating contract. Please try again.');
         }
     },
     

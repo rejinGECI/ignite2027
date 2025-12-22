@@ -548,11 +548,14 @@ export function createAdminMiniProjectModule(app) {
                                         ${escapeHtml(scheduleData.adminComments)}
                                     </div>
                                 ` : ''}
-                                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+                                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; flex-wrap: wrap;">
                                     ${scheduleData.frozen ? `
                                         <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
                                             <i class="fas fa-lock"></i> Frozen - Students cannot edit
                                         </span>
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="app.generateFirstSprintScheduleContract('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #6366f1; color: white; border: none;">
+                                            <i class="fas fa-file-contract" style="font-size: 0.7rem;"></i> Generate Contract
+                                        </button>
                                         <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
                                             <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
                                         </button>
