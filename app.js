@@ -27239,12 +27239,13 @@ const app = {
                 const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
                 const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
                 
-                // Update each child backlog
+                // Update each child backlog (preserve order property)
                 scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(backlog => {
                     return {
                         backlogId: backlog.backlogId,
                         startDate: moduleStartDate || backlog.startDate || '',
-                        endDate: moduleEndDate || backlog.endDate || ''
+                        endDate: moduleEndDate || backlog.endDate || '',
+                        order: backlog.order !== undefined ? backlog.order : 999999
                     };
                 });
             }
@@ -27312,18 +27313,20 @@ const app = {
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: newStartDate,
-                        endDate: newEndDate
+                        endDate: newEndDate,
+                        order: existingBacklog.order !== undefined ? existingBacklog.order : 999999
                     };
                     // Replace the entire array with a new array, ensuring all objects are new (deep copy)
                     const newProductBacklogs = scheduleData.modules[moduleIndex].productBacklogs.map((pb, idx) => {
                         if (idx === backlogIndex) {
                             return updatedBacklog;
                         }
-                        // Create new object for each backlog to avoid shared references
+                        // Create new object for each backlog to avoid shared references (preserve order)
                         return {
                             backlogId: String(pb.backlogId),
                             startDate: pb.startDate || '',
-                            endDate: pb.endDate || ''
+                            endDate: pb.endDate || '',
+                            order: pb.order !== undefined ? pb.order : 999999
                         };
                     });
                     scheduleData.modules[moduleIndex].productBacklogs = newProductBacklogs;
@@ -27376,13 +27379,26 @@ const app = {
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
-                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '')
+                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || ''),
+                        order: existingBacklog.order !== undefined ? existingBacklog.order : 999999
                     };
-                    // Replace the entire array with a new array to ensure no shared references
+                    // Replace the entire array with a new array to ensure no shared references (preserve order for all items)
+                    const beforeItems = scheduleData.standaloneBacklogs.slice(0, backlogIndex).map(pb => ({
+                        backlogId: String(pb.backlogId),
+                        startDate: pb.startDate || '',
+                        endDate: pb.endDate || '',
+                        order: pb.order !== undefined ? pb.order : 999999
+                    }));
+                    const afterItems = scheduleData.standaloneBacklogs.slice(backlogIndex + 1).map(pb => ({
+                        backlogId: String(pb.backlogId),
+                        startDate: pb.startDate || '',
+                        endDate: pb.endDate || '',
+                        order: pb.order !== undefined ? pb.order : 999999
+                    }));
                     scheduleData.standaloneBacklogs = [
-                        ...scheduleData.standaloneBacklogs.slice(0, backlogIndex),
+                        ...beforeItems,
                         updatedBacklog,
-                        ...scheduleData.standaloneBacklogs.slice(backlogIndex + 1)
+                        ...afterItems
                     ];
                 }
             }
