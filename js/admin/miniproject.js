@@ -531,12 +531,31 @@ export function createAdminMiniProjectModule(app) {
                                         <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Admin Comments:</label>
                                         <textarea id="admin-verification-comments" class="form-input" rows="3" placeholder="Add comments for the team..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
                                     </div>
-                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap;">
                                         <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
                                             <i class="fas fa-check-circle" style="font-size: 0.7rem;"></i> Verify & Unlock
                                         </button>
                                     </div>
                                 </form>
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #fde68a;">
+                                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                        ${scheduleData.frozen ? `
+                                            <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                                <i class="fas fa-lock"></i> Frozen - Students cannot edit
+                                            </span>
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="app.generateFirstSprintScheduleContract('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #6366f1; color: white; border: none;">
+                                                <i class="fas fa-file-contract" style="font-size: 0.7rem;"></i> Generate Contract
+                                            </button>
+                                            <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                                <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
+                                            </button>
+                                        ` : `
+                                            <button type="button" class="btn btn-warning btn-sm" onclick="app.freezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                                <i class="fas fa-lock" style="font-size: 0.7rem;"></i> Freeze Backlogs
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
                             </div>
                             ` : scheduleData.verified ? `
                             <div style="padding: 0.75rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">

@@ -26240,8 +26240,55 @@ const app = {
             // DEBUG: Log status for troubleshooting
             console.log('First Sprint Schedule Status:', { isSubmitted, isVerified, isFrozen, hasSchedule: scheduleDoc.exists() });
             
-            // If submitted but not verified, show message immediately - THIS IS CRITICAL
-            if (isSubmitted && !isVerified) {
+            // PRIORITY: If frozen, show frozen message FIRST regardless of other status
+            // Frozen status takes absolute priority - show frozen message and render schedule in read-only mode
+            if (isFrozen) {
+                console.log('Showing frozen schedule (priority)');
+                // Show frozen message but still render the schedule in read-only mode
+                modulesListContainer.innerHTML = `
+                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 12px; border-left: 4px solid #ef4444; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">
+                        <div style="text-align: center; margin-bottom: 1.5rem;">
+                            <i class="fas fa-lock" style="font-size: 3rem; color: #ef4444; margin-bottom: 1rem;"></i>
+                        </div>
+                        <h3 style="margin: 0 0 0.75rem 0; color: #991b1b; font-size: 1.3rem; font-weight: 600; text-align: center;">
+                            Schedule Frozen
+                        </h3>
+                        <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <p style="margin: 0.5rem 0; color: #991b1b; font-size: 1rem; line-height: 1.6;">
+                                <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
+                                Your first sprint schedule has been frozen by the administrator. The schedule is now finalized and cannot be edited.
+                            </p>
+                            ${scheduleData.frozenAt ? `
+                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                    <i class="fas fa-calendar-times"></i>
+                                    <strong>Frozen on:</strong> ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
+                                </p>
+                            ` : ''}
+                            ${scheduleData.submittedAt ? `
+                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                    <i class="fas fa-clock"></i>
+                                    <strong>Submitted on:</strong> ${scheduleData.submittedAt.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                </p>
+                            ` : ''}
+                            ${scheduleData.verifiedAt ? `
+                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                    <i class="fas fa-user-check"></i>
+                                    <strong>Verified on:</strong> ${scheduleData.verifiedAt.toDate ? scheduleData.verifiedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                                    ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                </p>
+                            ` : ''}
+                        </div>
+                        <div style="padding: 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 6px; border-left: 3px solid #ef4444;">
+                            <p style="margin: 0; color: #991b1b; font-size: 0.9rem; font-style: italic; text-align: center;">
+                                <i class="fas fa-lock" style="margin-right: 0.5rem;"></i>
+                                The schedule is locked and cannot be modified. You can view the schedule below in read-only mode.
+                            </p>
+                        </div>
+                    </div>
+                `;
+                // Continue to render schedule in read-only mode below
+            } else if (isSubmitted && !isVerified) {
                 console.log('Showing submitted-for-verification message');
                 // Always show the message in the main container - this is the key fix
                 modulesListContainer.innerHTML = `
@@ -26271,8 +26318,8 @@ const app = {
                     </div>
                 `;
                 
-                // Update status container
-                if (statusContainer) {
+                // Update status container - but skip if frozen (frozen message already shown above)
+                if (statusContainer && !isFrozen) {
                     statusContainer.innerHTML = `
                         <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
@@ -26286,6 +26333,26 @@ const app = {
                             <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
                                 <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
                             </p>
+                        </div>
+                    `;
+                } else if (statusContainer && isFrozen) {
+                    // Show frozen status in status container as well
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.5rem;">
+                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Frozen - Schedule Finalized</strong>
+                            </div>
+                            <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem;">
+                                <i class="fas fa-info-circle"></i> The schedule has been frozen by admin. Product backlogs are finalized and cannot be edited.
+                            </p>
+                            ${scheduleData.frozenAt ? `
+                                <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-calendar-times"></i>
+                                    Frozen on ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString() : 'N/A'}
+                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
+                                </p>
+                            ` : ''}
                         </div>
                     `;
                 }
@@ -26445,25 +26512,33 @@ const app = {
             }
             
             if (statusContainer) {
-                if (isSubmitted) {
-                    if (isVerified) {
-                        const frozenMessage = isFrozen ? `
-                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
-                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.25rem;">
-                                    <i class="fas fa-lock" style="font-size: 1rem;"></i>
-                                    <strong style="font-size: 0.9rem;">Frozen - Product backlogs are finalized and cannot be edited</strong>
-                                </div>
-                                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
-                                    The schedule has been frozen by admin. You can still resubmit the agreement, but product backlogs cannot be edited.
-                                </p>
+                // PRIORITY: If frozen, show frozen status first
+                if (isFrozen) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.5rem;">
+                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Frozen - Schedule Finalized</strong>
                             </div>
-                        ` : '';
-                        
+                            <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem;">
+                                <i class="fas fa-info-circle"></i> The schedule has been frozen by admin. Product backlogs are finalized and cannot be edited.
+                            </p>
+                            ${scheduleData.frozenAt ? `
+                                <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-calendar-times"></i>
+                                    Frozen on ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString() : 'N/A'}
+                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
+                                </p>
+                            ` : ''}
+                        </div>
+                    `;
+                } else if (isSubmitted) {
+                    if (isVerified) {
                         statusContainer.innerHTML = `
                             <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; color: #1e40af; margin-bottom: 0.5rem;">
                                     <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
-                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule${isFrozen ? ' (backlogs frozen)' : ''}</strong>
+                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule</strong>
                                 </div>
                                 <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
                                     <i class="fas fa-clock"></i>
@@ -26484,7 +26559,6 @@ const app = {
                                         </div>
                                     </div>
                                 ` : ''}
-                                ${frozenMessage}
                             </div>
                         `;
                     } else {
@@ -26528,9 +26602,10 @@ const app = {
             // Store edit permission for use in rendering
             scheduleData._canEdit = canEdit;
             
-            // Note: If submitted but not verified, we already handled it above with early return
-            // This else block is only for when NOT submitted or when verified
-            if (!(isSubmitted && !isVerified)) {
+            // Note: If submitted but not verified AND not frozen, we already handled it above with early return
+            // If frozen (even if not verified), we still want to render the schedule in read-only mode
+            // This block is for when NOT submitted, OR when verified, OR when frozen
+            if (!(isSubmitted && !isVerified && !isFrozen)) {
                 // Show sections when not submitted or verified
                 if (moduleSelect) {
                     let parent = moduleSelect.parentElement;
@@ -26556,9 +26631,10 @@ const app = {
             }
             
             // Render modules with their product backlogs
-            // Only render if not in verification state (skip if submitted but not verified)
-            // IMPORTANT: If submitted but not verified, we already set the message above, so skip rendering
-            if (!(isSubmitted && !isVerified)) {
+            // Only render if not in verification state (skip if submitted but not verified and not frozen)
+            // IMPORTANT: If submitted but not verified AND not frozen, we already set the message above, so skip rendering
+            // But if frozen, we want to render in read-only mode
+            if (!(isSubmitted && !isVerified && !isFrozen)) {
                 // Show empty state if no modules and no standalone backlogs
                 if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
                     modulesListContainer.innerHTML = `
@@ -29363,10 +29439,13 @@ const app = {
             }
             const scheduleData = scheduleDoc.data();
             
+            // Check if schedule is frozen (required for contract generation)
             if (!scheduleData.frozen) {
                 alert('Schedule must be frozen before generating a contract. Please freeze the schedule first.');
                 return;
             }
+            
+            // Note: Contract can be generated even if not verified, as long as it's frozen
             
             // Load modules
             const modulesQuery = query(
@@ -29849,15 +29928,22 @@ const app = {
                         <h2>4. Agreement Terms</h2>
                         <p style="margin-bottom: 15px;">
                             This document represents the finalized First Sprint Schedule Agreement for <strong>${this.escapeHtml(teamName)}</strong>. 
-                            The schedule has been reviewed, verified, and frozen by the administrator on <strong>${frozenDate}</strong>.
+                            The schedule has been frozen by the administrator on <strong>${frozenDate}</strong>.
+                            ${scheduleData.verified ? `The schedule was verified on ${verifiedDate}.` : 'The schedule is frozen and awaiting verification.'}
                         </p>
                         <p style="margin-bottom: 15px;">
                             By freezing this schedule, the team commits to following the agreed timeline and deliverables as outlined above. 
                             Product backlog items are now locked and cannot be modified without administrative approval.
                         </p>
+                        ${scheduleData.verified ? `
                         <p style="margin-bottom: 15px;">
-                            Any deviations from this schedule must be discussed with the guide and approved by the administrator.
+                            The schedule has been reviewed and verified by the administrator. Any deviations from this schedule must be discussed with the guide and approved by the administrator.
                         </p>
+                        ` : `
+                        <p style="margin-bottom: 15px;">
+                            This schedule is frozen and finalized. The schedule is awaiting administrative verification. Any deviations from this schedule must be discussed with the guide and approved by the administrator.
+                        </p>
+                        `}
                     </div>
                     
                     <div class="signature-section">
