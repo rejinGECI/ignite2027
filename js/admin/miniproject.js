@@ -630,9 +630,10 @@ export function createAdminMiniProjectModule(app) {
                             scheduledBacklogIds.has(String(b.id))
                         );
                         
-                        // Sort backlogs by order
+                        // Sort backlogs by order - using same logic as student view
                         const sortedBacklogs = [...moduleBacklogs].map(backlog => {
-                            const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
+                            // Ensure string comparison for backlogId matching (same as student view)
+                            const backlogSchedule = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
                             return {
                                 ...backlog,
                                 order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
@@ -709,8 +710,22 @@ export function createAdminMiniProjectModule(app) {
                         standaloneBacklogIds.has(String(b.id))
                     );
                     
-                    standaloneBacklogs.forEach(backlog => {
+                    // Sort standalone backlogs by order (same as student view)
+                    const sortedStandaloneBacklogs = standaloneBacklogs.map(backlog => {
+                        // Ensure string comparison for backlogId matching (same as student view)
                         const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                        return {
+                            backlog,
+                            backlogSchedule,
+                            order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
+                        };
+                    }).sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    
+                    sortedStandaloneBacklogs.forEach(({ backlog, backlogSchedule }) => {
                         if (backlogSchedule) {
                             html += app.renderAdminBacklogItem(backlog, backlogSchedule, null, teamId);
                         }
