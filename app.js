@@ -27239,17 +27239,20 @@ const app = {
                 const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
                 const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
                 
-                // Update each child backlog (preserve order property)
-                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(backlog => {
+                // Update each child backlog (preserve order property and array position)
+                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map((backlog, index) => {
+                    // Preserve existing order, or use array index to maintain relative position
+                    const preservedOrder = backlog.order !== undefined ? backlog.order : index;
                     return {
                         backlogId: backlog.backlogId,
                         startDate: moduleStartDate || backlog.startDate || '',
                         endDate: moduleEndDate || backlog.endDate || '',
-                        order: backlog.order !== undefined ? backlog.order : 999999
+                        order: preservedOrder
                     };
                 });
             }
             
+            // Save the entire scheduleData to preserve all properties including order
             await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
             
             // Reload to show updated dates
@@ -27310,23 +27313,26 @@ const app = {
                         return;
                     }
                     
+                    // Preserve existing order, or use array index to maintain relative position
+                    const preservedOrder = existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex;
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: newStartDate,
                         endDate: newEndDate,
-                        order: existingBacklog.order !== undefined ? existingBacklog.order : 999999
+                        order: preservedOrder
                     };
                     // Replace the entire array with a new array, ensuring all objects are new (deep copy)
                     const newProductBacklogs = scheduleData.modules[moduleIndex].productBacklogs.map((pb, idx) => {
                         if (idx === backlogIndex) {
                             return updatedBacklog;
                         }
-                        // Create new object for each backlog to avoid shared references (preserve order)
+                        // Create new object for each backlog to avoid shared references (preserve order from existing or index)
+                        const pbOrder = pb.order !== undefined ? pb.order : idx;
                         return {
                             backlogId: String(pb.backlogId),
                             startDate: pb.startDate || '',
                             endDate: pb.endDate || '',
-                            order: pb.order !== undefined ? pb.order : 999999
+                            order: pbOrder
                         };
                     });
                     scheduleData.modules[moduleIndex].productBacklogs = newProductBacklogs;
@@ -27376,24 +27382,26 @@ const app = {
                         return;
                     }
                     
+                    // Preserve existing order, or use array index to maintain relative position
+                    const preservedOrder = existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex;
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
                         endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || ''),
-                        order: existingBacklog.order !== undefined ? existingBacklog.order : 999999
+                        order: preservedOrder
                     };
                     // Replace the entire array with a new array to ensure no shared references (preserve order for all items)
-                    const beforeItems = scheduleData.standaloneBacklogs.slice(0, backlogIndex).map(pb => ({
+                    const beforeItems = scheduleData.standaloneBacklogs.slice(0, backlogIndex).map((pb, idx) => ({
                         backlogId: String(pb.backlogId),
                         startDate: pb.startDate || '',
                         endDate: pb.endDate || '',
-                        order: pb.order !== undefined ? pb.order : 999999
+                        order: pb.order !== undefined ? pb.order : idx
                     }));
-                    const afterItems = scheduleData.standaloneBacklogs.slice(backlogIndex + 1).map(pb => ({
+                    const afterItems = scheduleData.standaloneBacklogs.slice(backlogIndex + 1).map((pb, idx) => ({
                         backlogId: String(pb.backlogId),
                         startDate: pb.startDate || '',
                         endDate: pb.endDate || '',
-                        order: pb.order !== undefined ? pb.order : 999999
+                        order: pb.order !== undefined ? pb.order : (backlogIndex + 1 + idx)
                     }));
                     scheduleData.standaloneBacklogs = [
                         ...beforeItems,
@@ -27403,7 +27411,7 @@ const app = {
                 }
             }
             
-            // Save without merge to ensure clean structure
+            // Save the entire scheduleData to preserve all properties including order
             await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
             
             // Reload
