@@ -16633,6 +16633,20 @@ const app = {
                 allBacklogs.push({ id: doc.id, ...doc.data() });
             });
             
+            // Load student progress (completed tasks and image links)
+            let completedBacklogIds = [];
+            let imageLinks = [];
+            try {
+                const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', teamId));
+                if (studentProgressDoc.exists()) {
+                    const progressData = studentProgressDoc.data();
+                    completedBacklogIds = progressData.completedBacklogIds || [];
+                    imageLinks = progressData.imageLinks || [];
+                }
+            } catch (error) {
+                console.warn('Error loading student progress:', error);
+            }
+            
             const formatDate = (dateValue) => {
                 if (!dateValue) return 'Not set';
                 const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
@@ -16705,9 +16719,20 @@ const app = {
             
             // Render schedule content
             const contentContainer = document.getElementById('guide-first-review-schedule-content');
-            if (!contentContainer) return;
+            if (!contentContainer) {
+                console.error('Guide first review schedule content container not found');
+                return;
+            }
             
             let html = '';
+            
+            // Debug: Log progress data
+            console.log('Guide view - Loading progress data:', { 
+                teamId, 
+                completedCount: completedBacklogIds.length, 
+                imageLinksCount: imageLinks.length,
+                totalBacklogs: (scheduleData.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData.standaloneBacklogs?.length || 0)
+            });
             
             // Render modules
             if (scheduleData.modules && scheduleData.modules.length > 0) {
@@ -16760,12 +16785,16 @@ const app = {
                                             critical: { bg: '#fee2e2', text: '#991b1b' }
                                         };
                                         const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                                        const isCompleted = completedBacklogIds.includes(String(backlog.id));
                                         
                                         return `
-                                            <div style="margin: 0.75rem 0; padding: 1rem; background: #ffffff; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
+                                            <div style="margin: 0.75rem 0; padding: 1rem; background: ${isCompleted ? '#f0fdf4' : '#ffffff'}; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
                                                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                                    <div style="font-weight: 600; color: var(--text-primary); flex: 1;">
-                                                        ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                                                        ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                                        <div style="font-weight: 600; color: var(--text-primary); ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                            ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                        </div>
                                                     </div>
                                                     <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize;">
                                                         ${priority}
@@ -16808,12 +16837,16 @@ const app = {
                         critical: { bg: '#fee2e2', text: '#991b1b' }
                     };
                     const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                    const isCompleted = completedBacklogIds.includes(String(backlog.id));
                     
                     html += `
-                        <div style="margin-bottom: 1rem; padding: 1rem; background: #ffffff; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
+                        <div style="margin-bottom: 1rem; padding: 1rem; background: ${isCompleted ? '#f0fdf4' : '#ffffff'}; border-radius: 6px; border-left: 3px solid ${priorityStyle.text};">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                                <div style="font-weight: 600; color: var(--text-primary); flex: 1;">
-                                    ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                                    ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                    <div style="font-weight: 600; color: var(--text-primary); ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                        ${backlogIndex + 1}. ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                    </div>
                                 </div>
                                 <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize;">
                                     ${priority}
@@ -16833,9 +16866,84 @@ const app = {
                 });
             }
             
-            if (html === '') {
-                html = '<p class="empty-state">No schedule data available.</p>';
+            // Add student progress section (completed tasks summary and image links)
+            // Always show progress section - even if no modules/backlogs exist
+            const totalBacklogs = (scheduleData.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData.standaloneBacklogs?.length || 0);
+            const completedCount = completedBacklogIds.length;
+            const completionPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+            
+            html += '<div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">';
+            html += '<h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-chart-line" style="color: #10b981;"></i> Student Progress</h3>';
+            
+            // Completed tasks summary
+            html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong style="color: var(--text-primary);">Completed Tasks:</strong>
+                    <span style="font-size: 1.1rem; font-weight: 600; color: #10b981;">${completedCount} / ${totalBacklogs} (${completionPercentage}%)</span>
+                </div>
+                <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                    <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
+                </div>
+            </div>`;
+            
+            // Image links
+            html += '<div style="margin-top: 1rem;"><h4 style="margin: 0 0 0.75rem 0; color: #065f46; font-size: 0.95rem;"><i class="fas fa-images"></i> Project Progress Images</h4>';
+            if (imageLinks.length > 0) {
+                html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+                imageLinks.forEach((link, index) => {
+                    html += `<div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                        <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>${this.escapeHtml(link)}</span>
+                        </a>
+                    </div>`;
+                });
+                html += '</div>';
+            } else {
+                html += '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>';
             }
+            html += '</div></div>';
+            
+            // Always ensure progress section is visible - even if no schedule data
+            if (html === '') {
+                // If no schedule data, still show progress section
+                html = '<div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">';
+                html += '<h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-chart-line" style="color: #10b981;"></i> Student Progress</h3>';
+                html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong style="color: var(--text-primary);">Completed Tasks:</strong>
+                        <span style="font-size: 1.1rem; font-weight: 600; color: #10b981;">${completedCount} / 0 (0%)</span>
+                    </div>
+                    <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                        <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>`;
+                html += '<div style="margin-top: 1rem;"><h4 style="margin: 0 0 0.75rem 0; color: #065f46; font-size: 0.95rem;"><i class="fas fa-images"></i> Project Progress Images</h4>';
+                if (imageLinks.length > 0) {
+                    html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+                    imageLinks.forEach((link, index) => {
+                        html += `<div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                            <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>${this.escapeHtml(link)}</span>
+                            </a>
+                        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>';
+                }
+                html += '</div></div>';
+            }
+            
+            // Debug log to verify progress section is being added
+            console.log('Guide view - Rendering schedule with progress:', {
+                hasModules: scheduleData.modules?.length > 0,
+                hasStandaloneBacklogs: scheduleData.standaloneBacklogs?.length > 0,
+                completedCount: completedBacklogIds.length,
+                imageLinksCount: imageLinks.length,
+                htmlLength: html.length
+            });
             
             contentContainer.innerHTML = html;
             
@@ -26232,6 +26340,20 @@ const app = {
                 frozen: false
             };
             
+            // Load student progress (completed tasks and image links)
+            let completedBacklogIds = [];
+            let imageLinks = [];
+            try {
+                const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id));
+                if (studentProgressDoc.exists()) {
+                    const progressData = studentProgressDoc.data();
+                    completedBacklogIds = progressData.completedBacklogIds || [];
+                    imageLinks = progressData.imageLinks || [];
+                }
+            } catch (error) {
+                console.warn('Error loading student progress:', error);
+            }
+            
             // Check submission status FIRST - before loading other data
             const isSubmitted = scheduleData.submitted === true;
             const isVerified = scheduleData.verified === true;
@@ -26240,55 +26362,8 @@ const app = {
             // DEBUG: Log status for troubleshooting
             console.log('First Sprint Schedule Status:', { isSubmitted, isVerified, isFrozen, hasSchedule: scheduleDoc.exists() });
             
-            // PRIORITY: If frozen, show frozen message FIRST regardless of other status
-            // Frozen status takes absolute priority - show frozen message and render schedule in read-only mode
-            if (isFrozen) {
-                console.log('Showing frozen schedule (priority)');
-                // Show frozen message but still render the schedule in read-only mode
-                modulesListContainer.innerHTML = `
-                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 12px; border-left: 4px solid #ef4444; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">
-                        <div style="text-align: center; margin-bottom: 1.5rem;">
-                            <i class="fas fa-lock" style="font-size: 3rem; color: #ef4444; margin-bottom: 1rem;"></i>
-                        </div>
-                        <h3 style="margin: 0 0 0.75rem 0; color: #991b1b; font-size: 1.3rem; font-weight: 600; text-align: center;">
-                            Schedule Frozen
-                        </h3>
-                        <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
-                            <p style="margin: 0.5rem 0; color: #991b1b; font-size: 1rem; line-height: 1.6;">
-                                <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
-                                Your first sprint schedule has been frozen by the administrator. The schedule is now finalized and cannot be edited.
-                            </p>
-                            ${scheduleData.frozenAt ? `
-                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                    <i class="fas fa-calendar-times"></i>
-                                    <strong>Frozen on:</strong> ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
-                                </p>
-                            ` : ''}
-                            ${scheduleData.submittedAt ? `
-                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                    <i class="fas fa-clock"></i>
-                                    <strong>Submitted on:</strong> ${scheduleData.submittedAt.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                                </p>
-                            ` : ''}
-                            ${scheduleData.verifiedAt ? `
-                                <p style="margin: 0.75rem 0; color: #991b1b; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                    <i class="fas fa-user-check"></i>
-                                    <strong>Verified on:</strong> ${scheduleData.verifiedAt.toDate ? scheduleData.verifiedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                                    ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
-                                </p>
-                            ` : ''}
-                        </div>
-                        <div style="padding: 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 6px; border-left: 3px solid #ef4444;">
-                            <p style="margin: 0; color: #991b1b; font-size: 0.9rem; font-style: italic; text-align: center;">
-                                <i class="fas fa-lock" style="margin-right: 0.5rem;"></i>
-                                The schedule is locked and cannot be modified. You can view the schedule below in read-only mode.
-                            </p>
-                        </div>
-                    </div>
-                `;
-                // Continue to render schedule in read-only mode below
-            } else if (isSubmitted && !isVerified) {
+            // If submitted but not verified, show message immediately - THIS IS CRITICAL
+            if (isSubmitted && !isVerified) {
                 console.log('Showing submitted-for-verification message');
                 // Always show the message in the main container - this is the key fix
                 modulesListContainer.innerHTML = `
@@ -26318,8 +26393,8 @@ const app = {
                     </div>
                 `;
                 
-                // Update status container - but skip if frozen (frozen message already shown above)
-                if (statusContainer && !isFrozen) {
+                // Update status container
+                if (statusContainer) {
                     statusContainer.innerHTML = `
                         <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
@@ -26333,26 +26408,6 @@ const app = {
                             <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
                                 <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
                             </p>
-                        </div>
-                    `;
-                } else if (statusContainer && isFrozen) {
-                    // Show frozen status in status container as well
-                    statusContainer.innerHTML = `
-                        <div style="padding: 1rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.5rem;">
-                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
-                                <strong style="font-size: 0.95rem;">Frozen - Schedule Finalized</strong>
-                            </div>
-                            <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem;">
-                                <i class="fas fa-info-circle"></i> The schedule has been frozen by admin. Product backlogs are finalized and cannot be edited.
-                            </p>
-                            ${scheduleData.frozenAt ? `
-                                <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
-                                    <i class="fas fa-calendar-times"></i>
-                                    Frozen on ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString() : 'N/A'}
-                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
-                                </p>
-                            ` : ''}
                         </div>
                     `;
                 }
@@ -26401,6 +26456,15 @@ const app = {
                 if (submitBtn) {
                     submitBtn.style.display = 'none';
                 }
+                
+                // Render progress section (read-only) and Gantt chart
+                setTimeout(async () => {
+                    try {
+                        await this.renderFirstReviewProgressSection(team.id, imageLinks, true);
+                    } catch (error) {
+                        console.error('Error rendering progress section:', error);
+                    }
+                }, 300);
                 
                 // Render Gantt chart and return early
                 try {
@@ -26512,33 +26576,25 @@ const app = {
             }
             
             if (statusContainer) {
-                // PRIORITY: If frozen, show frozen status first
-                if (isFrozen) {
-                    statusContainer.innerHTML = `
-                        <div style="padding: 1rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.5rem;">
-                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
-                                <strong style="font-size: 0.95rem;">Frozen - Schedule Finalized</strong>
-                            </div>
-                            <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem;">
-                                <i class="fas fa-info-circle"></i> The schedule has been frozen by admin. Product backlogs are finalized and cannot be edited.
-                            </p>
-                            ${scheduleData.frozenAt ? `
-                                <p style="margin: 0.25rem 0; color: #991b1b; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
-                                    <i class="fas fa-calendar-times"></i>
-                                    Frozen on ${scheduleData.frozenAt.toDate ? scheduleData.frozenAt.toDate().toLocaleDateString() : 'N/A'}
-                                    ${scheduleData.frozenBy ? ` by ${this.escapeHtml(scheduleData.frozenBy)}` : ''}
-                                </p>
-                            ` : ''}
-                        </div>
-                    `;
-                } else if (isSubmitted) {
+                if (isSubmitted) {
                     if (isVerified) {
+                        const frozenMessage = isFrozen ? `
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.25rem;">
+                                    <i class="fas fa-lock" style="font-size: 1rem;"></i>
+                                    <strong style="font-size: 0.9rem;">Frozen - Product backlogs are finalized and cannot be edited</strong>
+                                </div>
+                                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
+                                    The schedule has been frozen by admin. You can still resubmit the agreement, but product backlogs cannot be edited.
+                                </p>
+                            </div>
+                        ` : '';
+                        
                         statusContainer.innerHTML = `
                             <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; color: #1e40af; margin-bottom: 0.5rem;">
                                     <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
-                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule</strong>
+                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule${isFrozen ? ' (backlogs frozen)' : ''}</strong>
                                 </div>
                                 <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
                                     <i class="fas fa-clock"></i>
@@ -26559,6 +26615,7 @@ const app = {
                                         </div>
                                     </div>
                                 ` : ''}
+                                ${frozenMessage}
                             </div>
                         `;
                     } else {
@@ -26602,10 +26659,9 @@ const app = {
             // Store edit permission for use in rendering
             scheduleData._canEdit = canEdit;
             
-            // Note: If submitted but not verified AND not frozen, we already handled it above with early return
-            // If frozen (even if not verified), we still want to render the schedule in read-only mode
-            // This block is for when NOT submitted, OR when verified, OR when frozen
-            if (!(isSubmitted && !isVerified && !isFrozen)) {
+            // Note: If submitted but not verified, we already handled it above with early return
+            // This else block is only for when NOT submitted or when verified
+            if (!(isSubmitted && !isVerified)) {
                 // Show sections when not submitted or verified
                 if (moduleSelect) {
                     let parent = moduleSelect.parentElement;
@@ -26631,10 +26687,9 @@ const app = {
             }
             
             // Render modules with their product backlogs
-            // Only render if not in verification state (skip if submitted but not verified and not frozen)
-            // IMPORTANT: If submitted but not verified AND not frozen, we already set the message above, so skip rendering
-            // But if frozen, we want to render in read-only mode
-            if (!(isSubmitted && !isVerified && !isFrozen)) {
+            // Only render if not in verification state (skip if submitted but not verified)
+            // IMPORTANT: If submitted but not verified, we already set the message above, so skip rendering
+            if (!(isSubmitted && !isVerified)) {
                 // Show empty state if no modules and no standalone backlogs
                 if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
                     modulesListContainer.innerHTML = `
@@ -26651,6 +26706,18 @@ const app = {
                             </p>
                         </div>
                     `;
+                    // Still render progress section even when no modules
+                    setTimeout(async () => {
+                        try {
+                            if (!(isSubmitted && !isVerified)) {
+                                await this.renderFirstReviewProgressSection(team.id, imageLinks);
+                            } else {
+                                await this.renderFirstReviewProgressSection(team.id, imageLinks, true);
+                            }
+                        } catch (error) {
+                            console.error('Error rendering progress section:', error);
+                        }
+                    }, 200);
                 } else {
                     // Sort modules by order if available
                     const sortedModules = [...scheduleData.modules].sort((a, b) => {
@@ -26681,7 +26748,8 @@ const app = {
                                 ...backlog,
                                 startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
                                 endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
-                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999
+                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                                isCompleted: completedBacklogIds.includes(String(backlog.id))
                             };
                         }).sort((a, b) => {
                             const orderA = a.order !== undefined ? a.order : 999999;
@@ -26714,7 +26782,8 @@ const app = {
                         startDate: scheduleBacklog?.startDate || '',
                         endDate: scheduleBacklog?.endDate || '',
                         order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
-                        _standaloneIndex: index
+                        _standaloneIndex: index,
+                        isCompleted: completedBacklogIds.includes(String(backlog.id))
                     };
                 }).sort((a, b) => {
                     const orderA = a.order !== undefined ? a.order : 999999;
@@ -26801,9 +26870,17 @@ const app = {
                                     ` : ''}
                                     <div style="flex: 1;">
                                         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-                                            <div style="font-weight: 600; color: var(--text-primary);">
-                                                ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
-                                            </div>
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" 
+                                                       class="student-backlog-complete-checkbox" 
+                                                       data-backlog-id="${backlog.id}"
+                                                       ${backlog.isCompleted ? 'checked' : ''}
+                                                       onchange="app.saveStudentCompletedTasks()"
+                                                       style="width: 20px; height: 20px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
+                                                <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                </div>
+                                            </label>
                                             <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
                                                 <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
                                             </span>
@@ -26881,6 +26958,31 @@ const app = {
                     await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData, { merge: true });
                 }
             }
+            
+            // Store image links for use in rendering progress section
+            scheduleData._imageLinks = imageLinks;
+            
+            // Render progress section with image links upload (after modules are loaded)
+            // Always render progress section - use setTimeout to ensure DOM is ready
+            setTimeout(async () => {
+                try {
+                    if (!(isSubmitted && !isVerified)) {
+                        await this.renderFirstReviewProgressSection(team.id, imageLinks);
+                    } else {
+                        // Still show progress section but read-only when submitted
+                        await this.renderFirstReviewProgressSection(team.id, imageLinks, true);
+                    }
+                } catch (error) {
+                    console.error('Error rendering progress section:', error);
+                }
+            }, 300);
+            
+            // Render Gantt chart after loading schedule
+            try {
+                await this.renderFirstReviewGanttChart();
+            } catch (ganttError) {
+                console.error('Error rendering Gantt chart:', ganttError);
+            }
         } catch (error) {
             console.error('Error loading first sprint schedule:', error);
             if (modulesListContainer) {
@@ -26930,12 +27032,242 @@ const app = {
                 modulesListContainer.innerHTML = '<p class="error-message">Error loading first sprint schedule. Please try again.</p>';
             }
         }
+    },
+    
+    async renderFirstReviewProgressSection(teamId, imageLinks = [], readOnly = false) {
+        const firstReviewTab = document.getElementById('first-review-tab');
+        if (!firstReviewTab) {
+            console.warn('first-review-tab not found');
+            return;
+        }
         
-        // Render Gantt chart after loading schedule
+        // Check if progress section already exists, if so remove it to re-render
+        let progressSection = document.getElementById('first-review-progress-section');
+        if (progressSection) {
+            progressSection.remove();
+        }
+        
+        progressSection = document.createElement('div');
+        progressSection.id = 'first-review-progress-section';
+        
+        // Find the project-planning-section container (most reliable location)
+        const planningSection = firstReviewTab.querySelector('.project-planning-section');
+        if (planningSection) {
+            // Try multiple insertion strategies
+            const ganttChartContainer = firstReviewTab.querySelector('#first-review-gantt-chart')?.parentElement;
+            const submitBtn = document.getElementById('submit-first-review-btn');
+            const submitContainer = submitBtn ? submitBtn.closest('div[style*="margin-top: 2rem"]') : null;
+            const modulesContainer = document.getElementById('first-review-modules-list');
+            const standaloneContainer = document.getElementById('first-review-standalone-backlogs');
+            
+            // Strategy 1: Insert before Gantt chart container
+            if (ganttChartContainer && ganttChartContainer.parentNode) {
+                ganttChartContainer.parentNode.insertBefore(progressSection, ganttChartContainer);
+            } 
+            // Strategy 2: Insert before submit button container
+            else if (submitContainer && submitContainer.parentNode) {
+                submitContainer.parentNode.insertBefore(progressSection, submitContainer);
+            } 
+            // Strategy 3: Insert after standalone backlogs container
+            else if (standaloneContainer && standaloneContainer.parentNode) {
+                const standaloneParent = standaloneContainer.parentNode;
+                if (standaloneContainer.nextSibling) {
+                    standaloneParent.insertBefore(progressSection, standaloneContainer.nextSibling);
+                } else {
+                    standaloneParent.appendChild(progressSection);
+                }
+            }
+            // Strategy 4: Insert after modules container
+            else if (modulesContainer && modulesContainer.parentNode) {
+                const modulesParent = modulesContainer.parentNode;
+                if (modulesContainer.nextSibling) {
+                    modulesParent.insertBefore(progressSection, modulesContainer.nextSibling);
+                } else {
+                    modulesParent.appendChild(progressSection);
+                }
+            }
+            // Strategy 5: Append to planning section
+            else {
+                planningSection.appendChild(progressSection);
+            }
+        } else {
+            // Fallback: append to first-review-tab
+            firstReviewTab.appendChild(progressSection);
+        }
+        
+        progressSection.innerHTML = `
+            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">
+                <h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-images" style="color: #10b981;"></i> Project Progress Images
+                </h3>
+                <p style="margin-bottom: 1rem; color: #065f46; font-size: 0.9rem;">
+                    Upload links to images showing your project progress. These will be visible to your guide and admin.
+                </p>
+                
+                ${!readOnly ? `
+                <div style="margin-bottom: 1rem;">
+                    <label for="first-review-image-link-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                        Image URL:
+                    </label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="url" 
+                               id="first-review-image-link-input" 
+                               class="form-input" 
+                               placeholder="https://example.com/image.png"
+                               style="flex: 1; padding: 0.75rem; border: 2px solid #10b98140; border-radius: 6px;">
+                        <button type="button" 
+                                class="btn btn-success" 
+                                onclick="app.addFirstReviewImageLink()"
+                                style="padding: 0.75rem 1.5rem;">
+                            <i class="fas fa-plus"></i> Add
+                        </button>
+                    </div>
+                </div>
+                ` : ''}
+                
+                <div id="first-review-image-links-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    ${imageLinks.length === 0 ? '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>' : ''}
+                    ${imageLinks.map((link, index) => `
+                        <div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5; display: flex; align-items: center; gap: 1rem;">
+                            <div style="flex: 1; min-width: 0;">
+                                <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                   style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    <span>${this.escapeHtml(link)}</span>
+                                </a>
+                            </div>
+                            ${!readOnly ? `
+                            <button type="button" 
+                                    class="btn btn-danger btn-sm" 
+                                    onclick="app.removeFirstReviewImageLink(${index})"
+                                    style="padding: 0.5rem 1rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    },
+    
+    async addFirstReviewImageLink() {
+        const input = document.getElementById('first-review-image-link-input');
+        if (!input || !input.value.trim()) {
+            alert('Please enter an image URL');
+            return;
+        }
+        
+        const url = input.value.trim();
+        // Basic URL validation
         try {
-            await this.renderFirstReviewGanttChart();
-        } catch (ganttError) {
-            console.error('Error rendering Gantt chart:', ganttError);
+            new URL(url);
+        } catch (e) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load existing image links
+            const progressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id));
+            const existingData = progressDoc.exists() ? progressDoc.data() : {};
+            const imageLinks = existingData.imageLinks || [];
+            
+            // Add new link
+            imageLinks.push(url);
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id), {
+                imageLinks: imageLinks,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            input.value = '';
+            await this.renderFirstReviewProgressSection(team.id, imageLinks);
+        } catch (error) {
+            console.error('Error adding image link:', error);
+            alert('Error adding image link. Please try again.');
+        }
+    },
+    
+    async removeFirstReviewImageLink(index) {
+        if (!confirm('Are you sure you want to remove this image link?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load existing image links
+            const progressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id));
+            const existingData = progressDoc.exists() ? progressDoc.data() : {};
+            const imageLinks = existingData.imageLinks || [];
+            
+            // Remove link at index
+            imageLinks.splice(index, 1);
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id), {
+                imageLinks: imageLinks,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            await this.renderFirstReviewProgressSection(team.id, imageLinks);
+        } catch (error) {
+            console.error('Error removing image link:', error);
+            alert('Error removing image link. Please try again.');
+        }
+    },
+    
+    async saveStudentCompletedTasks() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                console.error('No team found');
+                return;
+            }
+            
+            // Get all checked checkboxes
+            const checkboxes = document.querySelectorAll('.student-backlog-complete-checkbox');
+            const completedBacklogIds = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.backlogId);
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id), {
+                completedBacklogIds: completedBacklogIds,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            // Update visual appearance of completed tasks
+            checkboxes.forEach(cb => {
+                const backlogItem = cb.closest('.first-review-backlog-item');
+                if (backlogItem) {
+                    const taskDiv = backlogItem.querySelector('div[style*="font-weight: 600"]');
+                    if (taskDiv) {
+                        if (cb.checked) {
+                            taskDiv.style.textDecoration = 'line-through';
+                            taskDiv.style.opacity = '0.7';
+                        } else {
+                            taskDiv.style.textDecoration = 'none';
+                            taskDiv.style.opacity = '1';
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error saving completed tasks:', error);
+            alert('Error saving completed tasks. Please try again.');
         }
     },
     
@@ -27094,9 +27426,17 @@ const app = {
                                         ` : ''}
                                         <div style="flex: 1;">
                                             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-                                                <div style="font-weight: 600; color: var(--text-primary);">
-                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
-                                                </div>
+                                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                    <input type="checkbox" 
+                                                           class="student-backlog-complete-checkbox" 
+                                                           data-backlog-id="${backlog.id}"
+                                                           ${backlog.isCompleted ? 'checked' : ''}
+                                                           onchange="app.saveStudentCompletedTasks()"
+                                                           style="width: 20px; height: 20px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    </div>
+                                                </label>
                                                 <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
                                                     <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
                                                 </span>
@@ -27315,20 +27655,16 @@ const app = {
                 const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
                 const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
                 
-                // Update each child backlog (preserve order property and array position)
-                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map((backlog, index) => {
-                    // Preserve existing order, or use array index to maintain relative position
-                    const preservedOrder = backlog.order !== undefined ? backlog.order : index;
+                // Update each child backlog
+                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(backlog => {
                     return {
                         backlogId: backlog.backlogId,
                         startDate: moduleStartDate || backlog.startDate || '',
-                        endDate: moduleEndDate || backlog.endDate || '',
-                        order: preservedOrder
+                        endDate: moduleEndDate || backlog.endDate || ''
                     };
                 });
             }
             
-            // Save the entire scheduleData to preserve all properties including order
             await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
             
             // Reload to show updated dates
@@ -27389,26 +27725,21 @@ const app = {
                         return;
                     }
                     
-                    // Preserve existing order, or use array index to maintain relative position
-                    const preservedOrder = existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex;
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: newStartDate,
-                        endDate: newEndDate,
-                        order: preservedOrder
+                        endDate: newEndDate
                     };
                     // Replace the entire array with a new array, ensuring all objects are new (deep copy)
                     const newProductBacklogs = scheduleData.modules[moduleIndex].productBacklogs.map((pb, idx) => {
                         if (idx === backlogIndex) {
                             return updatedBacklog;
                         }
-                        // Create new object for each backlog to avoid shared references (preserve order from existing or index)
-                        const pbOrder = pb.order !== undefined ? pb.order : idx;
+                        // Create new object for each backlog to avoid shared references
                         return {
                             backlogId: String(pb.backlogId),
                             startDate: pb.startDate || '',
-                            endDate: pb.endDate || '',
-                            order: pbOrder
+                            endDate: pb.endDate || ''
                         };
                     });
                     scheduleData.modules[moduleIndex].productBacklogs = newProductBacklogs;
@@ -27458,36 +27789,21 @@ const app = {
                         return;
                     }
                     
-                    // Preserve existing order, or use array index to maintain relative position
-                    const preservedOrder = existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex;
                     const updatedBacklog = {
                         backlogId: String(existingBacklog.backlogId || backlogId),
                         startDate: dateType === 'startDate' ? dateValue : (existingBacklog.startDate || ''),
-                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || ''),
-                        order: preservedOrder
+                        endDate: dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '')
                     };
-                    // Replace the entire array with a new array to ensure no shared references (preserve order for all items)
-                    const beforeItems = scheduleData.standaloneBacklogs.slice(0, backlogIndex).map((pb, idx) => ({
-                        backlogId: String(pb.backlogId),
-                        startDate: pb.startDate || '',
-                        endDate: pb.endDate || '',
-                        order: pb.order !== undefined ? pb.order : idx
-                    }));
-                    const afterItems = scheduleData.standaloneBacklogs.slice(backlogIndex + 1).map((pb, idx) => ({
-                        backlogId: String(pb.backlogId),
-                        startDate: pb.startDate || '',
-                        endDate: pb.endDate || '',
-                        order: pb.order !== undefined ? pb.order : (backlogIndex + 1 + idx)
-                    }));
+                    // Replace the entire array with a new array to ensure no shared references
                     scheduleData.standaloneBacklogs = [
-                        ...beforeItems,
+                        ...scheduleData.standaloneBacklogs.slice(0, backlogIndex),
                         updatedBacklog,
-                        ...afterItems
+                        ...scheduleData.standaloneBacklogs.slice(backlogIndex + 1)
                     ];
                 }
             }
             
-            // Save the entire scheduleData to preserve all properties including order
+            // Save without merge to ensure clean structure
             await setDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id), scheduleData);
             
             // Reload
@@ -29439,13 +29755,10 @@ const app = {
             }
             const scheduleData = scheduleDoc.data();
             
-            // Check if schedule is frozen (required for contract generation)
             if (!scheduleData.frozen) {
                 alert('Schedule must be frozen before generating a contract. Please freeze the schedule first.');
                 return;
             }
-            
-            // Note: Contract can be generated even if not verified, as long as it's frozen
             
             // Load modules
             const modulesQuery = query(
@@ -29928,22 +30241,15 @@ const app = {
                         <h2>4. Agreement Terms</h2>
                         <p style="margin-bottom: 15px;">
                             This document represents the finalized First Sprint Schedule Agreement for <strong>${this.escapeHtml(teamName)}</strong>. 
-                            The schedule has been frozen by the administrator on <strong>${frozenDate}</strong>.
-                            ${scheduleData.verified ? `The schedule was verified on ${verifiedDate}.` : 'The schedule is frozen and awaiting verification.'}
+                            The schedule has been reviewed, verified, and frozen by the administrator on <strong>${frozenDate}</strong>.
                         </p>
                         <p style="margin-bottom: 15px;">
                             By freezing this schedule, the team commits to following the agreed timeline and deliverables as outlined above. 
                             Product backlog items are now locked and cannot be modified without administrative approval.
                         </p>
-                        ${scheduleData.verified ? `
                         <p style="margin-bottom: 15px;">
-                            The schedule has been reviewed and verified by the administrator. Any deviations from this schedule must be discussed with the guide and approved by the administrator.
+                            Any deviations from this schedule must be discussed with the guide and approved by the administrator.
                         </p>
-                        ` : `
-                        <p style="margin-bottom: 15px;">
-                            This schedule is frozen and finalized. The schedule is awaiting administrative verification. Any deviations from this schedule must be discussed with the guide and approved by the administrator.
-                        </p>
-                        `}
                     </div>
                     
                     <div class="signature-section">

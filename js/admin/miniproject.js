@@ -265,6 +265,23 @@ export function createAdminMiniProjectModule(app) {
                     }
                     totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
                     
+                    // Load student progress (completed tasks)
+                    let completedBacklogIds = [];
+                    let progressPercentage = 0;
+                    try {
+                        const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', teamDoc.id));
+                        if (studentProgressDoc.exists()) {
+                            const progressData = studentProgressDoc.data();
+                            completedBacklogIds = progressData.completedBacklogIds || [];
+                        }
+                        // Calculate progress percentage
+                        if (totalBacklogs > 0) {
+                            progressPercentage = Math.round((completedBacklogIds.length / totalBacklogs) * 100);
+                        }
+                    } catch (error) {
+                        console.warn(`Error loading progress for team ${teamDoc.id}:`, error);
+                    }
+                    
                     teams.push({
                         id: teamDoc.id,
                         name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
@@ -279,7 +296,9 @@ export function createAdminMiniProjectModule(app) {
                         frozenAt: scheduleData?.frozenAt || null,
                         modulesCount: scheduleData?.modules?.length || 0,
                         standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
-                        totalBacklogs: totalBacklogs
+                        totalBacklogs: totalBacklogs,
+                        completedTasks: completedBacklogIds.length,
+                        progressPercentage: progressPercentage
                     });
                 }
                 
@@ -305,15 +324,20 @@ export function createAdminMiniProjectModule(app) {
                     hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
                     submitted: sortedTeams.filter(t => t.submitted).length,
                     verified: sortedTeams.filter(t => t.verified).length,
-                    frozen: sortedTeams.filter(t => t.frozen).length
+                    frozen: sortedTeams.filter(t => t.frozen).length,
+                    lowProgress: sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50).length
                 };
+                
+                // Get teams with low progress (< 50%)
+                const lowProgressTeams = sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50)
+                    .sort((a, b) => a.progressPercentage - b.progressPercentage);
                 
                 // Render consolidated view
                 consolidatedView.innerHTML = `
                     <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
                         <h4 style="margin: 0 0 1rem 0; color: #1e40af; font-size: 1.1rem; font-weight: 600;">
                             <i class="fas fa-chart-bar"></i> Statistics
-                                </h4>
+                        </h4>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                             <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
                                 <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.total}</div>
@@ -330,26 +354,72 @@ export function createAdminMiniProjectModule(app) {
                             <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
                                 <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.verified}</div>
                                 <div style="font-size: 0.85rem; color: var(--text-secondary);">Verified</div>
-                                </div>
+                            </div>
                             <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
                                 <div style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin-bottom: 0.25rem;">${stats.frozen}</div>
                                 <div style="font-size: 0.85rem; color: var(--text-secondary);">Frozen</div>
                             </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: ${stats.lowProgress > 0 ? '#ef4444' : '#10b981'}; margin-bottom: 0.25rem;">${stats.lowProgress}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Low Progress</div>
+                            </div>
                         </div>
                     </div>
                     
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
+                    ${lowProgressTeams.length > 0 ? `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1);">
+                        <h4 style="margin: 0 0 1rem 0; color: #991b1b; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Teams with Low Progress (< 50%)
+                        </h4>
+                        <p style="margin: 0 0 1rem 0; color: #7f1d1d; font-size: 0.9rem;">
+                            The following teams have completed less than 50% of their first sprint tasks. Consider reaching out to provide additional support.
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${lowProgressTeams.map(team => {
+                                const progressColor = team.progressPercentage < 25 ? '#ef4444' : (team.progressPercentage < 40 ? '#f59e0b' : '#3b82f6');
+                                return `
+                                    <div style="padding: 0.875rem; background: white; border-radius: 6px; border-left: 3px solid ${progressColor}; display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">${escapeHtml(team.name)}</div>
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary);">Guide: ${escapeHtml(team.guideName)}</div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                            <div style="min-width: 140px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.5rem;">
+                                                    <span style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">Progress:</span>
+                                                    <span style="font-weight: 600; color: ${progressColor}; font-size: 0.85rem; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                </div>
+                                                <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                    <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                </div>
+                                                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem; text-align: right;">
+                                                    ${team.completedTasks} / ${team.totalBacklogs} tasks
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminFirstReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; white-space: nowrap;">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; table-layout: auto;">
                             <thead>
                                 <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
-                                    <th style="padding: 1rem; text-align: left; font-weight: 600;">Team Name</th>
-                                    <th style="padding: 1rem; text-align: left; font-weight: 600;">Guide</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Schedule</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Status</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Freeze</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Modules</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Backlogs</th>
-                                    <th style="padding: 1rem; text-align: center; font-weight: 600;">Actions</th>
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Team Name</th>
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Guide</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Schedule</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Status</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Freeze</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem; min-width: 110px;">Progress</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Modules</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Backlogs</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -359,37 +429,60 @@ export function createAdminMiniProjectModule(app) {
                                     const freezeColor = team.frozen ? '#f59e0b' : '#6b7280';
                                     const freezeText = team.frozen ? 'Frozen' : 'Active';
                                     
+                                    // Progress bar color based on percentage
+                                    let progressColor = '#10b981'; // Green for high progress
+                                    if (team.progressPercentage < 25) {
+                                        progressColor = '#ef4444'; // Red for very low progress
+                                    } else if (team.progressPercentage < 50) {
+                                        progressColor = '#f59e0b'; // Orange for low progress
+                                    } else if (team.progressPercentage < 75) {
+                                        progressColor = '#3b82f6'; // Blue for medium progress
+                                    }
+                                    
                                     return `
                                         <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
-                                            <td style="padding: 1rem; font-weight: 600; color: var(--text-primary);">
+                                            <td style="padding: 0.75rem; font-weight: 600; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
                                                 ${escapeHtml(team.name)}
                                             </td>
-                                            <td style="padding: 1rem; color: var(--text-secondary);">
+                                            <td style="padding: 0.75rem; color: var(--text-secondary); font-size: 0.85rem; vertical-align: middle;">
                                                 ${escapeHtml(team.guideName)}
                                             </td>
-                                            <td style="padding: 1rem; text-align: center;">
-                                                <span style="padding: 0.4rem 0.8rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
                                                     ${team.hasSchedule ? '<i class="fas fa-check"></i> Yes' : '<i class="fas fa-times"></i> No'}
                                                 </span>
                                             </td>
-                                            <td style="padding: 1rem; text-align: center;">
-                                                <span style="padding: 0.4rem 0.8rem; background: ${statusColor}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${statusColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
                                                     ${statusText}
                                                 </span>
                                             </td>
-                                            <td style="padding: 1rem; text-align: center;">
-                                                <span style="padding: 0.4rem 0.8rem; background: ${freezeColor}; color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${freezeColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
                                                     <i class="fas ${team.frozen ? 'fa-lock' : 'fa-unlock'}"></i> ${freezeText}
                                                 </span>
                                             </td>
-                                            <td style="padding: 1rem; text-align: center; color: var(--text-primary);">
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                ${team.hasSchedule ? `
+                                                    <div style="min-width: 100px; max-width: 130px; margin: 0 auto;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.25rem;">
+                                                            <span style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                            <span style="font-size: 0.65rem; color: var(--text-secondary); white-space: nowrap;">${team.completedTasks}/${team.totalBacklogs}</span>
+                                                        </div>
+                                                        <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                            <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                        </div>
+                                                    </div>
+                                                ` : '<span style="color: var(--text-secondary); font-size: 0.75rem;">N/A</span>'}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
                                                 ${team.modulesCount}
                                             </td>
-                                            <td style="padding: 1rem; text-align: center; color: var(--text-primary);">
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
                                                 ${team.totalBacklogs}
                                             </td>
-                                            <td style="padding: 1rem; text-align: center;">
-                                                <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminFirstReviewSchedule('${team.id}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminFirstReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem;">
                                                     <i class="fas fa-eye"></i> View
                                                 </button>
                                             </td>
@@ -480,6 +573,20 @@ export function createAdminMiniProjectModule(app) {
                     allBacklogs.push({ id: doc.id, ...doc.data(), source: 'firstReview' });
                 });
                 
+                // Load student progress (completed tasks and image links)
+                let completedBacklogIds = [];
+                let imageLinks = [];
+                try {
+                    const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', teamId));
+                    if (studentProgressDoc.exists()) {
+                        const progressData = studentProgressDoc.data();
+                        completedBacklogIds = progressData.completedBacklogIds || [];
+                        imageLinks = progressData.imageLinks || [];
+                    }
+                } catch (error) {
+                    console.warn('Error loading student progress:', error);
+                }
+                
                 // Load assignments
                 const assignmentsQuery = query(
                     collection(window.firebaseDb, 'cardSortingAssignments'),
@@ -531,31 +638,12 @@ export function createAdminMiniProjectModule(app) {
                                         <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Admin Comments:</label>
                                         <textarea id="admin-verification-comments" class="form-input" rows="3" placeholder="Add comments for the team..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
                                     </div>
-                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap;">
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
                                         <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
                                             <i class="fas fa-check-circle" style="font-size: 0.7rem;"></i> Verify & Unlock
                                         </button>
                                     </div>
                                 </form>
-                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #fde68a;">
-                                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                                        ${scheduleData.frozen ? `
-                                            <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
-                                                <i class="fas fa-lock"></i> Frozen - Students cannot edit
-                                            </span>
-                                            <button type="button" class="btn btn-primary btn-sm" onclick="app.generateFirstSprintScheduleContract('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #6366f1; color: white; border: none;">
-                                                <i class="fas fa-file-contract" style="font-size: 0.7rem;"></i> Generate Contract
-                                            </button>
-                                            <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
-                                                <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
-                                            </button>
-                                        ` : `
-                                            <button type="button" class="btn btn-warning btn-sm" onclick="app.freezeFirstReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
-                                                <i class="fas fa-lock" style="font-size: 0.7rem;"></i> Freeze Backlogs
-                                            </button>
-                                        `}
-                                    </div>
-                                </div>
                             </div>
                             ` : scheduleData.verified ? `
                             <div style="padding: 0.75rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">
@@ -608,7 +696,7 @@ export function createAdminMiniProjectModule(app) {
                 document.body.appendChild(modal);
                 
                 // Load schedule content
-                await app.renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule);
+                await app.renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule, completedBacklogIds, imageLinks);
                 
             } catch (error) {
                 console.error('Error loading first review schedule:', error);
@@ -617,7 +705,7 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
-        async renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule) {
+        async renderAdminFirstReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule, completedBacklogIds = [], imageLinks = []) {
             const container = document.getElementById('admin-first-review-schedule-content');
             if (!container) return;
             
@@ -649,10 +737,9 @@ export function createAdminMiniProjectModule(app) {
                             scheduledBacklogIds.has(String(b.id))
                         );
                         
-                        // Sort backlogs by order - using same logic as student view
+                        // Sort backlogs by order
                         const sortedBacklogs = [...moduleBacklogs].map(backlog => {
-                            // Ensure string comparison for backlogId matching (same as student view)
-                            const backlogSchedule = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                            const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
                             return {
                                 ...backlog,
                                 order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
@@ -706,7 +793,8 @@ export function createAdminMiniProjectModule(app) {
                                      style="display: flex; flex-direction: column; gap: 0.5rem;">
                                     ${sortedBacklogs.map(backlog => {
                                         const backlogSchedule = scheduleModule.productBacklogs?.find(pb => pb.backlogId === backlog.id);
-                                        return app.renderAdminBacklogItem(backlog, backlogSchedule, scheduleModule.moduleId, teamId);
+                                        const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                                        return app.renderAdminBacklogItem(backlog, backlogSchedule, scheduleModule.moduleId, teamId, isCompleted);
                                     }).join('')}
                                 </div>
                             </div>
@@ -729,24 +817,11 @@ export function createAdminMiniProjectModule(app) {
                         standaloneBacklogIds.has(String(b.id))
                     );
                     
-                    // Sort standalone backlogs by order (same as student view)
-                    const sortedStandaloneBacklogs = standaloneBacklogs.map(backlog => {
-                        // Ensure string comparison for backlogId matching (same as student view)
+                    standaloneBacklogs.forEach(backlog => {
                         const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
-                        return {
-                            backlog,
-                            backlogSchedule,
-                            order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
-                        };
-                    }).sort((a, b) => {
-                        const orderA = a.order !== undefined ? a.order : 999999;
-                        const orderB = b.order !== undefined ? b.order : 999999;
-                        return orderA - orderB;
-                    });
-                    
-                    sortedStandaloneBacklogs.forEach(({ backlog, backlogSchedule }) => {
                         if (backlogSchedule) {
-                            html += app.renderAdminBacklogItem(backlog, backlogSchedule, null, teamId);
+                            const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                            html += app.renderAdminBacklogItem(backlog, backlogSchedule, null, teamId, isCompleted);
                         }
                     });
                     
@@ -757,6 +832,44 @@ export function createAdminMiniProjectModule(app) {
                     html += '</div>';
                 }
                 
+                // Add student progress section (completed tasks summary and image links)
+                // Always show progress section
+                html += '<div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">';
+                html += '<h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem;"><i class="fas fa-chart-line" style="color: #10b981;"></i> Student Progress</h3>';
+                
+                // Completed tasks summary
+                const totalBacklogs = (scheduleData.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData.standaloneBacklogs?.length || 0);
+                const completedCount = completedBacklogIds.length;
+                const completionPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+                
+                html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong style="color: var(--text-primary); font-size: 0.9rem;">Completed Tasks:</strong>
+                        <span style="font-size: 1.1rem; font-weight: 600; color: #10b981;">${completedCount} / ${totalBacklogs} (${completionPercentage}%)</span>
+                    </div>
+                    <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                        <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>`;
+                
+                // Image links
+                html += '<div style="margin-top: 1rem;"><h4 style="margin: 0 0 0.75rem 0; color: #065f46; font-size: 0.95rem;"><i class="fas fa-images"></i> Project Progress Images</h4>';
+                if (imageLinks.length > 0) {
+                    html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+                    imageLinks.forEach((link, index) => {
+                        html += `<div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                            <a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>${escapeHtml(link)}</span>
+                            </a>
+                        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>';
+                }
+                html += '</div></div>';
+                
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Error rendering schedule content:', error);
@@ -764,7 +877,7 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
-        renderAdminBacklogItem(backlog, backlogSchedule, moduleId, teamId) {
+        renderAdminBacklogItem(backlog, backlogSchedule, moduleId, teamId, isCompleted = false) {
             const startDate = backlogSchedule?.startDate || '';
             const endDate = backlogSchedule?.endDate || '';
             const priority = backlog.priority || 'medium';
@@ -794,7 +907,7 @@ export function createAdminMiniProjectModule(app) {
                      data-module-id="${moduleId || 'standalone'}"
                      data-backlog-order="${backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999}"
                      draggable="true"
-                     style="padding: 0.75rem; background: #ffffff; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: move;"
+                     style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#ffffff'}; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: move;"
                      ondragstart="app.handleAdminBacklogDragStart(event, '${backlog.id}', '${moduleId || 'standalone'}', '${teamId}')"
                      ondragover="app.handleAdminBacklogDragOver(event)"
                      ondrop="app.handleAdminBacklogDrop(event, '${backlog.id}', '${moduleId || 'standalone'}', '${teamId}')"
@@ -804,8 +917,11 @@ export function createAdminMiniProjectModule(app) {
                             <i class="fas fa-grip-vertical" style="color: #9ca3af; cursor: move; font-size: 0.8rem;" title="Drag to reorder"></i>
                         </div>
                         <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem; font-size: 0.85rem; line-height: 1.3;">
-                                ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981; font-size: 0.85rem;"></i>' : ''}
+                                <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; line-height: 1.3; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                    ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                </div>
                             </div>
                             <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
                                 <span style="padding: 0.2rem 0.4rem; background: ${priorityColor}; color: white; border-radius: 8px; font-size: 0.65rem; font-weight: 500;">
