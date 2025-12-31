@@ -5547,6 +5547,16 @@ const app = {
                         <div class="detail-item">
                             <strong>Members:</strong> ${(team.members || []).length} student(s)
                         </div>
+                        ${team.githubRepository ? `
+                            <div class="detail-item" style="grid-column: 1 / -1;">
+                                <strong><i class="fab fa-github"></i> GitHub Repository:</strong>
+                                <a href="${this.escapeHtml(team.githubRepository)}" target="_blank" rel="noopener noreferrer" 
+                                   style="color: #3b82f6; text-decoration: none; margin-left: 0.5rem; word-break: break-all;">
+                                    ${this.escapeHtml(team.githubRepository)}
+                                    <i class="fas fa-external-link-alt" style="font-size: 0.75rem; margin-left: 0.25rem;"></i>
+                                </a>
+                            </div>
+                        ` : ''}
                         </div>
                     <div class="team-actions">
                         <button class="btn btn-primary btn-sm" onclick="app.editProjectTeam('${team.id}')">
@@ -6284,6 +6294,20 @@ const app = {
                     <div class="team-topic" style="margin-bottom: 0.75rem; font-size: 0.9rem;">
                         <strong>Topic:</strong> ${this.escapeHtml(team.topic || 'Not assigned')}
                     </div>
+                    
+                    ${team.githubRepository ? `
+                        <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <i class="fab fa-github" style="color: #f59e0b;"></i>
+                                <strong style="font-size: 0.85rem; color: var(--text-primary);">GitHub Repository</strong>
+                            </div>
+                            <a href="${this.escapeHtml(team.githubRepository)}" target="_blank" rel="noopener noreferrer" 
+                               style="color: #3b82f6; text-decoration: none; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; word-break: break-all;">
+                                <span>${this.escapeHtml(team.githubRepository)}</span>
+                                <i class="fas fa-external-link-alt" style="font-size: 0.75rem;"></i>
+                            </a>
+                        </div>
+                    ` : ''}
                     
                     ${team.approvedProblemStatement ? `
                         <div class="approved-problem-statement" style="margin-bottom: 0.75rem; padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 4px solid #10b981;">
@@ -12784,6 +12808,33 @@ const app = {
                                 <p class="info-card-text">${this.escapeHtml(studentTeam.guideName || 'Not assigned')}</p>
                             </div>
                         </div>
+                        <div class="info-card info-card-orange">
+                            <div class="info-card-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                                <i class="fab fa-github"></i>
+                            </div>
+                            <div class="info-card-content">
+                                <h4>GitHub Repository</h4>
+                                <div id="github-repo-section" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${studentTeam.githubRepository ? `
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                            <a href="${this.escapeHtml(studentTeam.githubRepository)}" target="_blank" rel="noopener noreferrer" 
+                                               style="color: #3b82f6; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; word-break: break-all;">
+                                                <i class="fab fa-github"></i>
+                                                <span>${this.escapeHtml(studentTeam.githubRepository)}</span>
+                                                <i class="fas fa-external-link-alt" style="font-size: 0.75rem;"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editGithubRepository()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                        </div>
+                                    ` : `
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="app.showGithubRepositoryModal()" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                            <i class="fab fa-github"></i> Add GitHub Repository
+                                        </button>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     
@@ -13203,6 +13254,160 @@ const app = {
             const isVisible = container.style.display !== 'none';
             container.style.display = isVisible ? 'none' : 'block';
             chevron.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+    },
+    
+    async showGithubRepositoryModal() {
+        if (!this.currentStudentTeamId) {
+            alert('Error: Team ID not found. Please refresh the page.');
+            return;
+        }
+        
+        // Check if modal exists, if not create it
+        let modal = document.getElementById('github-repository-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'github-repository-modal';
+            modal.className = 'modal-overlay';
+            modal.style.display = 'none';
+            modal.onclick = function(e) {
+                if (e.target === modal) {
+                    app.closeGithubRepositoryModal();
+                }
+            };
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; width: 90%;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2><i class="fab fa-github"></i> GitHub Repository</h2>
+                        <button type="button" class="modal-close" onclick="app.closeGithubRepositoryModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="github-repository-form" onsubmit="event.preventDefault(); app.saveGithubRepository();">
+                            <div class="form-group">
+                                <label for="github-repository-url">GitHub Repository URL *</label>
+                                <input type="url" id="github-repository-url" class="form-input" 
+                                       placeholder="https://github.com/username/repository" 
+                                       pattern="https://github\\.com/.*" 
+                                       required>
+                                <small style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem; display: block;">
+                                    Enter the full URL of your GitHub repository (e.g., https://github.com/username/repository)
+                                </small>
+                            </div>
+                            <div class="modal-actions" style="margin-top: 1.5rem;">
+                                <button type="button" class="btn btn-secondary" onclick="app.closeGithubRepositoryModal()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save Repository Link
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        // Load current repository URL if exists
+        try {
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+            if (teamDoc.exists()) {
+                const teamData = teamDoc.data();
+                const urlInput = document.getElementById('github-repository-url');
+                if (urlInput) {
+                    urlInput.value = teamData.githubRepository || '';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading GitHub repository:', error);
+        }
+        
+        modal.style.display = 'flex';
+        
+        // Focus on URL field after a short delay
+        setTimeout(() => {
+            const urlInput = document.getElementById('github-repository-url');
+            if (urlInput) {
+                urlInput.focus();
+            }
+        }, 100);
+    },
+    
+    closeGithubRepositoryModal() {
+        const modal = document.getElementById('github-repository-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            const form = document.getElementById('github-repository-form');
+            if (form) {
+                form.reset();
+            }
+        }
+    },
+    
+    editGithubRepository() {
+        this.showGithubRepositoryModal();
+    },
+    
+    async saveGithubRepository() {
+        if (!this.currentStudentTeamId) {
+            alert('Error: Team ID not found. Please refresh the page.');
+            return;
+        }
+        
+        const urlInput = document.getElementById('github-repository-url');
+        if (!urlInput) {
+            alert('Error: Form field not found. Please refresh the page.');
+            return;
+        }
+        
+        let repositoryUrl = urlInput.value.trim();
+        
+        // Validate URL
+        if (!repositoryUrl) {
+            alert('Please enter a GitHub repository URL.');
+            urlInput.focus();
+            return;
+        }
+        
+        // Ensure URL starts with https://github.com/
+        if (!repositoryUrl.startsWith('https://github.com/')) {
+            // Try to fix common variations
+            if (repositoryUrl.startsWith('github.com/')) {
+                repositoryUrl = 'https://' + repositoryUrl;
+            } else if (repositoryUrl.startsWith('http://github.com/')) {
+                repositoryUrl = repositoryUrl.replace('http://', 'https://');
+            } else {
+                alert('Please enter a valid GitHub repository URL (e.g., https://github.com/username/repository)');
+                urlInput.focus();
+                return;
+            }
+        }
+        
+        // Basic URL validation
+        try {
+            new URL(repositoryUrl);
+        } catch (e) {
+            alert('Please enter a valid URL.');
+            urlInput.focus();
+            return;
+        }
+        
+        try {
+            // Save to Firestore
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
+                githubRepository: repositoryUrl,
+                updatedAt: serverTimestamp()
+            });
+            
+            alert('GitHub repository link saved successfully!');
+            this.closeGithubRepositoryModal();
+            
+            // Reload the project details to show the updated repository link
+            await this.loadStudentMiniProject();
+        } catch (error) {
+            console.error('Error saving GitHub repository:', error);
+            alert('Error saving GitHub repository link. Please try again.');
         }
     },
     
