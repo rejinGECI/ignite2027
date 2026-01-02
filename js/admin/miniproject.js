@@ -1855,6 +1855,1016 @@ export function createAdminMiniProjectModule(app) {
                 console.error('Error generating GitHub repositories report:', error);
                 alert('Error generating progress report. Please try again.');
             }
+        },
+        
+        async loadArchitectureDiagramsTeams() {
+            if (!app.isAdmin) return;
+            
+            const container = document.getElementById('architecture-diagrams-teams-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="loading-state">Loading architecture diagrams status...</div>';
+            
+            try {
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const docSnap of teamsSnapshot.docs) {
+                    const data = docSnap.data();
+                    if (!data.deleted) {
+                        // Get planning data
+                        const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', docSnap.id));
+                        const planningData = planningDoc.exists() ? planningDoc.data() : {};
+                        
+                        const architectureDiagrams = data.architectureDiagrams || [];
+                        const archVerified = planningData.architectureDiagramsVerified === true;
+                        const archApproved = planningData.architectureDiagramsApproved === true;
+                        const verificationStatus = planningData.architectureDiagramsVerificationStatus || {};
+                        
+                        // Only show teams with architecture diagrams or approval status
+                        if (architectureDiagrams.length > 0 || archVerified || archApproved) {
+                            teams.push({
+                                id: docSnap.id,
+                                groupName: data.groupName || data.name || 'Unnamed Team',
+                                guideName: data.guideName || 'No Guide',
+                                topic: data.topic || 'Not assigned',
+                                members: data.members || [],
+                                architectureDiagrams: architectureDiagrams,
+                                archVerified: archVerified,
+                                archApproved: archApproved,
+                                verificationStatus: verificationStatus
+                            });
+                        }
+                    }
+                }
+                
+                if (teams.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No teams with architecture diagrams found.</p>';
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.groupName
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Store teams for search and PDF generation
+                app.architectureDiagramsTeams = sortedTeams;
+                
+                // Count statuses
+                const approvedCount = sortedTeams.filter(t => t.archApproved).length;
+                const verifiedCount = sortedTeams.filter(t => t.archVerified && !t.archApproved).length;
+                const pendingCount = sortedTeams.filter(t => !t.archVerified && !t.archApproved).length;
+                
+                container.innerHTML = `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 8px; border-left: 4px solid #0ea5e9;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <i class="fas fa-drafting-compass" style="font-size: 1.5rem; color: #0ea5e9;"></i>
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0; color: #0c4a6e; font-size: 1.1rem;">Architecture Diagrams Status Summary</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: #075985; font-size: 0.9rem;">${sortedTeams.length} team${sortedTeams.length !== 1 ? 's' : ''} with architecture diagrams</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                            <div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-radius: 6px; border-left: 3px solid #22c55e;">
+                                <div style="font-size: 0.85rem; color: #15803d; font-weight: 600; margin-bottom: 0.25rem;">Approved</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #16a34a;">${approvedCount}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(251, 191, 36, 0.1); border-radius: 6px; border-left: 3px solid #fbbf24;">
+                                <div style="font-size: 0.85rem; color: #b45309; font-weight: 600; margin-bottom: 0.25rem;">Verified</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #eab308;">${verifiedCount}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="font-size: 0.85rem; color: #991b1b; font-weight: 600; margin-bottom: 0.25rem;">Pending</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #dc2626;">${pendingCount}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1rem;">
+                        ${sortedTeams.map(team => {
+                            let statusBadge = '';
+                            let statusColor = '';
+                            if (team.archApproved) {
+                                statusBadge = '<span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>';
+                                statusColor = '#22c55e';
+                            } else if (team.archVerified) {
+                                statusBadge = '<span style="background: #fef3c7; color: #92400e; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Verified</span>';
+                                statusColor = '#fbbf24';
+                            } else {
+                                statusBadge = '<span style="background: #fee2e2; color: #991b1b; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-clock"></i> Pending</span>';
+                                statusColor = '#ef4444';
+                            }
+                            
+                            return `
+                                <div class="project-team-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div class="team-header" style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: start;">
+                                        <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${escapeHtml(team.groupName)}</h4>
+                                        ${statusBadge}
+                                    </div>
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                            <i class="fas fa-user-tie" style="margin-right: 0.5rem;"></i>Guide: ${escapeHtml(team.guideName)}
+                                        </div>
+                                        ${team.topic && team.topic !== 'Not assigned' ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                                <i class="fas fa-lightbulb" style="margin-right: 0.5rem;"></i>Topic: ${escapeHtml(team.topic)}
+                                            </div>
+                                        ` : ''}
+                                        ${team.members && team.members.length > 0 ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                                <i class="fas fa-users" style="margin-right: 0.5rem;"></i>Members: ${team.members.length}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    <div style="padding: 0.75rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                                            <i class="fas fa-drafting-compass" style="color: ${statusColor}; margin-right: 0.5rem;"></i>Architecture Diagrams: ${team.architectureDiagrams.length}
+                                        </div>
+                                        ${team.verificationStatus.comments ? `
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0;">
+                                                <strong>Comments:</strong> ${escapeHtml(team.verificationStatus.comments)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('search-architecture-diagrams-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const teamCards = container.querySelectorAll('.project-team-item');
+                        teamCards.forEach(card => {
+                            const teamText = card.textContent.toLowerCase();
+                            card.style.display = teamText.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading architecture diagrams:', error);
+                container.innerHTML = '<p class="error-message">Error loading architecture diagrams status. Please try again.</p>';
+            }
+        },
+        
+        async generateArchitectureDiagramsReport() {
+            if (!app.isAdmin) return;
+            
+            try {
+                // Load teams data if not already loaded
+                if (!app.architectureDiagramsTeams || app.architectureDiagramsTeams.length === 0) {
+                    // Load teams with architecture diagrams
+                    const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                    const teamsSnapshot = await getDocs(teamsQuery);
+                    
+                    const teams = [];
+                    for (const docSnap of teamsSnapshot.docs) {
+                        const data = docSnap.data();
+                        if (!data.deleted) {
+                            // Get planning data
+                            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', docSnap.id));
+                            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+                            
+                            const architectureDiagrams = data.architectureDiagrams || [];
+                            const archVerified = planningData.architectureDiagramsVerified === true;
+                            const archApproved = planningData.architectureDiagramsApproved === true;
+                            const verificationStatus = planningData.architectureDiagramsVerificationStatus || {};
+                            
+                            // Only show teams with architecture diagrams or approval status
+                            if (architectureDiagrams.length > 0 || archVerified || archApproved) {
+                                teams.push({
+                                    id: docSnap.id,
+                                    groupName: data.groupName || data.name || 'Unnamed Team',
+                                    guideName: data.guideName || 'No Guide',
+                                    topic: data.topic || 'Not assigned',
+                                    members: data.members || [],
+                                    architectureDiagrams: architectureDiagrams,
+                                    archVerified: archVerified,
+                                    archApproved: archApproved,
+                                    verificationStatus: verificationStatus
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Apply team order
+                    const teamsForOrdering = teams.map(t => ({
+                        id: t.id,
+                        groupName: t.groupName
+                    }));
+                    const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                    const teamMap = new Map(teams.map(t => [t.id, t]));
+                    app.architectureDiagramsTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                }
+                
+                const teams = app.architectureDiagramsTeams;
+                
+                if (teams.length === 0) {
+                    alert('No teams with architecture diagrams found to generate report.');
+                    return;
+                }
+                
+                // Count statuses
+                const approvedCount = teams.filter(t => t.archApproved).length;
+                const verifiedCount = teams.filter(t => t.archVerified && !t.archApproved).length;
+                const pendingCount = teams.filter(t => !t.archVerified && !t.archApproved).length;
+                
+                const printWindow = window.open('', '_blank');
+                const currentDate = new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                let html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Architecture Diagrams Status Report</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                        <style>
+                            @media print {
+                                @page {
+                                    margin: 1.5cm;
+                                    size: A4 portrait;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                                .no-print {
+                                    display: none;
+                                }
+                                * {
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                            }
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            body {
+                                font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                color: #1e293b;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header {
+                                text-align: center;
+                                margin-bottom: 35px;
+                                padding: 25px;
+                                background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+                                background-color: #0ea5e9;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(14, 165, 233, 0.2);
+                                color: white;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header h1 {
+                                margin: 0 0 15px 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 32px;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 1.5px;
+                                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                            .header .subtitle {
+                                font-size: 16px;
+                                font-weight: 400;
+                                opacity: 0.95;
+                                margin: 8px 0;
+                            }
+                            .header .stats {
+                                display: flex;
+                                justify-content: center;
+                                gap: 30px;
+                                margin-top: 20px;
+                                flex-wrap: wrap;
+                            }
+                            .header .stat-item {
+                                background: rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 8px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .header .stat-label {
+                                font-size: 12px;
+                                opacity: 0.9;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                            }
+                            .header .stat-value {
+                                font-size: 24px;
+                                font-weight: 700;
+                                margin-top: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: separate;
+                                border-spacing: 0;
+                                margin-top: 25px;
+                                font-size: 11px;
+                                background: white;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th {
+                                background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+                                background-color: #0ea5e9;
+                                color: white !important;
+                                padding: 12px 8px;
+                                text-align: left;
+                                font-weight: 700;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                                border: none;
+                                position: relative;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th:not(:last-child)::after {
+                                content: '';
+                                position: absolute;
+                                right: 0;
+                                top: 20%;
+                                height: 60%;
+                                width: 1px;
+                                background: rgba(255, 255, 255, 0.3);
+                            }
+                            td {
+                                padding: 10px 8px;
+                                border-bottom: 1px solid #cbd5e1;
+                                vertical-align: top;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            tr:nth-child(even) {
+                                background: #f8fafc;
+                            }
+                            tr:hover {
+                                background: #f1f5f9;
+                            }
+                            .status-badge {
+                                display: inline-block;
+                                padding: 4px 12px;
+                                border-radius: 12px;
+                                font-size: 10px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            .status-approved {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+                            .status-verified {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+                            .status-pending {
+                                background: #fee2e2;
+                                color: #991b1b;
+                            }
+                            .diagram-link {
+                                color: #0366d6;
+                                text-decoration: none;
+                                word-break: break-all;
+                                font-size: 10px;
+                            }
+                            .comments {
+                                font-size: 9px;
+                                color: #64748b;
+                                font-style: italic;
+                                margin-top: 4px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1><i class="fas fa-drafting-compass"></i> Architecture Diagrams Status Report</h1>
+                            <div class="subtitle">Generated on ${currentDate}</div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Teams</div>
+                                    <div class="stat-value">${teams.length}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Approved</div>
+                                    <div class="stat-value">${approvedCount}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Verified</div>
+                                    <div class="stat-value">${verifiedCount}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Pending</div>
+                                    <div class="stat-value">${pendingCount}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 20%;">Team Name</th>
+                                    <th style="width: 15%;">Guide</th>
+                                    <th style="width: 15%;">Topic</th>
+                                    <th style="width: 10%;">Diagrams</th>
+                                    <th style="width: 12%;">Status</th>
+                                    <th style="width: 23%;">Links/Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teams.map((team, index) => {
+                                    let statusBadge = '';
+                                    let statusClass = '';
+                                    if (team.archApproved) {
+                                        statusBadge = 'Approved';
+                                        statusClass = 'status-approved';
+                                    } else if (team.archVerified) {
+                                        statusBadge = 'Verified';
+                                        statusClass = 'status-verified';
+                                    } else {
+                                        statusBadge = 'Pending';
+                                        statusClass = 'status-pending';
+                                    }
+                                    
+                                    const diagramsList = team.architectureDiagrams.length > 0 
+                                        ? team.architectureDiagrams.map((link, idx) => 
+                                            `<a href="${escapeHtml(link)}" target="_blank" class="diagram-link">Diagram ${idx + 1}</a>`
+                                        ).join(', ')
+                                        : 'No diagrams';
+                                    
+                                    const comments = team.verificationStatus.comments 
+                                        ? `<div class="comments">${escapeHtml(team.verificationStatus.comments)}</div>`
+                                        : '';
+                                    
+                                    return `
+                                        <tr>
+                                            <td>${index + 1}</td>
+                                            <td><strong>${escapeHtml(team.groupName)}</strong></td>
+                                            <td>${escapeHtml(team.guideName)}</td>
+                                            <td>${escapeHtml(team.topic)}</td>
+                                            <td>${team.architectureDiagrams.length}</td>
+                                            <td><span class="status-badge ${statusClass}">${statusBadge}</span></td>
+                                            <td>
+                                                ${diagramsList}
+                                                ${comments}
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(html);
+                printWindow.document.close();
+                
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
+                
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error generating architecture diagrams report:', error);
+                alert('Error generating architecture diagrams report. Please try again.');
+            }
+        },
+        
+        async loadFirstSprintPPTTeams() {
+            if (!app.isAdmin) return;
+            
+            const container = document.getElementById('first-sprint-ppt-teams-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="loading-state">Loading First Sprint PPT status...</div>';
+            
+            try {
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const docSnap of teamsSnapshot.docs) {
+                    const data = docSnap.data();
+                    if (!data.deleted) {
+                        // Get planning data
+                        const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', docSnap.id));
+                        const planningData = planningDoc.exists() ? planningDoc.data() : {};
+                        
+                        const firstSprintPPT = data.firstSprintPPT || [];
+                        const pptVerified = planningData.firstSprintPPTVerified === true;
+                        const pptApproved = planningData.firstSprintPPTApproved === true;
+                        const verificationStatus = planningData.firstSprintPPTVerificationStatus || {};
+                        
+                        // Only show teams with PPT or approval status
+                        if (firstSprintPPT.length > 0 || pptVerified || pptApproved) {
+                            teams.push({
+                                id: docSnap.id,
+                                groupName: data.groupName || data.name || 'Unnamed Team',
+                                guideName: data.guideName || 'No Guide',
+                                topic: data.topic || 'Not assigned',
+                                members: data.members || [],
+                                firstSprintPPT: firstSprintPPT,
+                                pptVerified: pptVerified,
+                                pptApproved: pptApproved,
+                                verificationStatus: verificationStatus
+                            });
+                        }
+                    }
+                }
+                
+                if (teams.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No teams with First Sprint PPT found.</p>';
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.groupName
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Store teams for search and PDF generation
+                app.firstSprintPPTTeams = sortedTeams;
+                
+                // Count statuses
+                const approvedCount = sortedTeams.filter(t => t.pptApproved).length;
+                const verifiedCount = sortedTeams.filter(t => t.pptVerified && !t.pptApproved).length;
+                const pendingCount = sortedTeams.filter(t => !t.pptVerified && !t.pptApproved).length;
+                
+                container.innerHTML = `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <i class="fas fa-file-powerpoint" style="font-size: 1.5rem; color: #f59e0b;"></i>
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0; color: #92400e; font-size: 1.1rem;">First Sprint PPT Status Summary</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: #78350f; font-size: 0.9rem;">${sortedTeams.length} team${sortedTeams.length !== 1 ? 's' : ''} with First Sprint PPT</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                            <div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-radius: 6px; border-left: 3px solid #22c55e;">
+                                <div style="font-size: 0.85rem; color: #15803d; font-weight: 600; margin-bottom: 0.25rem;">Approved</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #16a34a;">${approvedCount}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(251, 191, 36, 0.1); border-radius: 6px; border-left: 3px solid #fbbf24;">
+                                <div style="font-size: 0.85rem; color: #b45309; font-weight: 600; margin-bottom: 0.25rem;">Verified</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #eab308;">${verifiedCount}</div>
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="font-size: 0.85rem; color: #991b1b; font-weight: 600; margin-bottom: 0.25rem;">Pending</div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #dc2626;">${pendingCount}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1rem;">
+                        ${sortedTeams.map(team => {
+                            let statusBadge = '';
+                            let statusColor = '';
+                            if (team.pptApproved) {
+                                statusBadge = '<span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check-circle"></i> Approved</span>';
+                                statusColor = '#22c55e';
+                            } else if (team.pptVerified) {
+                                statusBadge = '<span style="background: #fef3c7; color: #92400e; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Verified</span>';
+                                statusColor = '#fbbf24';
+                            } else {
+                                statusBadge = '<span style="background: #fee2e2; color: #991b1b; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;"><i class="fas fa-clock"></i> Pending</span>';
+                                statusColor = '#ef4444';
+                            }
+                            
+                            return `
+                                <div class="project-team-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div class="team-header" style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: start;">
+                                        <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${escapeHtml(team.groupName)}</h4>
+                                        ${statusBadge}
+                                    </div>
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                            <i class="fas fa-user-tie" style="margin-right: 0.5rem;"></i>Guide: ${escapeHtml(team.guideName)}
+                                        </div>
+                                        ${team.topic && team.topic !== 'Not assigned' ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                                <i class="fas fa-lightbulb" style="margin-right: 0.5rem;"></i>Topic: ${escapeHtml(team.topic)}
+                                            </div>
+                                        ` : ''}
+                                        ${team.members && team.members.length > 0 ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                                <i class="fas fa-users" style="margin-right: 0.5rem;"></i>Members: ${team.members.length}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    <div style="padding: 0.75rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                                            <i class="fas fa-file-powerpoint" style="color: ${statusColor}; margin-right: 0.5rem;"></i>PPT Links: ${team.firstSprintPPT.length}
+                                        </div>
+                                        ${team.verificationStatus.feedback ? `
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0;">
+                                                <strong>Comments:</strong> ${escapeHtml(team.verificationStatus.feedback)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('search-first-sprint-ppt-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const teamCards = container.querySelectorAll('.project-team-item');
+                        teamCards.forEach(card => {
+                            const teamText = card.textContent.toLowerCase();
+                            card.style.display = teamText.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading First Sprint PPT:', error);
+                container.innerHTML = '<p class="error-message">Error loading First Sprint PPT status. Please try again.</p>';
+            }
+        },
+        
+        async generateFirstSprintPPTReport() {
+            if (!app.isAdmin) return;
+            
+            try {
+                // Load teams data if not already loaded
+                if (!app.firstSprintPPTTeams || app.firstSprintPPTTeams.length === 0) {
+                    // Load teams with First Sprint PPT
+                    const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                    const teamsSnapshot = await getDocs(teamsQuery);
+                    
+                    const teams = [];
+                    for (const docSnap of teamsSnapshot.docs) {
+                        const data = docSnap.data();
+                        if (!data.deleted) {
+                            // Get planning data
+                            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', docSnap.id));
+                            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+                            
+                            const firstSprintPPT = data.firstSprintPPT || [];
+                            const pptVerified = planningData.firstSprintPPTVerified === true;
+                            const pptApproved = planningData.firstSprintPPTApproved === true;
+                            const verificationStatus = planningData.firstSprintPPTVerificationStatus || {};
+                            
+                            // Only show teams with PPT or approval status
+                            if (firstSprintPPT.length > 0 || pptVerified || pptApproved) {
+                                teams.push({
+                                    id: docSnap.id,
+                                    groupName: data.groupName || data.name || 'Unnamed Team',
+                                    guideName: data.guideName || 'No Guide',
+                                    topic: data.topic || 'Not assigned',
+                                    members: data.members || [],
+                                    firstSprintPPT: firstSprintPPT,
+                                    pptVerified: pptVerified,
+                                    pptApproved: pptApproved,
+                                    verificationStatus: verificationStatus
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Apply team order
+                    const teamsForOrdering = teams.map(t => ({
+                        id: t.id,
+                        groupName: t.groupName
+                    }));
+                    const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                    const teamMap = new Map(teams.map(t => [t.id, t]));
+                    app.firstSprintPPTTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                }
+                
+                const teams = app.firstSprintPPTTeams;
+                
+                if (teams.length === 0) {
+                    alert('No teams with First Sprint PPT found to generate report.');
+                    return;
+                }
+                
+                // Count statuses
+                const approvedCount = teams.filter(t => t.pptApproved).length;
+                const verifiedCount = teams.filter(t => t.pptVerified && !t.pptApproved).length;
+                const pendingCount = teams.filter(t => !t.pptVerified && !t.pptApproved).length;
+                
+                const printWindow = window.open('', '_blank');
+                const currentDate = new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                let html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>First Sprint PPT Status Report</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                        <style>
+                            @media print {
+                                @page {
+                                    margin: 1.5cm;
+                                    size: A4 portrait;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                                .no-print {
+                                    display: none;
+                                }
+                                * {
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                            }
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            body {
+                                font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                color: #1e293b;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header {
+                                text-align: center;
+                                margin-bottom: 35px;
+                                padding: 25px;
+                                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                                background-color: #f59e0b;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(245, 158, 11, 0.2);
+                                color: white;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header h1 {
+                                margin: 0 0 15px 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 32px;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 1.5px;
+                                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                            .header .subtitle {
+                                font-size: 16px;
+                                font-weight: 400;
+                                opacity: 0.95;
+                                margin: 8px 0;
+                            }
+                            .header .stats {
+                                display: flex;
+                                justify-content: center;
+                                gap: 30px;
+                                margin-top: 20px;
+                                flex-wrap: wrap;
+                            }
+                            .header .stat-item {
+                                background: rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 8px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .header .stat-label {
+                                font-size: 12px;
+                                opacity: 0.9;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                            }
+                            .header .stat-value {
+                                font-size: 24px;
+                                font-weight: 700;
+                                margin-top: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: separate;
+                                border-spacing: 0;
+                                margin-top: 25px;
+                                font-size: 11px;
+                                background: white;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th {
+                                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                                background-color: #f59e0b;
+                                color: white !important;
+                                padding: 12px 8px;
+                                text-align: left;
+                                font-weight: 700;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                                border: none;
+                                position: relative;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th:not(:last-child)::after {
+                                content: '';
+                                position: absolute;
+                                right: 0;
+                                top: 20%;
+                                height: 60%;
+                                width: 1px;
+                                background: rgba(255, 255, 255, 0.3);
+                            }
+                            td {
+                                padding: 10px 8px;
+                                border-bottom: 1px solid #cbd5e1;
+                                vertical-align: top;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            tr:nth-child(even) {
+                                background: #f8fafc;
+                            }
+                            tr:hover {
+                                background: #f1f5f9;
+                            }
+                            .status-badge {
+                                display: inline-block;
+                                padding: 4px 12px;
+                                border-radius: 12px;
+                                font-size: 10px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            .status-approved {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+                            .status-verified {
+                                background: #fef3c7;
+                                color: #92400e;
+                            }
+                            .status-pending {
+                                background: #fee2e2;
+                                color: #991b1b;
+                            }
+                            .ppt-link {
+                                color: #0366d6;
+                                text-decoration: none;
+                                word-break: break-all;
+                                font-size: 10px;
+                            }
+                            .comments {
+                                font-size: 9px;
+                                color: #64748b;
+                                font-style: italic;
+                                margin-top: 4px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1><i class="fas fa-file-powerpoint"></i> First Sprint PPT Status Report</h1>
+                            <div class="subtitle">Generated on ${currentDate}</div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Teams</div>
+                                    <div class="stat-value">${teams.length}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Approved</div>
+                                    <div class="stat-value">${approvedCount}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Verified</div>
+                                    <div class="stat-value">${verifiedCount}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Pending</div>
+                                    <div class="stat-value">${pendingCount}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 20%;">Team Name</th>
+                                    <th style="width: 15%;">Guide</th>
+                                    <th style="width: 15%;">Topic</th>
+                                    <th style="width: 10%;">PPT Links</th>
+                                    <th style="width: 12%;">Status</th>
+                                    <th style="width: 23%;">Links/Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teams.map((team, index) => {
+                                    let statusBadge = '';
+                                    let statusClass = '';
+                                    if (team.pptApproved) {
+                                        statusBadge = 'Approved';
+                                        statusClass = 'status-approved';
+                                    } else if (team.pptVerified) {
+                                        statusBadge = 'Verified';
+                                        statusClass = 'status-verified';
+                                    } else {
+                                        statusBadge = 'Pending';
+                                        statusClass = 'status-pending';
+                                    }
+                                    
+                                    const pptList = team.firstSprintPPT.length > 0 
+                                        ? team.firstSprintPPT.map((link, idx) => 
+                                            `<a href="${escapeHtml(link)}" target="_blank" class="ppt-link">PPT ${idx + 1}</a>`
+                                        ).join(', ')
+                                        : 'No PPT links';
+                                    
+                                    const comments = team.verificationStatus.feedback 
+                                        ? `<div class="comments">${escapeHtml(team.verificationStatus.feedback)}</div>`
+                                        : '';
+                                    
+                                    return `
+                                        <tr>
+                                            <td>${index + 1}</td>
+                                            <td><strong>${escapeHtml(team.groupName)}</strong></td>
+                                            <td>${escapeHtml(team.guideName)}</td>
+                                            <td>${escapeHtml(team.topic)}</td>
+                                            <td>${team.firstSprintPPT.length}</td>
+                                            <td><span class="status-badge ${statusClass}">${statusBadge}</span></td>
+                                            <td>
+                                                ${pptList}
+                                                ${comments}
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(html);
+                printWindow.document.close();
+                
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
+                
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error generating First Sprint PPT report:', error);
+                alert('Error generating First Sprint PPT report. Please try again.');
+            }
         }
     };
 }

@@ -854,6 +854,12 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="github-repos" onclick="app.switchAdminMiniProjectTab('github-repos')">
                         <i class="fab fa-github"></i> GitHub Repositories
                     </button>
+                    <button class="tab-btn" data-tab="architecture-diagrams" onclick="app.switchAdminMiniProjectTab('architecture-diagrams')">
+                        <i class="fas fa-drafting-compass"></i> Architecture Diagrams
+                    </button>
+                    <button class="tab-btn" data-tab="first-sprint-ppt" onclick="app.switchAdminMiniProjectTab('first-sprint-ppt')">
+                        <i class="fas fa-file-powerpoint"></i> First Sprint PPT
+                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -1071,6 +1077,27 @@ Bob Johnson,GHI789</pre>
                             
                             <div id="github-repos-teams-list" class="admin-teams-list">
                                 <div class="loading-state">Loading teams with GitHub repositories...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Architecture Diagrams Tab -->
+                    <div id="admin-miniproject-architecture-diagrams-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-drafting-compass"></i> Architecture Diagrams Status</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                View status of approved architectural diagrams for all teams and generate reports.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-architecture-diagrams-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateArchitectureDiagramsReport()">
+                                    <i class="fas fa-file-pdf"></i> Generate PDF Report
+                                </button>
+                            </div>
+                            
+                            <div id="architecture-diagrams-teams-list" class="admin-teams-list">
+                                <div class="loading-state">Loading architecture diagrams status...</div>
                             </div>
                         </div>
                     </div>
@@ -1445,6 +1472,39 @@ Bob Johnson,GHI789</pre>
                                 </h4>
                                 <div id="first-review-gantt-chart" style="overflow-x: auto; min-height: 300px;">
                                     <p class="empty-state">Add modules and set dates to view the Gantt chart.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- First Sprint PPT Section -->
+                            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                                <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-file-powerpoint"></i> First Sprint PPT
+                                </h3>
+                                <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                    Add links to your First Sprint PowerPoint presentation. You can use file hosting services like Google Drive, OneDrive, or any public file sharing link.
+                                </p>
+                                
+                                <div id="first-sprint-ppt-add-section" style="margin-bottom: 2rem;">
+                                    <label for="first-sprint-ppt-link-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                        PPT Link URL:
+                                    </label>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <input type="url" 
+                                               id="first-sprint-ppt-link-input" 
+                                               class="form-input" 
+                                               placeholder="https://drive.google.com/file/d/... or https://example.com/presentation.pptx"
+                                               style="flex: 1; padding: 0.75rem; border: 2px solid #f59e0b40; border-radius: 6px;">
+                                        <button type="button" 
+                                                class="btn btn-success" 
+                                                onclick="app.addFirstSprintPPTLink()"
+                                                style="padding: 0.75rem 1.5rem; background: #f59e0b; border: none;">
+                                            <i class="fas fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div id="first-sprint-ppt-list" class="architecture-diagrams-container">
+                                    <div class="loading-state">Loading PPT links...</div>
                                 </div>
                             </div>
                             

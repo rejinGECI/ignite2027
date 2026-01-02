@@ -6555,6 +6555,14 @@ const app = {
         if (tabName === 'github-repos') {
             setTimeout(() => this.loadGitHubReposTeams(), 100);
         }
+        // Load architecture diagrams when tab is switched
+        if (tabName === 'architecture-diagrams') {
+            setTimeout(() => this.loadArchitectureDiagramsTeams(), 100);
+        }
+        // Load first sprint PPT when tab is switched
+        if (tabName === 'first-sprint-ppt') {
+            setTimeout(() => this.loadFirstSprintPPTTeams(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -16509,6 +16517,8 @@ const app = {
                 const firstReviewSchedule = firstReviewScheduleDoc.exists() ? firstReviewScheduleDoc.data() : null;
                 
                 team.planningData = planningData;
+                team.architectureDiagrams = team.architectureDiagrams || [];
+                team.firstSprintPPT = team.firstSprintPPT || [];
                 team.users = users;
                 team.stories = stories;
                 team.backlogs = backlogs;
@@ -16533,6 +16543,8 @@ const app = {
                 const schedVerified = team.planningData && team.planningData.scheduleVerified === true;
                 const archVerified = team.planningData && team.planningData.architectureDiagramsVerified === true;
                 const archApproved = team.planningData && team.planningData.architectureDiagramsApproved === true;
+                const pptVerified = team.planningData && team.planningData.firstSprintPPTVerified === true;
+                const pptApproved = team.planningData && team.planningData.firstSprintPPTApproved === true;
                 
                 // Debug: Log modules for troubleshooting
                 // console.log(`Team ${team.groupName}: modules count = ${team.modules ? team.modules.length : 0}, csSubmitted = ${csSubmitted}, csVerified = ${csVerified}`);
@@ -16678,6 +16690,11 @@ const app = {
                                 ${(team.architectureDiagrams && team.architectureDiagrams.length > 0) || archVerified || archApproved ? `
                                     <button type="button" class="btn btn-secondary" onclick="app.showGuideArchitectureDiagramsModal('${team.id}')" style="background: #8b5cf6; color: white; border: none;">
                                         <i class="fas fa-drafting-compass"></i> ${archApproved ? 'Review Architecture (Final)' : archVerified ? 'Review Architecture (Verified)' : 'Review Architecture'}
+                                    </button>
+                                ` : ''}
+                                ${(team.firstSprintPPT && team.firstSprintPPT.length > 0) || pptVerified || pptApproved ? `
+                                    <button type="button" class="btn btn-secondary" onclick="app.showGuideFirstSprintPPTModal('${team.id}')" style="background: #f59e0b; color: white; border: none;">
+                                        <i class="fas fa-file-powerpoint"></i> ${pptApproved ? 'Review PPT (Final)' : pptVerified ? 'Review PPT (Verified)' : 'Review PPT'}
                                     </button>
                                 ` : ''}
                             </div>
@@ -21474,6 +21491,186 @@ const app = {
             await this.loadGuideProjectPlanning();
         } catch (error) {
             console.error('Error revoking architecture diagrams approval:', error);
+            alert('Error revoking approval. Please try again.');
+        }
+    },
+    
+    // ========== FIRST SPRINT PPT VERIFICATION (GUIDE) ==========
+    
+    async showGuideFirstSprintPPTModal(teamId) {
+        if (!this.isGuide && this.userRole !== 'guide') return;
+        
+        const existingModal = document.getElementById('guide-first-sprint-ppt-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'guide-first-sprint-ppt-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.groupName || teamData.name || `Team ${teamId.substring(0, 8)}`;
+            
+            // Load planning data
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const firstSprintPPT = teamData.firstSprintPPT || [];
+            const pptVerified = planningData.firstSprintPPTVerified === true;
+            const pptApproved = planningData.firstSprintPPTApproved === true;
+            const verificationStatus = planningData.firstSprintPPTVerificationStatus || {};
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <h2 style="margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-file-powerpoint" style="color: #f59e0b;"></i> First Sprint PPT - ${this.escapeHtml(teamName)}
+                        </h2>
+                        <button type="button" class="modal-close" onclick="document.getElementById('guide-first-sprint-ppt-modal').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    ${firstSprintPPT.length === 0 ? `
+                        <div style="padding: 2rem; text-align: center;">
+                            <p class="empty-state">No PPT links added yet by the team.</p>
+                        </div>
+                    ` : `
+                        <div style="margin-bottom: 2rem;">
+                            <h3 style="margin: 0 0 1rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-file-powerpoint"></i> PPT Links (${firstSprintPPT.length})
+                            </h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+                                ${firstSprintPPT.map((link, index) => `
+                                    <div style="padding: 1rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                            <i class="fas fa-file-powerpoint" style="color: #f59e0b; font-size: 1.2rem;"></i>
+                                            <strong style="color: var(--text-primary);">PPT ${index + 1}</strong>
+                                        </div>
+                                        <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                           style="color: #f59e0b; text-decoration: none; word-break: break-all; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                                            <i class="fas fa-external-link-alt"></i>
+                                            <span>${this.escapeHtml(link)}</span>
+                                        </a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        ${pptApproved ? `
+                            <div style="margin-bottom: 1.5rem; padding: 1rem; background: #dcfce7; border-radius: 8px; border-left: 4px solid #22c55e;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; color: #166534;">
+                                    <i class="fas fa-check-circle"></i>
+                                    <strong>Approved as Final</strong>
+                                </div>
+                                ${verificationStatus.feedback ? `
+                                    <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #86efac;">
+                                        <div style="font-size: 0.85rem; font-weight: 600; color: #166534; margin-bottom: 0.5rem;">Your Comments:</div>
+                                        <div style="font-size: 0.9rem; color: #047857; white-space: pre-wrap; padding: 0.75rem; background: white; border-radius: 6px;">${this.escapeHtml(verificationStatus.feedback)}</div>
+                                    </div>
+                                ` : ''}
+                                <button type="button" class="btn btn-warning" onclick="app.revokeFirstSprintPPTApproval('${teamId}')" style="margin-top: 1rem;">
+                                    <i class="fas fa-undo"></i> Revoke Final Approval
+                                </button>
+                            </div>
+                        ` : `
+                            <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <label for="first-sprint-ppt-comments" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                    Comments for the team:
+                                </label>
+                                <textarea id="first-sprint-ppt-comments" 
+                                          class="form-input" 
+                                          rows="4" 
+                                          style="width: 100%; margin-bottom: 1rem;"
+                                          placeholder="Add comments for the team about the PPT...">${verificationStatus.feedback || ''}</textarea>
+                                <div style="display: flex; gap: 0.75rem;">
+                                    <button type="button" class="btn btn-success" onclick="app.verifyFirstSprintPPT('${teamId}', false)">
+                                        <i class="fas fa-check-circle"></i> Verify (Allow Revisions)
+                                    </button>
+                                    <button type="button" class="btn btn-primary" onclick="app.verifyFirstSprintPPT('${teamId}', true)">
+                                        <i class="fas fa-check-double"></i> Approve as Final
+                                    </button>
+                                </div>
+                                
+                                ${pptVerified ? `
+                                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                        <p style="margin: 0; font-size: 0.85rem; color: #92400e;">
+                                            <i class="fas fa-info-circle"></i> Currently verified (students can still make revisions). Click "Approve as Final" to lock the PPT.
+                                        </p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `}
+                    `}
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error loading first sprint PPT modal:', error);
+            alert('Error loading first sprint PPT. Please try again.');
+        }
+    },
+    
+    async verifyFirstSprintPPT(teamId, approveAsFinal) {
+        const commentsInput = document.getElementById('first-sprint-ppt-comments');
+        const comments = commentsInput ? commentsInput.value.trim() : '';
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            const updateData = {
+                firstSprintPPTVerified: true,
+                firstSprintPPTVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: comments || ''
+                },
+                updatedAt: serverTimestamp()
+            };
+            
+            if (approveAsFinal) {
+                updateData.firstSprintPPTApproved = true;
+            }
+            
+            await setDoc(planningRef, updateData, { merge: true });
+            
+            alert(approveAsFinal ? 'PPT approved as final successfully!' : 'PPT verified successfully! Students can still make revisions.');
+            
+            // Reload modal
+            await this.showGuideFirstSprintPPTModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error verifying PPT:', error);
+            alert('Error verifying PPT. Please try again.');
+        }
+    },
+    
+    async revokeFirstSprintPPTApproval(teamId) {
+        if (!confirm('Are you sure you want to revoke final approval? Students will be able to make revisions again.')) {
+            return;
+        }
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                firstSprintPPTApproved: false,
+                firstSprintPPTVerified: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Final approval revoked. Students can now make revisions.');
+            
+            // Reload modal
+            await this.showGuideFirstSprintPPTModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error revoking PPT approval:', error);
             alert('Error revoking approval. Please try again.');
         }
     },
@@ -26983,6 +27180,9 @@ const app = {
             return;
         }
         
+        // Load PPT list
+        await this.loadFirstSprintPPT();
+        
         try {
             modulesListContainer.innerHTML = '<div class="loading-state">Loading first sprint schedule...</div>';
             
@@ -27888,6 +28088,230 @@ const app = {
         } catch (error) {
             console.error('Error removing image link:', error);
             alert('Error removing image link. Please try again.');
+        }
+    },
+    
+    // ========== FIRST SPRINT PPT FUNCTIONS ==========
+    
+    async loadFirstSprintPPT() {
+        const container = document.getElementById('first-sprint-ppt-list');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading PPT links...</div>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) {
+                container.innerHTML = '<p class="empty-state">Team not found.</p>';
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const firstSprintPPT = teamData.firstSprintPPT || [];
+            
+            // Load planning data for verification status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const pptVerified = planningData.firstSprintPPTVerified === true;
+            const pptApproved = planningData.firstSprintPPTApproved === true;
+            const verificationStatus = planningData.firstSprintPPTVerificationStatus || {};
+            
+            let html = '';
+            
+            if (firstSprintPPT.length === 0) {
+                html = '<p class="empty-state">No PPT links added yet.</p>';
+            } else {
+                html = firstSprintPPT.map((link, index) => `
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: white; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <i class="fas fa-file-powerpoint" style="color: #f59e0b; font-size: 1.2rem;"></i>
+                                <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                   style="color: #f59e0b; text-decoration: none; word-break: break-all; font-weight: 500;">
+                                    PPT ${index + 1}
+                                </a>
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">
+                                ${this.escapeHtml(link)}
+                            </div>
+                        </div>
+                        ${!pptApproved ? `
+                            <button type="button" 
+                                    class="btn btn-danger btn-sm" 
+                                    onclick="app.removeFirstSprintPPTLink(${index})"
+                                    style="padding: 0.5rem 1rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `).join('');
+                
+                if (pptApproved) {
+                    html += `
+                        <div style="padding: 1rem; background: #dcfce7; border-radius: 8px; border-left: 4px solid #22c55e; margin-top: 1rem;">
+                            <p style="margin: 0; color: #166534; font-weight: 600;">
+                                <i class="fas fa-check-circle"></i> PPT has been approved as final. No further revisions are allowed.
+                            </p>
+                            ${verificationStatus.feedback ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #86efac;">
+                                    <p style="margin: 0; color: #166534; font-size: 0.9rem;">
+                                        <strong>Guide Comments:</strong> ${this.escapeHtml(verificationStatus.feedback)}
+                                    </p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else if (pptVerified) {
+                    html += `
+                        <div style="padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #fbbf24; margin-top: 1rem;">
+                            <p style="margin: 0; color: #92400e; font-weight: 600;">
+                                <i class="fas fa-check"></i> PPT has been verified. You can still make revisions.
+                            </p>
+                            ${verificationStatus.feedback ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #fde68a;">
+                                    <p style="margin: 0; color: #92400e; font-size: 0.9rem;">
+                                        <strong>Guide Comments:</strong> ${this.escapeHtml(verificationStatus.feedback)}
+                                    </p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+            }
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading first sprint PPT:', error);
+            container.innerHTML = '<p class="error-message">Error loading PPT links. Please try again.</p>';
+        }
+    },
+    
+    async addFirstSprintPPTLink() {
+        const input = document.getElementById('first-sprint-ppt-link-input');
+        if (!input || !input.value.trim()) {
+            alert('Please enter a PPT link URL');
+            return;
+        }
+        
+        const url = input.value.trim();
+        
+        // Basic URL validation
+        try {
+            new URL(url);
+        } catch (e) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load current team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const firstSprintPPT = teamData.firstSprintPPT || [];
+            
+            // Check if link already exists
+            if (firstSprintPPT.includes(url)) {
+                alert('This PPT link is already added.');
+                return;
+            }
+            
+            // Check if approved (locked)
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            if (planningData.firstSprintPPTApproved === true) {
+                alert('PPT has been approved as final. No further revisions are allowed.');
+                return;
+            }
+            
+            // Add new link
+            firstSprintPPT.push(url);
+            
+            // Update team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', team.id), {
+                firstSprintPPT: firstSprintPPT
+            });
+            
+            // Clear input
+            input.value = '';
+            
+            // Reload PPT list
+            await this.loadFirstSprintPPT();
+            
+            alert('PPT link added successfully!');
+        } catch (error) {
+            console.error('Error adding PPT link:', error);
+            alert('Error adding PPT link. Please try again.');
+        }
+    },
+    
+    async removeFirstSprintPPTLink(index) {
+        if (!confirm('Are you sure you want to remove this PPT link?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Check if approved (locked)
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            if (planningData.firstSprintPPTApproved === true) {
+                alert('PPT has been approved as final. No further revisions are allowed.');
+                return;
+            }
+            
+            // Load current team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const firstSprintPPT = teamData.firstSprintPPT || [];
+            
+            if (index < 0 || index >= firstSprintPPT.length) {
+                alert('Invalid PPT index.');
+                return;
+            }
+            
+            // Remove from array
+            firstSprintPPT.splice(index, 1);
+            
+            // Update team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', team.id), {
+                firstSprintPPT: firstSprintPPT
+            });
+            
+            // Reload PPT list
+            await this.loadFirstSprintPPT();
+            
+            alert('PPT link removed successfully!');
+        } catch (error) {
+            console.error('Error removing PPT link:', error);
+            alert('Error removing PPT link. Please try again.');
         }
     },
     
