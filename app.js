@@ -6551,6 +6551,10 @@ const app = {
         if (tabName === 'first-review') {
             setTimeout(() => this.loadAdminFirstReviewVerification(), 100);
         }
+        // Load GitHub repositories when tab is switched
+        if (tabName === 'github-repos') {
+            setTimeout(() => this.loadGitHubReposTeams(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -14876,6 +14880,8 @@ const app = {
             await this.loadCardSorting();
         } else if (tabName === 'schedule') {
             await this.loadSchedule();
+        } else if (tabName === 'design') {
+            await this.loadDesignTab();
         }
     },
     
@@ -16525,6 +16531,8 @@ const app = {
                 const csVerified = team.planningData && team.planningData.cardSortingVerified === true;
                 const schedSubmitted = team.planningData && team.planningData.scheduleSubmitted === true;
                 const schedVerified = team.planningData && team.planningData.scheduleVerified === true;
+                const archVerified = team.planningData && team.planningData.architectureDiagramsVerified === true;
+                const archApproved = team.planningData && team.planningData.architectureDiagramsApproved === true;
                 
                 // Debug: Log modules for troubleshooting
                 // console.log(`Team ${team.groupName}: modules count = ${team.modules ? team.modules.length : 0}, csSubmitted = ${csSubmitted}, csVerified = ${csVerified}`);
@@ -16665,6 +16673,11 @@ const app = {
                                 ${team.firstReviewSchedule ? `
                                     <button type="button" class="btn btn-info" onclick="app.loadGuideFirstReviewSchedule('${team.id}')" style="background: #6366f1; color: white; border: none;">
                                         <i class="fas fa-calendar-alt"></i> View First Sprint Schedule
+                                    </button>
+                                ` : ''}
+                                ${(team.architectureDiagrams && team.architectureDiagrams.length > 0) || archVerified || archApproved ? `
+                                    <button type="button" class="btn btn-secondary" onclick="app.showGuideArchitectureDiagramsModal('${team.id}')" style="background: #8b5cf6; color: white; border: none;">
+                                        <i class="fas fa-drafting-compass"></i> ${archApproved ? 'Review Architecture (Final)' : archVerified ? 'Review Architecture (Verified)' : 'Review Architecture'}
                                     </button>
                                 ` : ''}
                             </div>
@@ -21272,6 +21285,450 @@ const app = {
     closeBacklogDetailsModal() {
         const modal = document.getElementById('backlog-details-modal');
         if (modal) modal.style.display = 'none';
+    },
+    
+    // ========== DESIGN / ARCHITECTURE DIAGRAM FUNCTIONS ==========
+    
+    async showGuideArchitectureDiagramsModal(teamId) {
+        if (!this.isGuide && this.userRole !== 'guide') return;
+        
+        const existingModal = document.getElementById('guide-architecture-diagrams-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'guide-architecture-diagrams-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.groupName || teamData.name || `Team ${teamId.substring(0, 8)}`;
+            
+            // Load planning data
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const architectureDiagrams = teamData.architectureDiagrams || [];
+            const archVerified = planningData.architectureDiagramsVerified === true;
+            const archApproved = planningData.architectureDiagramsApproved === true;
+            const verificationStatus = planningData.architectureDiagramsVerificationStatus || {};
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <h2 style="margin: 0; font-size: 1.3rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-drafting-compass" style="color: #8b5cf6;"></i> Architecture Diagrams - ${this.escapeHtml(teamName)}
+                        </h2>
+                        <button type="button" class="modal-close" onclick="document.getElementById('guide-architecture-diagrams-modal').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    ${architectureDiagrams.length === 0 ? `
+                        <div style="padding: 2rem; text-align: center;">
+                            <p class="empty-state">No architecture diagrams added yet by the team.</p>
+                        </div>
+                    ` : `
+                        <div style="margin-bottom: 2rem;">
+                            <h3 style="margin: 0 0 1rem 0; color: var(--text-primary); font-size: 1.1rem;">
+                                <i class="fas fa-images"></i> Architecture Diagrams (${architectureDiagrams.length})
+                            </h3>
+                            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                                ${architectureDiagrams.map((link, index) => {
+                                    const isImage = link && link.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                                    return `
+                                        <div style="padding: 1rem; background: white; border-radius: 8px; border: 1px solid #d1fae5; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                            ${isImage ? `
+                                                <div style="margin-bottom: 0.75rem; border-radius: 6px; overflow: hidden; background: #f8fafc; max-width: 600px;">
+                                                    <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer">
+                                                        <img src="${this.escapeHtml(link)}" alt="Architecture Diagram ${index + 1}" 
+                                                             style="width: 100%; height: auto; display: block; cursor: pointer; max-height: 400px; object-fit: contain;">
+                                                    </a>
+                                                </div>
+                                            ` : ''}
+                                            <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                               style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                <i class="fas fa-external-link-alt"></i>
+                                                <span>${this.escapeHtml(link)}</span>
+                                            </a>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                        
+                        ${archApproved ? `
+                            <div style="margin-bottom: 2rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.75rem;">
+                                    <i class="fas fa-check-circle"></i>
+                                    <strong>Approved as Final</strong>
+                                </div>
+                                ${verificationStatus.feedback ? `
+                                    <div style="margin-top: 0.75rem;">
+                                        <div style="font-size: 0.85rem; font-weight: 600; color: #065f46; margin-bottom: 0.5rem;">Previous Comments:</div>
+                                        <div style="font-size: 0.9rem; color: #047857; white-space: pre-wrap; padding: 0.75rem; background: white; border-radius: 6px;">${this.escapeHtml(verificationStatus.feedback)}</div>
+                                    </div>
+                                ` : ''}
+                                <div style="margin-top: 1rem;">
+                                    <button type="button" class="btn btn-warning" onclick="app.revokeArchitectureDiagramsApproval('${teamId}')">
+                                        <i class="fas fa-undo"></i> Revoke Final Approval
+                                    </button>
+                                </div>
+                            </div>
+                        ` : `
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                                <h4 style="margin: 0 0 1rem 0; color: #92400e; font-size: 1rem;">
+                                    <i class="fas fa-comment-alt"></i> Verification Comments
+                                </h4>
+                                <textarea id="architecture-diagrams-comments" 
+                                          class="form-input" 
+                                          rows="4" 
+                                          placeholder="Add comments for the team about the architecture diagrams..."
+                                          style="width: 100%; padding: 0.75rem; border: 2px solid #f59e0b40; border-radius: 6px; font-family: inherit; resize: vertical;">${verificationStatus.feedback || ''}</textarea>
+                                
+                                <div style="display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-success" onclick="app.verifyArchitectureDiagrams('${teamId}', false)">
+                                        <i class="fas fa-check-circle"></i> Verify (Allow Revisions)
+                                    </button>
+                                    <button type="button" class="btn btn-primary" onclick="app.verifyArchitectureDiagrams('${teamId}', true)">
+                                        <i class="fas fa-check-double"></i> Approve as Final
+                                    </button>
+                                </div>
+                                
+                                ${archVerified ? `
+                                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                        <p style="margin: 0; font-size: 0.85rem; color: #92400e;">
+                                            <i class="fas fa-info-circle"></i> Currently verified (students can still make revisions). Click "Approve as Final" to lock the diagrams.
+                                        </p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `}
+                    `}
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error loading architecture diagrams modal:', error);
+            alert('Error loading architecture diagrams. Please try again.');
+            modal.remove();
+        }
+    },
+    
+    async verifyArchitectureDiagrams(teamId, approveAsFinal) {
+        const commentsInput = document.getElementById('architecture-diagrams-comments');
+        const comments = commentsInput ? commentsInput.value.trim() : '';
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            const updateData = {
+                architectureDiagramsVerified: true,
+                architectureDiagramsVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: comments || ''
+                },
+                updatedAt: serverTimestamp()
+            };
+            
+            if (approveAsFinal) {
+                updateData.architectureDiagramsApproved = true;
+            }
+            
+            await setDoc(planningRef, updateData, { merge: true });
+            
+            alert(approveAsFinal ? 'Architecture diagrams approved as final successfully!' : 'Architecture diagrams verified successfully! Students can still make revisions.');
+            
+            // Reload modal
+            await this.showGuideArchitectureDiagramsModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error verifying architecture diagrams:', error);
+            alert('Error verifying architecture diagrams. Please try again.');
+        }
+    },
+    
+    async revokeArchitectureDiagramsApproval(teamId) {
+        if (!confirm('Are you sure you want to revoke final approval? Students will be able to make revisions again.')) {
+            return;
+        }
+        
+        try {
+            const planningRef = doc(window.firebaseDb, 'projectPlanning', teamId);
+            await setDoc(planningRef, {
+                architectureDiagramsApproved: false,
+                architectureDiagramsVerified: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Final approval revoked. Students can now make revisions.');
+            
+            // Reload modal
+            await this.showGuideArchitectureDiagramsModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error revoking architecture diagrams approval:', error);
+            alert('Error revoking approval. Please try again.');
+        }
+    },
+    
+    async loadDesignTab() {
+        // Find the container - could be in miniproject page or standalone project-planning page
+        let container = document.getElementById('architecture-diagrams-list');
+        if (!container) {
+            container = document.getElementById('architecture-diagrams-list-2');
+        }
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading architecture diagrams...</div>';
+            
+            if (!this.currentStudentTeamId) {
+                const team = await this.getUserTeam();
+                if (!team) {
+                    container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                    return;
+                }
+                this.currentStudentTeamId = team.id;
+            }
+            
+            // Load team document to get architecture diagrams
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+            if (!teamDoc.exists()) {
+                container.innerHTML = '<p class="empty-state">Team not found.</p>';
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const architectureDiagrams = teamData.architectureDiagrams || [];
+            
+            // Load planning data for verification status
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', this.currentStudentTeamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const archVerified = planningData.architectureDiagramsVerified === true;
+            const archApproved = planningData.architectureDiagramsApproved === true;
+            const verificationStatus = planningData.architectureDiagramsVerificationStatus || {};
+            
+            let html = '';
+            
+            // Show verification status
+            if (archApproved) {
+                html += `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #d1fae5; border-radius: 8px; border-left: 4px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #065f46; margin-bottom: 0.5rem;">
+                            <i class="fas fa-check-circle"></i>
+                            <strong>Approved as Final</strong>
+                        </div>
+                        ${verificationStatus.feedback ? `
+                            <div style="margin-top: 0.75rem;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: #065f46; margin-bottom: 0.5rem;">Guide Comments:</div>
+                                <div style="font-size: 0.9rem; color: #047857; white-space: pre-wrap; padding: 0.75rem; background: white; border-radius: 6px;">${this.escapeHtml(verificationStatus.feedback)}</div>
+                            </div>
+                        ` : ''}
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #047857;">
+                            The architecture diagrams have been approved as final. No further revisions are allowed.
+                        </p>
+                    </div>
+                `;
+            } else if (archVerified) {
+                html += `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                            <i class="fas fa-check-circle"></i>
+                            <strong>Verified (Revisions Allowed)</strong>
+                        </div>
+                        ${verificationStatus.feedback ? `
+                            <div style="margin-top: 0.75rem;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: #92400e; margin-bottom: 0.5rem;">Guide Comments:</div>
+                                <div style="font-size: 0.9rem; color: #78350f; white-space: pre-wrap; padding: 0.75rem; background: white; border-radius: 6px;">${this.escapeHtml(verificationStatus.feedback)}</div>
+                            </div>
+                        ` : ''}
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #78350f;">
+                            Your guide has verified the diagrams. You can still make revisions until they approve one as final.
+                        </p>
+                    </div>
+                `;
+            }
+            
+            // Hide add section if approved as final
+            const addSection = document.getElementById('architecture-diagrams-add-section');
+            const addSection2 = document.getElementById('architecture-diagrams-add-section-2');
+            if (archApproved) {
+                if (addSection) addSection.style.display = 'none';
+                if (addSection2) addSection2.style.display = 'none';
+            } else {
+                if (addSection) addSection.style.display = 'block';
+                if (addSection2) addSection2.style.display = 'block';
+            }
+            
+            if (architectureDiagrams.length === 0) {
+                html += '<p class="empty-state">No architecture diagrams added yet.</p>';
+            } else {
+                html += `
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${architectureDiagrams.map((link, index) => {
+                            const isImage = link && (typeof link === 'string' ? link.match(/\.(jpg|jpeg|png|gif|webp)$/i) : false);
+                            
+                            return `
+                                <div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5; display: flex; align-items: center; gap: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div style="flex: 1; min-width: 0;">
+                                        ${isImage ? `
+                                            <div style="margin-bottom: 0.5rem; border-radius: 6px; overflow: hidden; background: #f8fafc; max-width: 200px;">
+                                                <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer">
+                                                    <img src="${this.escapeHtml(link)}" alt="Architecture Diagram" 
+                                                         style="width: 100%; height: auto; display: block; cursor: pointer; max-height: 150px; object-fit: contain;">
+                                                </a>
+                                            </div>
+                                        ` : ''}
+                                        <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                           style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                                            <i class="fas fa-external-link-alt"></i>
+                                            <span>${this.escapeHtml(link)}</span>
+                                        </a>
+                                    </div>
+                                    ${!archApproved ? `
+                                        <button type="button" 
+                                                class="btn btn-danger btn-sm" 
+                                                onclick="app.removeArchitectureDiagramLink(${index})"
+                                                style="padding: 0.5rem 1rem; flex-shrink: 0;">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading architecture diagrams:', error);
+            container.innerHTML = '<p class="error-message">Error loading architecture diagrams. Please try again.</p>';
+        }
+    },
+    
+    async addArchitectureDiagramLink() {
+        // Find the input - could be in miniproject page or standalone project-planning page
+        let input = document.getElementById('architecture-diagram-link-input');
+        if (!input) {
+            input = document.getElementById('architecture-diagram-link-input-2');
+        }
+        
+        if (!input || !input.value.trim()) {
+            alert('Please enter an image URL');
+            return;
+        }
+        
+        const url = input.value.trim();
+        
+        // Basic URL validation
+        try {
+            new URL(url);
+        } catch (e) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        try {
+            if (!this.currentStudentTeamId) {
+                const team = await this.getUserTeam();
+                if (!team) {
+                    alert('You are not assigned to a team.');
+                    return;
+                }
+                this.currentStudentTeamId = team.id;
+            }
+            
+            // Load current team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const architectureDiagrams = teamData.architectureDiagrams || [];
+            
+            // Check if link already exists
+            if (architectureDiagrams.includes(url)) {
+                alert('This image link is already added.');
+                return;
+            }
+            
+            // Add new link
+            architectureDiagrams.push(url);
+            
+            // Update team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
+                architectureDiagrams: architectureDiagrams
+            });
+            
+            // Clear input
+            input.value = '';
+            
+            // Reload diagrams list
+            await this.loadDesignTab();
+            
+            alert('Architecture diagram link added successfully!');
+        } catch (error) {
+            console.error('Error adding architecture diagram link:', error);
+            alert('Error adding architecture diagram link. Please try again.');
+        }
+    },
+    
+    async removeArchitectureDiagramLink(index) {
+        if (!confirm('Are you sure you want to remove this architecture diagram link?')) {
+            return;
+        }
+        
+        if (!this.currentStudentTeamId) {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            this.currentStudentTeamId = team.id;
+        }
+        
+        try {
+            // Load current team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const architectureDiagrams = teamData.architectureDiagrams || [];
+            
+            if (index < 0 || index >= architectureDiagrams.length) {
+                alert('Invalid diagram index.');
+                return;
+            }
+            
+            // Remove from array
+            architectureDiagrams.splice(index, 1);
+            
+            // Update team document
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', this.currentStudentTeamId), {
+                architectureDiagrams: architectureDiagrams
+            });
+            
+            // Reload diagrams list
+            await this.loadDesignTab();
+            
+            alert('Architecture diagram link removed successfully!');
+        } catch (error) {
+            console.error('Error removing architecture diagram link:', error);
+            alert('Error removing architecture diagram link. Please try again.');
+        }
     },
     
     // ========== SCHEDULE FUNCTIONS ==========

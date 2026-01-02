@@ -1446,6 +1446,415 @@ export function createAdminMiniProjectModule(app) {
                     </div>
                 </div>
             `;
+        },
+        
+        async loadGitHubReposTeams() {
+            if (!app.isAdmin) return;
+            
+            const container = document.getElementById('github-repos-teams-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="loading-state">Loading teams with GitHub repositories...</div>';
+            
+            try {
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                teamsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!data.deleted && data.githubRepository) {
+                        teams.push({
+                            id: doc.id,
+                            groupName: data.groupName || data.name || 'Unnamed Team',
+                            githubRepository: data.githubRepository,
+                            guideName: data.guideName || 'No Guide',
+                            topic: data.topic || 'Not assigned',
+                            members: data.members || []
+                        });
+                    }
+                });
+                
+                if (teams.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No teams with GitHub repositories found.</p>';
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.groupName
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Store teams for search and PDF generation
+                app.githubReposTeams = sortedTeams;
+                
+                container.innerHTML = `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <i class="fab fa-github" style="font-size: 1.5rem; color: #10b981;"></i>
+                            <div>
+                                <h4 style="margin: 0; color: #065f46; font-size: 1.1rem;">Total Teams with GitHub Repositories</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: #047857; font-size: 0.9rem;">${sortedTeams.length} team${sortedTeams.length !== 1 ? 's' : ''} have updated their GitHub repositories</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1rem;">
+                        ${sortedTeams.map(team => `
+                            <div class="project-team-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div class="team-header" style="margin-bottom: 0.75rem;">
+                                    <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${escapeHtml(team.groupName)}</h4>
+                                </div>
+                                <div style="margin-bottom: 0.5rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                        <i class="fas fa-user-tie" style="margin-right: 0.5rem;"></i>Guide: ${escapeHtml(team.guideName)}
+                                    </div>
+                                    ${team.topic && team.topic !== 'Not assigned' ? `
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                            <i class="fas fa-lightbulb" style="margin-right: 0.5rem;"></i>Topic: ${escapeHtml(team.topic)}
+                                        </div>
+                                    ` : ''}
+                                    ${team.members && team.members.length > 0 ? `
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                            <i class="fas fa-users" style="margin-right: 0.5rem;"></i>Members: ${team.members.length}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div style="padding: 0.75rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid #10b981;">
+                                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                                        <i class="fab fa-github" style="color: #10b981; margin-right: 0.5rem;"></i>GitHub Repository:
+                                    </div>
+                                    <a href="${escapeHtml(team.githubRepository)}" target="_blank" rel="noopener noreferrer" 
+                                       style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                                        <i class="fas fa-external-link-alt"></i>
+                                        <span>${escapeHtml(team.githubRepository)}</span>
+                                    </a>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('search-github-repos-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const teamCards = container.querySelectorAll('.project-team-item');
+                        teamCards.forEach(card => {
+                            const teamText = card.textContent.toLowerCase();
+                            card.style.display = teamText.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading GitHub repositories:', error);
+                container.innerHTML = '<p class="error-message">Error loading teams with GitHub repositories. Please try again.</p>';
+            }
+        },
+        
+        async generateGitHubReposReport() {
+            if (!app.isAdmin) return;
+            
+            try {
+                // Load teams data if not already loaded
+                if (!app.githubReposTeams || app.githubReposTeams.length === 0) {
+                    // Load teams with GitHub repos
+                    const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                    const teamsSnapshot = await getDocs(teamsQuery);
+                    
+                    const teams = [];
+                    teamsSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (!data.deleted && data.githubRepository) {
+                            teams.push({
+                                id: doc.id,
+                                groupName: data.groupName || data.name || 'Unnamed Team',
+                                githubRepository: data.githubRepository,
+                                guideName: data.guideName || 'No Guide',
+                                topic: data.topic || 'Not assigned',
+                                members: data.members || []
+                            });
+                        }
+                    });
+                    
+                    // Apply team order
+                    const teamsForOrdering = teams.map(t => ({
+                        id: t.id,
+                        groupName: t.groupName
+                    }));
+                    const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                    const teamMap = new Map(teams.map(t => [t.id, t]));
+                    app.githubReposTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                }
+                
+                const teams = app.githubReposTeams;
+                
+                if (teams.length === 0) {
+                    alert('No teams with GitHub repositories found to generate report.');
+                    return;
+                }
+                
+                const printWindow = window.open('', '_blank');
+                const currentDate = new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                let html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>GitHub Repositories Report</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                        <style>
+                            @media print {
+                                @page {
+                                    margin: 1.5cm;
+                                    size: A4 portrait;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                                .no-print {
+                                    display: none;
+                                }
+                                * {
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                            }
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            body {
+                                font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                color: #1e293b;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header {
+                                text-align: center;
+                                margin-bottom: 35px;
+                                padding: 25px;
+                                background: linear-gradient(135deg, #24292e 0%, #1a1e22 100%);
+                                background-color: #24292e;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(36, 41, 46, 0.2);
+                                color: white;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header h1 {
+                                margin: 0 0 15px 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 32px;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 1.5px;
+                                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                            .header .subtitle {
+                                font-size: 16px;
+                                font-weight: 400;
+                                opacity: 0.95;
+                                margin: 8px 0;
+                            }
+                            .header .stats {
+                                display: flex;
+                                justify-content: center;
+                                gap: 30px;
+                                margin-top: 20px;
+                                flex-wrap: wrap;
+                            }
+                            .header .stat-item {
+                                background: rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 8px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .header .stat-label {
+                                font-size: 12px;
+                                opacity: 0.9;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                            }
+                            .header .stat-value {
+                                font-size: 24px;
+                                font-weight: 700;
+                                margin-top: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: separate;
+                                border-spacing: 0;
+                                margin-top: 25px;
+                                font-size: 11px;
+                                background: white;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th {
+                                background: linear-gradient(135deg, #24292e 0%, #1a1e22 100%);
+                                background-color: #24292e;
+                                color: white !important;
+                                padding: 12px 8px;
+                                text-align: left;
+                                font-weight: 700;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                                border: none;
+                                position: relative;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th:not(:last-child)::after {
+                                content: '';
+                                position: absolute;
+                                right: 0;
+                                top: 20%;
+                                height: 60%;
+                                width: 1px;
+                                background: rgba(255, 255, 255, 0.3);
+                            }
+                            td {
+                                padding: 10px 8px;
+                                border-bottom: 1px solid #cbd5e1;
+                                vertical-align: top;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            tr:nth-child(even) {
+                                background: #f8fafc;
+                            }
+                            tr:hover {
+                                background: #f1f5f9;
+                            }
+                            .repo-link {
+                                color: #0366d6;
+                                text-decoration: none;
+                                word-break: break-all;
+                                font-size: 10px;
+                            }
+                            .repo-link:hover {
+                                text-decoration: underline;
+                            }
+                            .text-center {
+                                text-align: center;
+                            }
+                            .text-right {
+                                text-align: right;
+                            }
+                            .no-print {
+                                display: none;
+                            }
+                            .footer {
+                                margin-top: 40px;
+                                text-align: center;
+                                font-size: 12px;
+                                color: #6a737d;
+                                border-top: 2px solid #cbd5e1;
+                                padding-top: 20px;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            .footer .logo-text {
+                                font-family: 'Montserrat', sans-serif;
+                                font-weight: 700;
+                                font-size: 16px;
+                                color: #24292e;
+                                margin-bottom: 5px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1><i class="fab fa-github"></i> GitHub Repositories Report</h1>
+                            <div class="subtitle">Teams with Updated GitHub Repositories</div>
+                            <div class="subtitle">Generated on: ${currentDate}</div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Teams</div>
+                                    <div class="stat-value">${teams.length}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 20%;">Team Name</th>
+                                    <th style="width: 15%;">Guide</th>
+                                    <th style="width: 20%;">Topic</th>
+                                    <th style="width: 10%;" class="text-center">Members</th>
+                                    <th style="width: 30%;">GitHub Repository</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                teams.forEach((team, index) => {
+                    html += `
+                        <tr>
+                            <td class="text-center">${index + 1}</td>
+                            <td style="font-weight: 600;">${escapeHtml(team.groupName)}</td>
+                            <td>${escapeHtml(team.guideName)}</td>
+                            <td style="font-size: 10px;">${escapeHtml(team.topic)}</td>
+                            <td class="text-center">${team.members ? team.members.length : 0}</td>
+                            <td>
+                                <a href="${escapeHtml(team.githubRepository)}" target="_blank" class="repo-link">
+                                    ${escapeHtml(team.githubRepository)}
+                                </a>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                            </tbody>
+                        </table>
+                        
+                        <div class="footer">
+                            <div class="logo-text">IGNITE</div>
+                            <p>Mini Project Management System - GitHub Repositories Report</p>
+                            <p>Generated on ${currentDate}</p>
+                        </div>
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(html);
+                printWindow.document.close();
+                
+                // Wait for content to load before printing
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error generating GitHub repositories report:', error);
+                alert('Error generating progress report. Please try again.');
+            }
         }
     };
 }
