@@ -21337,14 +21337,15 @@ const app = {
             
             modal.innerHTML = `
                 <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-                        <h2 style="margin: 0; font-size: 1.3rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                            <i class="fas fa-drafting-compass" style="color: #8b5cf6;"></i> Architecture Diagrams - ${this.escapeHtml(teamName)}
+                    <div class="modal-header">
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-drafting-compass"></i> Architecture Diagrams - ${this.escapeHtml(teamName)}
                         </h2>
                         <button type="button" class="modal-close" onclick="document.getElementById('guide-architecture-diagrams-modal').remove()">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    <div class="modal-body">
                     
                     ${architectureDiagrams.length === 0 ? `
                         <div style="padding: 2rem; text-align: center;">
@@ -21427,10 +21428,23 @@ const app = {
                             </div>
                         `}
                     `}
+                    </div>
                 </div>
             `;
             
             document.body.appendChild(modal);
+            
+            // Add Escape key listener
+            const escapeHandler = (e) => {
+                if (e.key === 'Escape') {
+                    const modalEl = document.getElementById('guide-architecture-diagrams-modal');
+                    if (modalEl) {
+                        modalEl.remove();
+                        document.removeEventListener('keydown', escapeHandler);
+                    }
+                }
+            };
+            document.addEventListener('keydown', escapeHandler);
         } catch (error) {
             console.error('Error loading architecture diagrams modal:', error);
             alert('Error loading architecture diagrams. Please try again.');
@@ -21608,10 +21622,23 @@ const app = {
                             </div>
                         `}
                     `}
+                    </div>
                 </div>
             `;
             
             document.body.appendChild(modal);
+            
+            // Add Escape key listener
+            const escapeHandler = (e) => {
+                if (e.key === 'Escape') {
+                    const modalEl = document.getElementById('guide-first-sprint-ppt-modal');
+                    if (modalEl) {
+                        modalEl.remove();
+                        document.removeEventListener('keydown', escapeHandler);
+                    }
+                }
+            };
+            document.addEventListener('keydown', escapeHandler);
         } catch (error) {
             console.error('Error loading first sprint PPT modal:', error);
             alert('Error loading first sprint PPT. Please try again.');
