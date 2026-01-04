@@ -21542,14 +21542,15 @@ const app = {
             
             modal.innerHTML = `
                 <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-                        <h2 style="margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                            <i class="fas fa-file-powerpoint" style="color: #f59e0b;"></i> First Sprint PPT - ${this.escapeHtml(teamName)}
+                    <div class="modal-header">
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-file-powerpoint"></i> First Sprint PPT - ${this.escapeHtml(teamName)}
                         </h2>
                         <button type="button" class="modal-close" onclick="document.getElementById('guide-first-sprint-ppt-modal').remove()">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    <div class="modal-body">
                     
                     ${firstSprintPPT.length === 0 ? `
                         <div style="padding: 2rem; text-align: center;">

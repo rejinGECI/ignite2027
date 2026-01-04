@@ -1101,6 +1101,27 @@ Bob Johnson,GHI789</pre>
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- First Sprint PPT Tab -->
+                    <div id="admin-miniproject-first-sprint-ppt-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-file-powerpoint"></i> First Sprint PPT Status</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                View status of approved First Sprint PPT for all teams and generate reports.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-first-sprint-ppt-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateFirstSprintPPTReport()">
+                                    <i class="fas fa-file-pdf"></i> Generate PDF Report
+                                </button>
+                            </div>
+                            
+                            <div id="first-sprint-ppt-teams-list" class="admin-teams-list">
+                                <div class="loading-state">Loading First Sprint PPT status...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
