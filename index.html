@@ -860,6 +860,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="first-sprint-ppt" onclick="app.switchAdminMiniProjectTab('first-sprint-ppt')">
                         <i class="fas fa-file-powerpoint"></i> First Sprint PPT
                     </button>
+                    <button class="tab-btn" data-tab="marked-product-backlogs" onclick="app.switchAdminMiniProjectTab('marked-product-backlogs')">
+                        <i class="fas fa-check-square"></i> Marked Product Backlogs
+                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -1119,6 +1122,27 @@ Bob Johnson,GHI789</pre>
                             
                             <div id="first-sprint-ppt-teams-list" class="admin-teams-list">
                                 <div class="loading-state">Loading First Sprint PPT status...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Marked Product Backlogs Tab -->
+                    <div id="admin-miniproject-marked-product-backlogs-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-check-square"></i> Marked Product Backlogs by Evaluators</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                View product backlogs marked as completed by evaluators for each team and generate reports.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-marked-product-backlogs-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateMarkedProductBacklogsReport()">
+                                    <i class="fas fa-file-pdf"></i> Generate PDF Report
+                                </button>
+                            </div>
+                            
+                            <div id="marked-product-backlogs-teams-list" class="admin-teams-list">
+                                <div class="loading-state">Loading marked product backlogs...</div>
                             </div>
                         </div>
                     </div>

@@ -6563,6 +6563,10 @@ const app = {
         if (tabName === 'first-sprint-ppt') {
             setTimeout(() => this.loadFirstSprintPPTTeams(), 100);
         }
+        // Load marked product backlogs when tab is switched
+        if (tabName === 'marked-product-backlogs') {
+            setTimeout(() => this.loadMarkedProductBacklogsTeams(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -8336,7 +8340,7 @@ const app = {
                         </div>
                     ` : ''}
                     
-                    ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewBacklogs.length > 0 ? `
+                    ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewAllBacklogs.length > 0 ? `
                         <!-- First Sprint Product Backlog Checklist -->
                         <div class="evaluation-section" style="margin-top: 1.5rem; margin-bottom: 1.5rem; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1.5rem;">
                             <h5 style="margin-bottom: 1rem; color: #059669; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
@@ -8365,32 +8369,85 @@ const app = {
                                 </div>
                             </div>
                             
-                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #d1fae5; border-radius: 6px; padding: 0.75rem; background: white;">
-                                ${firstReviewBacklogs.map((backlog, index) => {
-                                    const isChecked = checkedBacklogIds.includes(String(backlog.id));
-                                    return `
-                                        <div style="padding: 0.75rem; margin-bottom: ${index < firstReviewBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < firstReviewBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: ${isChecked ? '#f0fdf4' : '#fafafa'}; transition: background 0.2s;">
-                                            <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
-                                                <input type="checkbox" 
-                                                       class="first-review-backlog-checkbox" 
-                                                       data-backlog-id="${backlog.id}"
-                                                       ${isChecked ? 'checked' : ''}
-                                                       onchange="app.updateFirstReviewProgress()"
-                                                       style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
-                                                <div style="flex: 1;">
-                                                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
-                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                            ${(() => {
+                                // Separate marked and unmarked backlogs
+                                const markedBacklogs = firstReviewAllBacklogs.filter(b => checkedBacklogIds.includes(String(b.id)));
+                                const unmarkedBacklogs = firstReviewAllBacklogs.filter(b => !checkedBacklogIds.includes(String(b.id)));
+                                
+                                // Group marked backlogs by module
+                                const markedByModule = new Map();
+                                markedBacklogs.forEach(b => {
+                                    const moduleName = b.moduleName || 'Unknown';
+                                    if (!markedByModule.has(moduleName)) {
+                                        markedByModule.set(moduleName, []);
+                                    }
+                                    markedByModule.get(moduleName).push(b);
+                                });
+                                
+                                // Sort modules alphabetically
+                                const sortedModules = Array.from(markedByModule.keys()).sort();
+                                
+                                return `
+                                    <!-- Marked Backlogs - Grouped by Module -->
+                                    ${markedBacklogs.length > 0 ? `
+                                        <div style="margin-bottom: 1.5rem; padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e;">
+                                            <div style="font-size: 0.9rem; font-weight: 600; color: #166534; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                                <i class="fas fa-check-circle" style="color: #22c55e;"></i> Marked Backlogs (${markedBacklogs.length})
+                                            </div>
+                                            ${sortedModules.map(moduleName => {
+                                                const moduleBacklogs = markedByModule.get(moduleName);
+                                                return `
+                                                    <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid #22c55e;">
+                                                        <div style="font-size: 0.85rem; font-weight: 600; color: #166534; margin-bottom: 0.4rem;">
+                                                            <i class="fas fa-folder" style="color: #22c55e; margin-right: 0.4rem; font-size: 0.75rem;"></i>${this.escapeHtml(moduleName)} (${moduleBacklogs.length})
+                                                        </div>
+                                                        <div style="font-size: 0.8rem; color: #15803d; padding-left: 1rem;">
+                                                            ${moduleBacklogs.map(b => `
+                                                                <div style="margin: 0.25rem 0; padding: 0.3rem; background: #f0fdf4; border-radius: 3px; display: flex; align-items: start; gap: 0.5rem;">
+                                                                    <i class="fas fa-check" style="color: #22c55e; margin-top: 0.2rem; font-size: 0.7rem;"></i>
+                                                                    <span>${this.escapeHtml(b.task || b.description || 'Untitled Task')}</span>
+                                                                </div>
+                                                            `).join('')}
+                                                        </div>
                                                     </div>
-                                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                                                        <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
-                                                        ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
-                                                    </div>
-                                                </div>
-                                            </label>
+                                                `;
+                                            }).join('')}
                                         </div>
-                                    `;
-                                }).join('')}
-                            </div>
+                                    ` : ''}
+                                    
+                                    <!-- Unmarked Backlogs -->
+                                    ${unmarkedBacklogs.length > 0 ? `
+                                        <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                            <div style="font-size: 0.9rem; font-weight: 600; color: #991b1b; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                                <i class="fas fa-times-circle" style="color: #ef4444;"></i> Unmarked Backlogs (${unmarkedBacklogs.length})
+                                            </div>
+                                            <div style="max-height: 400px; overflow-y: auto;">
+                                                ${unmarkedBacklogs.map((backlog, index) => `
+                                                    <div style="padding: 0.75rem; margin-bottom: ${index < unmarkedBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < unmarkedBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: white;">
+                                                        <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
+                                                            <input type="checkbox" 
+                                                                   class="first-review-backlog-checkbox" 
+                                                                   data-backlog-id="${backlog.id}"
+                                                                   ${checkedBacklogIds.includes(String(backlog.id)) ? 'checked' : ''}
+                                                                   onchange="app.updateFirstReviewProgress()"
+                                                                   style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
+                                                            <div style="flex: 1;">
+                                                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
+                                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                                </div>
+                                                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                                    <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
+                                                                    ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </label>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                `;
+                            })()}
                         </div>
                     ` : ''}
                     
@@ -8818,12 +8875,14 @@ const app = {
             
             // Get first review checked backlogs if applicable
             let firstReviewCheckedBacklogs = [];
-            const isFirstReviewStage = stage.name && stage.name.toLowerCase().includes('first review');
+            const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first review') || stage.name.toLowerCase().includes('first sprint'));
             if (isFirstReviewStage) {
                 const checkboxes = document.querySelectorAll('.first-review-backlog-checkbox');
                 firstReviewCheckedBacklogs = Array.from(checkboxes)
                     .filter(cb => cb.checked)
-                    .map(cb => cb.dataset.backlogId);
+                    .map(cb => cb.dataset.backlogId)
+                    .filter(id => id); // Filter out any undefined/null values
+                console.log('[Evaluator Save] First Review checked backlogs:', firstReviewCheckedBacklogs);
             }
             
             // Get evaluator info
@@ -8851,13 +8910,58 @@ const app = {
                 individualEvaluations: individualEvaluations,
                 comments: teamComments || '', // For backward compatibility
                 marks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
-                firstReviewCheckedBacklogs: firstReviewCheckedBacklogs,
                 timestamp: serverTimestamp(),
                 updatedAt: serverTimestamp()
             };
             
-            await setDoc(evaluatorEntryRef, evaluatorEntryData, { merge: true });
-            console.log('Saved to evaluatorEntries subcollection:', evaluatorEntryData);
+            // Always include firstReviewCheckedBacklogs for First Review stage (even if empty array)
+            if (isFirstReviewStage) {
+                evaluatorEntryData.firstReviewCheckedBacklogs = firstReviewCheckedBacklogs || [];
+                console.log('[Evaluator Save] Saving firstReviewCheckedBacklogs:', evaluatorEntryData.firstReviewCheckedBacklogs, 'for stage:', stage.name);
+                console.log('[Evaluator Save] firstReviewCheckedBacklogs length:', evaluatorEntryData.firstReviewCheckedBacklogs.length);
+            }
+            
+            // Check if document exists first
+            const existingDoc = await getDoc(evaluatorEntryRef);
+            const documentId = evaluatorEntryRef.id;
+            console.log('[Evaluator Save] Document ID:', documentId);
+            console.log('[Evaluator Save] Document path:', evaluatorEntryRef.path);
+            console.log('[Evaluator Save] Document exists:', existingDoc.exists());
+            console.log('[Evaluator Save] evaluatorEntryData keys:', Object.keys(evaluatorEntryData));
+            console.log('[Evaluator Save] evaluatorEntryData.firstReviewCheckedBacklogs:', evaluatorEntryData.firstReviewCheckedBacklogs);
+            
+            if (existingDoc.exists()) {
+                // Document exists, use updateDoc to explicitly set ALL properties including firstReviewCheckedBacklogs
+                // Use updateDoc with the complete evaluatorEntryData object
+                await updateDoc(evaluatorEntryRef, evaluatorEntryData);
+                console.log('[Evaluator Save] Updated existing evaluator entry with', Object.keys(evaluatorEntryData).length, 'properties');
+            } else {
+                // Document doesn't exist, use setDoc
+                await setDoc(evaluatorEntryRef, evaluatorEntryData);
+                console.log('[Evaluator Save] Created new evaluator entry with', Object.keys(evaluatorEntryData).length, 'properties');
+            }
+            
+            // Verify the save by reading it back immediately (for debugging)
+            if (isFirstReviewStage) {
+                try {
+                    // Small delay to ensure write is complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const verifyDoc = await getDoc(evaluatorEntryRef);
+                    if (verifyDoc.exists()) {
+                        const verifyData = verifyDoc.data();
+                        console.log('[Evaluator Save] Verification - Document ID:', verifyDoc.id);
+                        console.log('[Evaluator Save] Verification - firstReviewCheckedBacklogs in saved doc:', verifyData.firstReviewCheckedBacklogs);
+                        console.log('[Evaluator Save] Verification - All keys in saved doc:', Object.keys(verifyData));
+                        if (!verifyData.firstReviewCheckedBacklogs) {
+                            console.error('[Evaluator Save] ERROR: firstReviewCheckedBacklogs is missing after save!');
+                        }
+                    } else {
+                        console.error('[Evaluator Save] ERROR: Document does not exist after save!');
+                    }
+                } catch (error) {
+                    console.warn('[Evaluator Save] Could not verify save:', error);
+                }
+            }
             
             alert('Evaluation data saved successfully!');
         
@@ -8877,28 +8981,96 @@ const app = {
     
     // ========== EVALUATION DATA LOADING FUNCTIONS ==========
     
-    // Load evaluator entries for a team and stage
+    // Load evaluator entries for a team and stage - UPDATED VERSION 2025-01-05
+    // Uses direct getDoc to fetch ALL document fields including firstReviewCheckedBacklogs
+    // IMPORTANT: This function MUST use direct getDoc calls to get all fields
     async loadEvaluatorEntriesForTeam(teamId, stageIndex) {
+        const FUNCTION_TAG = '[LOAD_EVAL_ENTRIES_FIXED_2025]';
+        console.log(`${FUNCTION_TAG} ========== LOADING EVALUATOR ENTRIES ==========`);
+        console.log(`${FUNCTION_TAG} Team ID: ${teamId}, Stage Index: ${stageIndex}`);
+        
         try {
-            const evaluatorEntriesRef = collection(
+            // Use proper collection path with path segments
+            const evaluatorEntriesCollection = collection(
                 window.firebaseDb,
                 'evaluations',
                 `${teamId}_${stageIndex}`,
                 'evaluatorEntries'
             );
-            const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
             
-            const entries = [];
-            evaluatorEntriesSnapshot.forEach(doc => {
-                entries.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+            // Step 1: Get list of document IDs
+            console.log(`${FUNCTION_TAG} Step 1: Getting document list from collection: evaluations/${teamId}_${stageIndex}/evaluatorEntries`);
+            const snapshot = await getDocs(evaluatorEntriesCollection);
+            const documentIds = [];
+            snapshot.forEach(docSnapshot => {
+                documentIds.push(docSnapshot.id);
             });
+            console.log(`${FUNCTION_TAG} Step 1 Complete: Found ${documentIds.length} document(s):`, documentIds);
             
-            return entries;
+            // Step 2: Fetch each document individually using getDoc to get ALL fields
+            console.log(`${FUNCTION_TAG} Step 2: Fetching each document individually using getDoc`);
+            const resultEntries = [];
+            
+            for (let idx = 0; idx < documentIds.length; idx++) {
+                const docId = documentIds[idx];
+                // Use proper doc() constructor with path segments
+                const documentRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries', docId);
+                
+                console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Fetching document ${idx + 1}/${documentIds.length} (ID: ${docId})`);
+                const documentSnapshot = await getDoc(documentRef);
+                
+                if (documentSnapshot.exists()) {
+                    const documentData = documentSnapshot.data();
+                    const fieldNames = Object.keys(documentData);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Document exists with ${fieldNames.length} fields`);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Field names:`, fieldNames);
+                    
+                    // Check for firstReviewCheckedBacklogs field
+                    const hasFirstReviewBacklogs = 'firstReviewCheckedBacklogs' in documentData;
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Has 'firstReviewCheckedBacklogs' field: ${hasFirstReviewBacklogs}`);
+                    
+                    if (hasFirstReviewBacklogs) {
+                        const backlogsValue = documentData.firstReviewCheckedBacklogs;
+                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs value:`, backlogsValue);
+                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs type:`, typeof backlogsValue);
+                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs is array:`, Array.isArray(backlogsValue));
+                        if (Array.isArray(backlogsValue)) {
+                            console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs array length:`, backlogsValue.length);
+                            console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs array contents:`, backlogsValue);
+                        }
+                    } else {
+                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: WARNING - firstReviewCheckedBacklogs field NOT found in document!`);
+                    }
+                    
+                    // Create entry object with all fields - EXPLICITLY include firstReviewCheckedBacklogs
+                    const entryObject = {
+                        id: documentSnapshot.id,
+                        ...documentData,
+                        // Explicitly ensure firstReviewCheckedBacklogs is included
+                        firstReviewCheckedBacklogs: documentData.firstReviewCheckedBacklogs || []
+                    };
+                    resultEntries.push(entryObject);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Added entry to result array (total fields: ${Object.keys(entryObject).length})`);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Entry has firstReviewCheckedBacklogs:`, 'firstReviewCheckedBacklogs' in entryObject);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs value:`, entryObject.firstReviewCheckedBacklogs);
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: All entry keys:`, Object.keys(entryObject));
+                } else {
+                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Document does not exist (ID: ${docId})`);
+                }
+            }
+            
+            console.log(`${FUNCTION_TAG} Step 2 Complete: Fetched ${resultEntries.length} entry/entries`);
+            console.log(`${FUNCTION_TAG} Final result: Returning ${resultEntries.length} evaluator entry/entries`);
+            if (resultEntries.length > 0) {
+                resultEntries.forEach((entry, i) => {
+                    console.log(`${FUNCTION_TAG} Result entry ${i + 1} has ${Object.keys(entry).length} fields:`, Object.keys(entry));
+                });
+            }
+            
+            return resultEntries;
         } catch (error) {
-            console.error('Error loading evaluator entries:', error);
+            console.error(`${FUNCTION_TAG} ERROR occurred:`, error);
+            console.error(`${FUNCTION_TAG} Error stack:`, error.stack);
             return [];
         }
     },
@@ -12508,6 +12680,89 @@ const app = {
             // Load evaluation stages
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const firstReviewTotalMarks = settingsDoc.exists() ? (settingsDoc.data().firstReviewTotalMarks || 0) : 0;
+            
+            // Load first review schedule for backlog completion data - USING SAME LOGIC AS ADMIN VIEW
+            let firstReviewScheduleData = null;
+            let firstReviewTotalBacklogs = 0;
+            let firstReviewAllBacklogs = [];
+            try {
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', studentTeam.id));
+                if (scheduleDoc.exists()) {
+                    firstReviewScheduleData = scheduleDoc.data();
+                    // Calculate total backlogs and load all backlogs - ONLY FROM SCHEDULE
+                    if (firstReviewScheduleData.frozen === true) {
+                        const backlogToModuleMap = new Map(); // Map backlogId -> moduleName
+                        const scheduledBacklogIds = new Set(); // Track which backlogs are in the schedule
+                        
+                        // Load modules
+                        const modulesQuery = query(
+                            collection(window.firebaseDb, 'cardSortingModules'),
+                            where('teamId', '==', studentTeam.id)
+                        );
+                        const modulesSnapshot = await getDocs(modulesQuery);
+                        const modulesMap = new Map();
+                        modulesSnapshot.forEach(doc => {
+                            modulesMap.set(doc.id, doc.data().name || 'Unnamed Module');
+                        });
+                        
+                        // Map backlogs in modules and collect scheduled backlog IDs
+                        if (firstReviewScheduleData.modules && Array.isArray(firstReviewScheduleData.modules)) {
+                            firstReviewScheduleData.modules.forEach(scheduleModule => {
+                                const moduleName = modulesMap.get(scheduleModule.moduleId) || 'Unnamed Module';
+                                if (scheduleModule.productBacklogs && Array.isArray(scheduleModule.productBacklogs)) {
+                                    scheduleModule.productBacklogs.forEach(pb => {
+                                        const backlogId = String(pb.backlogId);
+                                        backlogToModuleMap.set(backlogId, moduleName);
+                                        scheduledBacklogIds.add(backlogId);
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // Mark standalone backlogs and collect their IDs
+                        if (firstReviewScheduleData.standaloneBacklogs && Array.isArray(firstReviewScheduleData.standaloneBacklogs)) {
+                            firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                const backlogId = String(pb.backlogId);
+                                backlogToModuleMap.set(backlogId, 'Standalone');
+                                scheduledBacklogIds.add(backlogId);
+                            });
+                        }
+                        
+                        // Calculate total from schedule
+                        firstReviewTotalBacklogs = scheduledBacklogIds.size;
+                        
+                        // Only load backlogs that are in the schedule
+                        if (scheduledBacklogIds.size > 0) {
+                            // Load from firstReviewBacklogs collection
+                            const firstReviewBacklogQuery = query(
+                                collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                where('teamId', '==', studentTeam.id)
+                            );
+                            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                            firstReviewBacklogSnapshot.forEach(doc => {
+                                const backlogId = String(doc.id);
+                                // Only include backlogs that are in the schedule
+                                if (scheduledBacklogIds.has(backlogId)) {
+                                    const backlogData = { id: doc.id, ...doc.data() };
+                                    backlogData.moduleName = backlogToModuleMap.get(backlogId) || 'Unknown';
+                                    firstReviewAllBacklogs.push(backlogData);
+                                }
+                            });
+                        }
+                    } else {
+                        // If not frozen, just calculate total
+                        if (firstReviewScheduleData.modules) {
+                            firstReviewScheduleData.modules.forEach(module => {
+                                firstReviewTotalBacklogs += (module.productBacklogs?.length || 0);
+                            });
+                        }
+                        firstReviewTotalBacklogs += (firstReviewScheduleData.standaloneBacklogs?.length || 0);
+                    }
+                }
+            } catch (error) {
+                console.warn('Error loading first review schedule:', error);
+            }
             
             // Load all evaluations for this team (from main collection and evaluatorEntries)
             const evaluations = {};
@@ -12517,7 +12772,55 @@ const app = {
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
                     let evalData = evalDoc.exists() ? evalDoc.data() : {};
                     
-                    // Load evaluator entries to aggregate comments and marks
+                    // Collect firstReviewCheckedBacklogs from all evaluators (for First Review stage)
+                    // USE EXACT SAME LOGIC AS ADMIN VIEW - Direct getDoc calls
+                    let aggregatedCheckedBacklogs = [];
+                    const isFirstReviewStage = stages[i].name && (
+                        stages[i].name.toLowerCase().includes('first review') || 
+                        stages[i].name.toLowerCase().includes('first sprint')
+                    );
+                    if (isFirstReviewStage) {
+                        // First, check main eval doc (might have data from admin)
+                        if (evalData.firstReviewCheckedBacklogs && Array.isArray(evalData.firstReviewCheckedBacklogs)) {
+                            evalData.firstReviewCheckedBacklogs.forEach(backlogId => {
+                                const normalizedId = String(backlogId);
+                                if (normalizedId && !aggregatedCheckedBacklogs.includes(normalizedId)) {
+                                    aggregatedCheckedBacklogs.push(normalizedId);
+                                }
+                            });
+                        }
+                        
+                        // Then, collect from all evaluator entries - USE EXACT SAME LOGIC AS ADMIN VIEW
+                        const evaluatorEntriesRef = collection(
+                            window.firebaseDb,
+                            'evaluations',
+                            `${studentTeam.id}_${i}`,
+                            'evaluatorEntries'
+                        );
+                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                        
+                        // Use direct getDoc calls to get all fields - EXACT SAME AS ADMIN VIEW
+                        for (const evalDoc of evaluatorEntriesSnapshot.docs) {
+                            const evalDocRef = doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`, 'evaluatorEntries', evalDoc.id);
+                            const evalDocSnapshot = await getDoc(evalDocRef);
+                            
+                            if (evalDocSnapshot.exists()) {
+                                const evalEntryData = evalDocSnapshot.data();
+                                const checkedBacklogs = evalEntryData.firstReviewCheckedBacklogs || [];
+                                
+                                if (Array.isArray(checkedBacklogs) && checkedBacklogs.length > 0) {
+                                    checkedBacklogs.forEach(backlogId => {
+                                        const normalizedId = String(backlogId);
+                                        if (normalizedId && normalizedId !== 'undefined' && normalizedId !== 'null' && normalizedId !== '' && !aggregatedCheckedBacklogs.includes(normalizedId)) {
+                                            aggregatedCheckedBacklogs.push(normalizedId);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Load evaluator entries to aggregate comments and marks (for other purposes)
                     const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
                     
                     // Aggregate team marks from all evaluators (including admin from main doc)
@@ -12749,8 +13052,22 @@ const app = {
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                     }
                     
-                    if (evalDoc.exists() || evaluatorEntries.length > 0) {
+                    // Set aggregated checked backlogs for First Review (always set if collected)
+                    if (isFirstReviewStage) {
+                        // Always set the aggregated checked backlogs (even if empty array)
+                        evalData.firstReviewCheckedBacklogs = aggregatedCheckedBacklogs.map(id => String(id)).filter(id => id && id !== 'undefined' && id !== 'null');
+                        console.log(`[First Review] Stage ${i} (${stages[i].name}): Aggregated ${aggregatedCheckedBacklogs.length} checked backlogs:`, aggregatedCheckedBacklogs);
+                        console.log(`[First Review] Stage ${i}: Setting evalData.firstReviewCheckedBacklogs =`, evalData.firstReviewCheckedBacklogs);
+                    }
+                    
+                    // Store evaluation data if it exists or has evaluator entries OR if we have checked backlogs for First Review
+                    if (evalDoc.exists() || evaluatorEntries.length > 0 || (isFirstReviewStage && aggregatedCheckedBacklogs.length > 0)) {
                         evaluations[i] = evalData;
+                        if (isFirstReviewStage) {
+                            console.log(`[First Review] Stage ${i}: Stored evaluation data. Checked backlogs:`, evalData.firstReviewCheckedBacklogs, `(length: ${evalData.firstReviewCheckedBacklogs.length})`);
+                        }
+                    } else if (isFirstReviewStage) {
+                        console.log(`[First Review] Stage ${i}: NOT storing evaluation - no evalDoc, no entries, no checked backlogs`);
                     }
                 } catch (error) {
                     console.error(`Error loading evaluation for stage ${i}:`, error);
@@ -12879,13 +13196,22 @@ const app = {
                                 <h3 class="section-title"><i class="fas fa-clipboard-check"></i> Evaluations</h3>
                                 <div class="evaluations-grid">
                                     ${stages.map((stage, index) => {
-                                        const evalData = evaluations[index];
+                                        const evalData = evaluations[index] || {};
                                         const pptRequired = stage.pptRequired || false;
                                     // Get mark parameters (even for pending evaluations)
                                     const teamParams = stage.teamMarkParams || [];
                                     const individualParams = stage.individualMarkParams || [];
-                                    const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                     const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    
+                                    // For First Review, if teamTotal is 0, use firstReviewTotalMarks from settings
+                                    const isFirstReviewStage = stage.name && (
+                                        stage.name.toLowerCase().includes('first review') || 
+                                        stage.name.toLowerCase().includes('first sprint')
+                                    );
+                                    if (teamTotal === 0 && isFirstReviewStage && firstReviewTotalMarks > 0) {
+                                        teamTotal = firstReviewTotalMarks;
+                                    }
                                     
                                     if (!evalData) {
                                         return `
@@ -12994,6 +13320,131 @@ const app = {
                                                                     <span class="breakdown-label"><strong>Total:</strong></span>
                                                                     <span class="breakdown-value"><strong>${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</strong></span>
                                                                 </div>
+                                                            </div>
+                                                        ` : ''}
+                                                        ${isFirstReviewStage && Array.isArray(evalData.firstReviewCheckedBacklogs) && firstReviewTotalBacklogs > 0 ? `
+                                                            <div style="margin-top: 1rem; padding: 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                                                    <div style="font-weight: 600; color: #065f46; font-size: 0.95rem;">
+                                                                        <i class="fas fa-clipboard-check"></i> Product Backlog Completion
+                                                                    </div>
+                                                                    <div style="font-size: 1.1rem; font-weight: 700; color: #059669;">
+                                                                        ${evalData.firstReviewCheckedBacklogs.length} / ${firstReviewTotalBacklogs}
+                                                                    </div>
+                                                                </div>
+                                                                ${(() => {
+                                                                    const completionPercentage = firstReviewTotalBacklogs > 0 
+                                                                        ? Math.round((evalData.firstReviewCheckedBacklogs.length / firstReviewTotalBacklogs) * 100) 
+                                                                        : 0;
+                                                                    const calculatedMarks = firstReviewTotalMarks > 0 
+                                                                        ? Math.round((completionPercentage / 100) * firstReviewTotalMarks * 100) / 100 
+                                                                        : 0;
+                                                                    return `
+                                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                                            <span style="color: #047857; font-size: 0.9rem;">Completion Percentage:</span>
+                                                                            <span style="font-weight: 600; color: #065f46; font-size: 1rem;">${completionPercentage}%</span>
+                                                                        </div>
+                                                                        <div style="width: 100%; height: 10px; background: #d1fae5; border-radius: 5px; overflow: hidden; margin-bottom: 0.5rem;">
+                                                                            <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
+                                                                        </div>
+                                                                        ${calculatedMarks > 0 ? `
+                                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid #86efac;">
+                                                                                <span style="color: #047857; font-size: 0.9rem; font-weight: 600;">Marks Awarded:</span>
+                                                                                <span style="font-weight: 700; color: #065f46; font-size: 1.1rem;">${calculatedMarks.toFixed(2)} / ${firstReviewTotalMarks}</span>
+                                                                            </div>
+                                                                        ` : ''}
+                                                                    `;
+                                                                })()}
+                                                                ${firstReviewAllBacklogs.length > 0 ? `
+                                                                    ${(() => {
+                                                                        // Separate marked and unmarked backlogs - EXACT SAME LOGIC AS ADMIN VIEW
+                                                                        // Get checked backlog IDs from evalData (already aggregated from all evaluators)
+                                                                        const checkedBacklogIds = evalData.firstReviewCheckedBacklogs || [];
+                                                                        // Normalize all IDs to strings for comparison - EXACT SAME AS ADMIN VIEW
+                                                                        // Convert all IDs to strings and filter out invalid ones
+                                                                        const normalizedCheckedIds = checkedBacklogIds.map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null' && id !== '');
+                                                                        const markedBacklogIdsSet = new Set(normalizedCheckedIds);
+                                                                        
+                                                                        // Debug log to verify data
+                                                                        console.log('[Student View Display] First Review Stage - Checked backlog IDs:', checkedBacklogIds);
+                                                                        console.log('[Student View Display] Normalized checked IDs:', normalizedCheckedIds);
+                                                                        console.log('[Student View Display] Total backlogs to check:', firstReviewAllBacklogs.length);
+                                                                        if (firstReviewAllBacklogs.length > 0) {
+                                                                            console.log('[Student View Display] First backlog ID:', firstReviewAllBacklogs[0].id, 'Type:', typeof firstReviewAllBacklogs[0].id);
+                                                                            console.log('[Student View Display] First backlog ID normalized:', String(firstReviewAllBacklogs[0].id).trim());
+                                                                            console.log('[Student View Display] Is first backlog marked?', markedBacklogIdsSet.has(String(firstReviewAllBacklogs[0].id).trim()));
+                                                                        }
+                                                                        
+                                                                        const markedBacklogs = firstReviewAllBacklogs.filter(b => {
+                                                                            const backlogId = String(b.id).trim();
+                                                                            return markedBacklogIdsSet.has(backlogId);
+                                                                        });
+                                                                        const unmarkedBacklogs = firstReviewAllBacklogs.filter(b => {
+                                                                            const backlogId = String(b.id).trim();
+                                                                            return !markedBacklogIdsSet.has(backlogId);
+                                                                        });
+                                                                        
+                                                                        console.log('[Student View Display] Marked backlogs count:', markedBacklogs.length);
+                                                                        console.log('[Student View Display] Unmarked backlogs count:', unmarkedBacklogs.length);
+                                                                        
+                                                                        // Group marked backlogs by module - EXACT SAME AS ADMIN VIEW
+                                                                        const markedByModule = new Map();
+                                                                        markedBacklogs.forEach(b => {
+                                                                            const moduleName = b.moduleName || 'Unknown';
+                                                                            if (!markedByModule.has(moduleName)) {
+                                                                                markedByModule.set(moduleName, []);
+                                                                            }
+                                                                            markedByModule.get(moduleName).push(b);
+                                                                        });
+                                                                        
+                                                                        // Sort modules alphabetically
+                                                                        const sortedModules = Array.from(markedByModule.keys()).sort();
+                                                                        
+                                                                        return `
+                                                                            <!-- Marked Backlogs Section - Grouped by Module - EXACT SAME AS ADMIN VIEW -->
+                                                                            ${markedBacklogs.length > 0 ? `
+                                                                                <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e; margin-bottom: 0.75rem;">
+                                                                                    <div style="font-size: 0.8rem; font-weight: 600; color: #166534; margin-bottom: 0.75rem;">
+                                                                                        <i class="fas fa-check-circle" style="color: #22c55e; margin-right: 0.5rem;"></i>Marked Backlogs (${markedBacklogs.length})
+                                                                                    </div>
+                                                                                    ${sortedModules.map(moduleName => {
+                                                                                        const moduleBacklogs = markedByModule.get(moduleName);
+                                                                                        return `
+                                                                                            <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid #22c55e;">
+                                                                                                <div style="font-size: 0.75rem; font-weight: 600; color: #166534; margin-bottom: 0.4rem;">
+                                                                                                    <i class="fas fa-folder" style="color: #22c55e; margin-right: 0.4rem; font-size: 0.7rem;"></i>${this.escapeHtml(moduleName)} (${moduleBacklogs.length})
+                                                                                                </div>
+                                                                                                <div style="font-size: 0.7rem; color: #15803d; padding-left: 1rem;">
+                                                                                                    ${moduleBacklogs.map(b => `
+                                                                                                        <div style="margin: 0.3rem 0; padding: 0.4rem; background: white; border-radius: 4px;">
+                                                                                                            ✓ ${this.escapeHtml(b.task || b.description || 'Untitled Task')}
+                                                                                                        </div>
+                                                                                                    `).join('')}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        `;
+                                                                                    }).join('')}
+                                                                                </div>
+                                                                            ` : ''}
+                                                                            
+                                                                            <!-- Unmarked Backlogs Section - EXACT SAME AS ADMIN VIEW -->
+                                                                            ${unmarkedBacklogs.length > 0 ? `
+                                                                                <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                                                                    <div style="font-size: 0.8rem; font-weight: 600; color: #991b1b; margin-bottom: 0.5rem;">
+                                                                                        <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>Unmarked Backlogs (${unmarkedBacklogs.length})
+                                                                                    </div>
+                                                                                    <div style="font-size: 0.75rem; color: #991b1b;">
+                                                                                        ${unmarkedBacklogs.map(b => `
+                                                                                            <div style="margin: 0.3rem 0; padding: 0.4rem; background: white; border-radius: 4px;">
+                                                                                                ○ <strong style="color: #8b5cf6; font-size: 0.7rem;">[${this.escapeHtml(b.moduleName || 'Unknown')}]</strong> ${this.escapeHtml(b.task || b.description || 'Untitled Task')}
+                                                                                            </div>
+                                                                                        `).join('')}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ` : ''}
+                                                                        `;
+                                                                    })()}
+                                                                ` : ''}
                                                             </div>
                                                         ` : ''}
                                                         ${evalData.teamComments || (evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) ? `
@@ -32115,3 +32566,4 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+

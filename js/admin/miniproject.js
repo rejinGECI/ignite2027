@@ -2865,6 +2865,532 @@ export function createAdminMiniProjectModule(app) {
                 console.error('Error generating First Sprint PPT report:', error);
                 alert('Error generating First Sprint PPT report. Please try again.');
             }
+        },
+        
+        async loadMarkedProductBacklogsTeams() {
+            if (!app.isAdmin) return;
+            
+            const container = document.getElementById('marked-product-backlogs-teams-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="loading-state">Loading marked product backlogs...</div>';
+            
+            try {
+                // Get First Review stage index (usually 2)
+                const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+                const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+                const firstReviewStageIndex = stages.findIndex(s => 
+                    s.name && (s.name.toLowerCase().includes('first review') || s.name.toLowerCase().includes('first sprint'))
+                );
+                
+                if (firstReviewStageIndex === -1) {
+                    container.innerHTML = '<p class="empty-state">First Review stage not found in settings.</p>';
+                    return;
+                }
+                
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const docSnap of teamsSnapshot.docs) {
+                    const data = docSnap.data();
+                    if (!data.deleted) {
+                        // Load evaluator entries for First Review stage
+                        const evaluatorEntriesRef = collection(
+                            window.firebaseDb,
+                            'evaluations',
+                            `${docSnap.id}_${firstReviewStageIndex}`,
+                            'evaluatorEntries'
+                        );
+                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
+                        
+                        const markedBacklogsByEvaluator = [];
+                        const allMarkedBacklogIds = new Set();
+                        
+                        // Use direct getDoc calls to get all fields
+                        for (const evalDoc of evaluatorEntriesSnapshot.docs) {
+                            const evalDocRef = doc(window.firebaseDb, 'evaluations', `${docSnap.id}_${firstReviewStageIndex}`, 'evaluatorEntries', evalDoc.id);
+                            const evalDocSnapshot = await getDoc(evalDocRef);
+                            
+                            if (evalDocSnapshot.exists()) {
+                                const evalData = evalDocSnapshot.data();
+                                const checkedBacklogs = evalData.firstReviewCheckedBacklogs || [];
+                                
+                                if (checkedBacklogs.length > 0) {
+                                    markedBacklogsByEvaluator.push({
+                                        evaluatorId: evalData.evaluatorId || evalDocSnapshot.id,
+                                        evaluatorName: evalData.evaluatorName || 'Unknown Evaluator',
+                                        evaluatorEmail: evalData.evaluatorEmail || '',
+                                        markedBacklogIds: Array.isArray(checkedBacklogs) ? checkedBacklogs : [],
+                                        markedCount: Array.isArray(checkedBacklogs) ? checkedBacklogs.length : 0
+                                    });
+                                    
+                                    // Add to set for unique count
+                                    if (Array.isArray(checkedBacklogs)) {
+                                        checkedBacklogs.forEach(id => allMarkedBacklogIds.add(String(id)));
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Load all product backlogs for this team - ONLY from schedule
+                        const allBacklogs = [];
+                        const backlogToModuleMap = new Map(); // Map backlogId -> moduleName
+                        const scheduledBacklogIds = new Set(); // Track which backlogs are in the schedule
+                        
+                        try {
+                            // Load schedule to get module associations
+                            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', docSnap.id));
+                            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [] };
+                            
+                            // Load modules
+                            const modulesQuery = query(
+                                collection(window.firebaseDb, 'cardSortingModules'),
+                                where('teamId', '==', docSnap.id)
+                            );
+                            const modulesSnapshot = await getDocs(modulesQuery);
+                            const modulesMap = new Map();
+                            modulesSnapshot.forEach(doc => {
+                                modulesMap.set(doc.id, doc.data().name || 'Unnamed Module');
+                            });
+                            
+                            // Map backlogs in modules and collect scheduled backlog IDs
+                            if (scheduleData.modules && Array.isArray(scheduleData.modules)) {
+                                scheduleData.modules.forEach(scheduleModule => {
+                                    const moduleName = modulesMap.get(scheduleModule.moduleId) || 'Unnamed Module';
+                                    if (scheduleModule.productBacklogs && Array.isArray(scheduleModule.productBacklogs)) {
+                                        scheduleModule.productBacklogs.forEach(pb => {
+                                            const backlogId = String(pb.backlogId);
+                                            backlogToModuleMap.set(backlogId, moduleName);
+                                            scheduledBacklogIds.add(backlogId);
+                                        });
+                                    }
+                                });
+                            }
+                            
+                            // Mark standalone backlogs and collect their IDs
+                            if (scheduleData.standaloneBacklogs && Array.isArray(scheduleData.standaloneBacklogs)) {
+                                scheduleData.standaloneBacklogs.forEach(pb => {
+                                    const backlogId = String(pb.backlogId);
+                                    backlogToModuleMap.set(backlogId, 'Standalone');
+                                    scheduledBacklogIds.add(backlogId);
+                                });
+                            }
+                            
+                            // Only load backlogs that are in the schedule
+                            if (scheduledBacklogIds.size > 0) {
+                                // Load from firstReviewBacklogs collection
+                                const firstReviewBacklogQuery = query(
+                                    collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                    where('teamId', '==', docSnap.id)
+                                );
+                                const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                                firstReviewBacklogSnapshot.forEach(doc => {
+                                    const backlogId = String(doc.id);
+                                    // Only include backlogs that are in the schedule
+                                    if (scheduledBacklogIds.has(backlogId)) {
+                                        const backlogData = { id: doc.id, ...doc.data() };
+                                        backlogData.moduleName = backlogToModuleMap.get(backlogId) || 'Unknown';
+                                        allBacklogs.push(backlogData);
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.warn(`Error loading backlogs for team ${docSnap.id}:`, error);
+                        }
+                        
+                        // Only show teams with marked backlogs
+                        if (markedBacklogsByEvaluator.length > 0) {
+                            teams.push({
+                                id: docSnap.id,
+                                groupName: data.groupName || data.name || 'Unnamed Team',
+                                guideName: data.guideName || 'No Guide',
+                                topic: data.topic || 'Not assigned',
+                                members: data.members || [],
+                                markedBacklogsByEvaluator: markedBacklogsByEvaluator,
+                                totalMarkedBacklogs: allMarkedBacklogIds.size,
+                                allBacklogs: allBacklogs,
+                                markedBacklogIds: Array.from(allMarkedBacklogIds)
+                            });
+                        }
+                    }
+                }
+                
+                if (teams.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No teams with marked product backlogs found.</p>';
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.groupName
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Store teams for search and PDF generation
+                app.markedProductBacklogsTeams = sortedTeams;
+                
+                container.innerHTML = `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%); border-radius: 8px; border-left: 4px solid #8b5cf6;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <i class="fas fa-check-square" style="font-size: 1.5rem; color: #8b5cf6;"></i>
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0; color: #5b21b6; font-size: 1.1rem;">Marked Product Backlogs Summary</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: #6d28d9; font-size: 0.9rem;">${sortedTeams.length} team${sortedTeams.length !== 1 ? 's' : ''} with marked product backlogs</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-teams-grid">
+                        ${sortedTeams.map(team => {
+                            const markedBacklogIdsSet = new Set(team.markedBacklogIds.map(id => String(id)));
+                            const allBacklogsList = team.allBacklogs || [];
+                            const markedBacklogs = allBacklogsList.filter(b => markedBacklogIdsSet.has(String(b.id)));
+                            const unmarkedBacklogs = allBacklogsList.filter(b => !markedBacklogIdsSet.has(String(b.id)));
+                            
+                            // Group marked backlogs by module
+                            const markedByModule = new Map();
+                            markedBacklogs.forEach(b => {
+                                const moduleName = b.moduleName || 'Unknown';
+                                if (!markedByModule.has(moduleName)) {
+                                    markedByModule.set(moduleName, []);
+                                }
+                                markedByModule.get(moduleName).push(b);
+                            });
+                            
+                            // Sort modules alphabetically
+                            const sortedModules = Array.from(markedByModule.keys()).sort();
+                            
+                            return `
+                                <div class="project-team-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div class="team-header" style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: start;">
+                                        <h4 style="margin: 0; color: var(--text-primary); font-size: 1rem;">${escapeHtml(team.groupName)}</h4>
+                                        <div style="display: flex; gap: 0.5rem; flex-direction: column; align-items: end;">
+                                            <span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
+                                                ${markedBacklogs.length} marked
+                                            </span>
+                                            ${unmarkedBacklogs.length > 0 ? `
+                                                <span style="background: #fee2e2; color: #991b1b; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
+                                                    ${unmarkedBacklogs.length} unmarked
+                                                </span>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                            <i class="fas fa-user-tie" style="margin-right: 0.5rem;"></i>Guide: ${escapeHtml(team.guideName)}
+                                        </div>
+                                        ${team.topic && team.topic !== 'Not assigned' ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                                <i class="fas fa-lightbulb" style="margin-right: 0.5rem;"></i>Topic: ${escapeHtml(team.topic)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    
+                                    <!-- Marked Backlogs Section - Grouped by Module -->
+                                    ${markedBacklogs.length > 0 ? `
+                                        <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e; margin-bottom: 0.75rem;">
+                                            <div style="font-size: 0.8rem; font-weight: 600; color: #166534; margin-bottom: 0.75rem;">
+                                                <i class="fas fa-check-circle" style="color: #22c55e; margin-right: 0.5rem;"></i>Marked Backlogs (${markedBacklogs.length})
+                                            </div>
+                                            ${sortedModules.map(moduleName => {
+                                                const moduleBacklogs = markedByModule.get(moduleName);
+                                                return `
+                                                    <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid #22c55e;">
+                                                        <div style="font-size: 0.75rem; font-weight: 600; color: #166534; margin-bottom: 0.4rem;">
+                                                            <i class="fas fa-folder" style="color: #22c55e; margin-right: 0.4rem; font-size: 0.7rem;"></i>${escapeHtml(moduleName)} (${moduleBacklogs.length})
+                                                        </div>
+                                                        <div style="font-size: 0.7rem; color: #15803d; padding-left: 1rem;">
+                                                            ${moduleBacklogs.map(b => `
+                                                                <div style="margin: 0.25rem 0; padding: 0.3rem; background: #f0fdf4; border-radius: 3px;">
+                                                                    ✓ ${escapeHtml(b.task || b.description || 'Untitled Task')}
+                                                                </div>
+                                                            `).join('')}
+                                                        </div>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    ` : ''}
+                                    
+                                    <!-- Unmarked Backlogs Section -->
+                                    ${unmarkedBacklogs.length > 0 ? `
+                                        <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                            <div style="font-size: 0.8rem; font-weight: 600; color: #991b1b; margin-bottom: 0.5rem;">
+                                                <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>Unmarked Backlogs (${unmarkedBacklogs.length})
+                                            </div>
+                                            <div style="font-size: 0.75rem; color: #991b1b;">
+                                                ${unmarkedBacklogs.map(b => `
+                                                    <div style="margin: 0.3rem 0; padding: 0.4rem; background: white; border-radius: 4px;">
+                                                        ○ <strong style="color: #8b5cf6; font-size: 0.7rem;">[${escapeHtml(b.moduleName || 'Unknown')}]</strong> ${escapeHtml(b.task || b.description || 'Untitled Task')}
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('search-marked-product-backlogs-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const teamCards = container.querySelectorAll('.project-team-item');
+                        teamCards.forEach(card => {
+                            const teamText = card.textContent.toLowerCase();
+                            card.style.display = teamText.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading marked product backlogs:', error);
+                container.innerHTML = '<p class="error-message">Error loading marked product backlogs. Please try again.</p>';
+            }
+        },
+        
+        async generateMarkedProductBacklogsReport() {
+            if (!app.isAdmin) return;
+            
+            try {
+                // Load teams data if not already loaded
+                if (!app.markedProductBacklogsTeams || app.markedProductBacklogsTeams.length === 0) {
+                    await this.loadMarkedProductBacklogsTeams();
+                }
+                
+                const teams = app.markedProductBacklogsTeams;
+                
+                if (!teams || teams.length === 0) {
+                    alert('No teams with marked product backlogs found to generate report.');
+                    return;
+                }
+                
+                const printWindow = window.open('', '_blank');
+                const currentDate = new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                let html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Marked Product Backlogs Report</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                        <style>
+                            @media print {
+                                @page {
+                                    margin: 1.5cm;
+                                    size: A4 portrait;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                                .no-print {
+                                    display: none;
+                                }
+                                * {
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                            }
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            body {
+                                font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                color: #1e293b;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header {
+                                text-align: center;
+                                margin-bottom: 35px;
+                                padding: 25px;
+                                background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+                                background-color: #8b5cf6;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(139, 92, 246, 0.2);
+                                color: white;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header h1 {
+                                margin: 0 0 15px 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 32px;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 1.5px;
+                                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                            .header .subtitle {
+                                font-size: 16px;
+                                font-weight: 400;
+                                opacity: 0.95;
+                                margin: 8px 0;
+                            }
+                            .header .stats {
+                                display: flex;
+                                justify-content: center;
+                                gap: 30px;
+                                margin-top: 20px;
+                                flex-wrap: wrap;
+                            }
+                            .header .stat-item {
+                                background: rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 8px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .header .stat-label {
+                                font-size: 12px;
+                                opacity: 0.9;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                            }
+                            .header .stat-value {
+                                font-size: 24px;
+                                font-weight: 700;
+                                margin-top: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: separate;
+                                border-spacing: 0;
+                                margin-top: 25px;
+                                font-size: 11px;
+                                background: white;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th {
+                                background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+                                background-color: #8b5cf6;
+                                color: white !important;
+                                padding: 12px 8px;
+                                text-align: left;
+                                font-weight: 700;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 11px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                                border: none;
+                                position: relative;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th:not(:last-child)::after {
+                                content: '';
+                                position: absolute;
+                                right: 0;
+                                top: 20%;
+                                height: 60%;
+                                width: 1px;
+                                background: rgba(255, 255, 255, 0.3);
+                            }
+                            td {
+                                padding: 10px 8px;
+                                border-bottom: 1px solid #cbd5e1;
+                                vertical-align: top;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            tr:nth-child(even) {
+                                background: #f8fafc;
+                            }
+                            tr:hover {
+                                background: #f1f5f9;
+                            }
+                            .evaluator-info {
+                                font-size: 10px;
+                                color: #475569;
+                                margin-top: 4px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1><i class="fas fa-check-square"></i> Marked Product Backlogs Report</h1>
+                            <div class="subtitle">Generated on ${currentDate}</div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Teams</div>
+                                    <div class="stat-value">${teams.length}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">#</th>
+                                    <th>Team Name</th>
+                                    <th>Guide</th>
+                                    <th>Topic</th>
+                                    <th style="width: 100px;">Total Marked</th>
+                                    <th>Evaluators & Marked Backlogs</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teams.map((team, index) => {
+                                    const evaluatorsList = team.markedBacklogsByEvaluator.map(evaluator => 
+                                        `${escapeHtml(evaluator.evaluatorName)} (${evaluator.markedCount})`
+                                    ).join(', ');
+                                    
+                                    return `
+                                        <tr>
+                                            <td>${index + 1}</td>
+                                            <td><strong>${escapeHtml(team.groupName)}</strong></td>
+                                            <td>${escapeHtml(team.guideName)}</td>
+                                            <td>${escapeHtml(team.topic)}</td>
+                                            <td><strong>${team.totalMarkedBacklogs}</strong></td>
+                                            <td>
+                                                ${evaluatorsList || 'No evaluators'}
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(html);
+                printWindow.document.close();
+                
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
+                
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error generating marked product backlogs report:', error);
+                alert('Error generating marked product backlogs report. Please try again.');
+            }
         }
     };
 }
