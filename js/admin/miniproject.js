@@ -3179,6 +3179,28 @@ export function createAdminMiniProjectModule(app) {
                     minute: '2-digit'
                 });
                 
+                // Helper function to get priority color
+                const getPriorityColor = (priority) => {
+                    const colors = {
+                        'critical': '#dc2626',
+                        'high': '#ea580c',
+                        'medium': '#2563eb',
+                        'low': '#6b7280'
+                    };
+                    return colors[priority?.toLowerCase()] || colors.medium;
+                };
+                
+                // Helper function to get priority background color
+                const getPriorityBgColor = (priority) => {
+                    const colors = {
+                        'critical': '#fee2e2',
+                        'high': '#fed7aa',
+                        'medium': '#dbeafe',
+                        'low': '#e5e7eb'
+                    };
+                    return colors[priority?.toLowerCase()] || colors.medium;
+                };
+                
                 let html = `
                     <!DOCTYPE html>
                     <html>
@@ -3191,14 +3213,65 @@ export function createAdminMiniProjectModule(app) {
                                     margin: 1.5cm;
                                     size: A4 portrait;
                                 }
-                                body {
-                                    margin: 0;
-                                    padding: 0;
+                                html, body {
+                                    margin: 0 !important;
+                                    padding: 0 !important;
+                                    background: #ffffff !important;
                                     -webkit-print-color-adjust: exact;
                                     print-color-adjust: exact;
                                 }
+                                body {
+                                    padding: 20px !important;
+                                }
                                 .no-print {
                                     display: none;
+                                }
+                                .print-header-wrapper {
+                                    margin-bottom: 10px;
+                                    text-align: center;
+                                    position: relative;
+                                    min-height: calc(100vh - 3cm);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                }
+                                .print-header-wrapper + .content-wrapper {
+                                    position: relative;
+                                    z-index: 1;
+                                }
+                                .content-wrapper {
+                                    margin-top: 0 !important;
+                                }
+                                .header {
+                                    margin: 0 auto !important;
+                                    padding: 30px 25px !important;
+                                    width: auto;
+                                    max-width: 100%;
+                                }
+                                .header h1 {
+                                    font-size: 28px !important;
+                                    margin: 0 0 12px 0 !important;
+                                    line-height: 1.3 !important;
+                                }
+                                .header .subtitle {
+                                    font-size: 15px !important;
+                                    margin: 6px 0 !important;
+                                }
+                                .header .stats {
+                                    margin-top: 15px !important;
+                                    gap: 20px !important;
+                                }
+                                .header .stat-item {
+                                    padding: 10px 18px !important;
+                                }
+                                .header .stat-label {
+                                    font-size: 11px !important;
+                                }
+                                .header .stat-value {
+                                    font-size: 22px !important;
+                                }
+                                .team-section:first-of-type {
+                                    margin-top: 0 !important;
                                 }
                                 * {
                                     -webkit-print-color-adjust: exact;
@@ -3223,8 +3296,8 @@ export function createAdminMiniProjectModule(app) {
                             }
                             .header {
                                 text-align: center;
-                                margin-bottom: 35px;
-                                padding: 25px;
+                                margin-bottom: 10px;
+                                padding: 30px 25px;
                                 background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
                                 background-color: #8b5cf6;
                                 border-radius: 12px;
@@ -3272,106 +3345,277 @@ export function createAdminMiniProjectModule(app) {
                                 font-weight: 700;
                                 margin-top: 5px;
                             }
-                            table {
-                                width: 100%;
-                                border-collapse: separate;
-                                border-spacing: 0;
-                                margin-top: 25px;
-                                font-size: 11px;
-                                background: white;
-                                border-radius: 10px;
-                                overflow: hidden;
-                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-                                -webkit-print-color-adjust: exact;
-                                print-color-adjust: exact;
+                            .team-section {
+                                margin-bottom: 40px;
+                                page-break-inside: avoid;
                             }
-                            th {
+                            .team-section:first-of-type {
+                                margin-top: 0;
+                            }
+                            .team-header {
                                 background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
                                 background-color: #8b5cf6;
-                                color: white !important;
-                                padding: 12px 8px;
-                                text-align: left;
-                                font-weight: 700;
-                                font-family: 'Montserrat', sans-serif;
-                                font-size: 11px;
-                                text-transform: uppercase;
-                                letter-spacing: 0.5px;
-                                border: none;
-                                position: relative;
+                                color: white;
+                                padding: 15px 20px;
+                                border-radius: 8px 8px 0 0;
+                                margin-bottom: 0;
                                 -webkit-print-color-adjust: exact;
                                 print-color-adjust: exact;
                             }
-                            th:not(:last-child)::after {
-                                content: '';
-                                position: absolute;
-                                right: 0;
-                                top: 20%;
-                                height: 60%;
-                                width: 1px;
-                                background: rgba(255, 255, 255, 0.3);
+                            .team-header h2 {
+                                margin: 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 18px;
+                                font-weight: 700;
                             }
-                            td {
-                                padding: 10px 8px;
-                                border-bottom: 1px solid #cbd5e1;
-                                vertical-align: top;
-                                font-family: 'Lato', sans-serif;
-                            }
-                            tr:nth-child(even) {
+                            .team-info {
                                 background: #f8fafc;
-                            }
-                            tr:hover {
-                                background: #f1f5f9;
-                            }
-                            .evaluator-info {
-                                font-size: 10px;
+                                padding: 12px 20px;
+                                border: 1px solid #e2e8f0;
+                                border-top: none;
+                                font-size: 12px;
                                 color: #475569;
-                                margin-top: 4px;
+                            }
+                            .team-info-row {
+                                display: flex;
+                                gap: 20px;
+                                margin-bottom: 8px;
+                            }
+                            .team-info-item {
+                                display: flex;
+                                align-items: center;
+                                gap: 6px;
+                            }
+                            .module-section {
+                                margin-top: 20px;
+                                border: 1px solid #e2e8f0;
+                                border-radius: 8px;
+                                overflow: hidden;
+                                background: white;
+                            }
+                            .module-header {
+                                background: #f1f5f9;
+                                padding: 12px 16px;
+                                font-weight: 700;
+                                font-size: 13px;
+                                color: #1e293b;
+                                border-bottom: 2px solid #cbd5e1;
+                                font-family: 'Montserrat', sans-serif;
+                            }
+                            .status-section {
+                                padding: 12px 16px;
+                            }
+                            .status-header {
+                                font-weight: 700;
+                                font-size: 12px;
+                                margin-bottom: 10px;
+                                padding: 8px 12px;
+                                border-radius: 6px;
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            }
+                            .status-header.completed {
+                                background: #dcfce7;
+                                color: #166534;
+                            }
+                            .status-header.pending {
+                                background: #fef2f2;
+                                color: #991b1b;
+                            }
+                            .backlog-item {
+                                padding: 10px 12px;
+                                margin-bottom: 8px;
+                                border-radius: 6px;
+                                border-left: 3px solid;
+                                background: #ffffff;
+                                font-size: 11px;
+                                line-height: 1.5;
+                            }
+                            .backlog-item.completed {
+                                border-left-color: #22c55e;
+                                background: #f0fdf4;
+                            }
+                            .backlog-item.pending {
+                                border-left-color: #ef4444;
+                                background: #fef2f2;
+                            }
+                            .backlog-task {
+                                font-weight: 600;
+                                color: #1e293b;
+                                margin-bottom: 4px;
+                            }
+                            .backlog-meta {
+                                display: flex;
+                                gap: 12px;
+                                flex-wrap: wrap;
+                                margin-top: 6px;
+                                font-size: 10px;
+                                color: #64748b;
+                            }
+                            .priority-badge {
+                                padding: 2px 8px;
+                                border-radius: 12px;
+                                font-weight: 600;
+                                font-size: 9px;
+                                text-transform: uppercase;
+                            }
+                            .empty-state {
+                                padding: 20px;
+                                text-align: center;
+                                color: #94a3b8;
+                                font-style: italic;
+                                font-size: 11px;
                             }
                         </style>
                     </head>
                     <body>
-                        <div class="header">
-                            <h1><i class="fas fa-check-square"></i> Marked Product Backlogs Report</h1>
-                            <div class="subtitle">Generated on ${currentDate}</div>
-                            <div class="stats">
-                                <div class="stat-item">
-                                    <div class="stat-label">Total Teams</div>
-                                    <div class="stat-value">${teams.length}</div>
+                        <div class="print-header-wrapper">
+                            <div class="header">
+                                <h1><i class="fas fa-check-square"></i> Marked Product Backlogs Report</h1>
+                                <div class="subtitle">Generated on ${currentDate}</div>
+                                <div class="stats">
+                                    <div class="stat-item">
+                                        <div class="stat-label">Total Teams</div>
+                                        <div class="stat-value">${teams.length}</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width: 40px;">#</th>
-                                    <th>Team Name</th>
-                                    <th>Guide</th>
-                                    <th>Topic</th>
-                                    <th style="width: 100px;">Total Marked</th>
-                                    <th>Evaluators & Marked Backlogs</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${teams.map((team, index) => {
-                                    const evaluatorsList = team.markedBacklogsByEvaluator.map(evaluator => 
-                                        `${escapeHtml(evaluator.evaluatorName)} (${evaluator.markedCount})`
-                                    ).join(', ');
+                        <div class="content-wrapper">
+                        ${teams.map((team, teamIndex) => {
+                            // Separate marked and unmarked backlogs
+                            const markedBacklogIdsSet = new Set(team.markedBacklogIds.map(id => String(id)));
+                            const allBacklogsList = team.allBacklogs || [];
+                            const markedBacklogs = allBacklogsList.filter(b => markedBacklogIdsSet.has(String(b.id)));
+                            const unmarkedBacklogs = allBacklogsList.filter(b => !markedBacklogIdsSet.has(String(b.id)));
+                            
+                            // Group backlogs by module
+                            const groupByModule = (backlogs) => {
+                                const grouped = new Map();
+                                backlogs.forEach(b => {
+                                    const moduleName = b.moduleName || 'Unknown';
+                                    if (!grouped.has(moduleName)) {
+                                        grouped.set(moduleName, []);
+                                    }
+                                    grouped.get(moduleName).push(b);
+                                });
+                                return grouped;
+                            };
+                            
+                            const markedByModule = groupByModule(markedBacklogs);
+                            const unmarkedByModule = groupByModule(unmarkedBacklogs);
+                            
+                            // Get all unique modules
+                            const allModules = new Set([
+                                ...Array.from(markedByModule.keys()),
+                                ...Array.from(unmarkedByModule.keys())
+                            ]);
+                            const sortedModules = Array.from(allModules).sort();
+                            
+                            return `
+                                <div class="team-section">
+                                    <div class="team-header">
+                                        <h2>${teamIndex + 1}. ${escapeHtml(team.groupName)}</h2>
+                                    </div>
+                                    <div class="team-info">
+                                        <div class="team-info-row">
+                                            <div class="team-info-item">
+                                                <strong>Guide:</strong> ${escapeHtml(team.guideName)}
+                                            </div>
+                                            <div class="team-info-item">
+                                                <strong>Topic:</strong> ${escapeHtml(team.topic)}
+                                            </div>
+                                        </div>
+                                        <div class="team-info-row">
+                                            <div class="team-info-item">
+                                                <strong>Completed:</strong> ${markedBacklogs.length} / ${allBacklogsList.length}
+                                            </div>
+                                            <div class="team-info-item">
+                                                <strong>To Be Completed:</strong> ${unmarkedBacklogs.length}
+                                            </div>
+                                        </div>
+                                    </div>
                                     
-                                    return `
-                                        <tr>
-                                            <td>${index + 1}</td>
-                                            <td><strong>${escapeHtml(team.groupName)}</strong></td>
-                                            <td>${escapeHtml(team.guideName)}</td>
-                                            <td>${escapeHtml(team.topic)}</td>
-                                            <td><strong>${team.totalMarkedBacklogs}</strong></td>
-                                            <td>
-                                                ${evaluatorsList || 'No evaluators'}
-                                            </td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
+                                    ${sortedModules.map(moduleName => {
+                                        const moduleMarked = markedByModule.get(moduleName) || [];
+                                        const moduleUnmarked = unmarkedByModule.get(moduleName) || [];
+                                        
+                                        if (moduleMarked.length === 0 && moduleUnmarked.length === 0) {
+                                            return '';
+                                        }
+                                        
+                                        return `
+                                            <div class="module-section">
+                                                <div class="module-header">
+                                                    <i class="fas fa-folder"></i> ${escapeHtml(moduleName)}
+                                                    <span style="font-weight: 400; color: #64748b; margin-left: 8px;">
+                                                        (${moduleMarked.length} completed, ${moduleUnmarked.length} pending)
+                                                    </span>
+                                                </div>
+                                                
+                                                ${moduleMarked.length > 0 ? `
+                                                    <div class="status-section">
+                                                        <div class="status-header completed">
+                                                            <i class="fas fa-check-circle"></i> Completed Product Backlogs (${moduleMarked.length})
+                                                        </div>
+                                                        ${moduleMarked.map(backlog => {
+                                                            const priority = backlog.priority || 'medium';
+                                                            const priorityColor = getPriorityColor(priority);
+                                                            const priorityBgColor = getPriorityBgColor(priority);
+                                                            return `
+                                                                <div class="backlog-item completed">
+                                                                    <div class="backlog-task">
+                                                                        ✓ ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                                    </div>
+                                                                    <div class="backlog-meta">
+                                                                        <span class="priority-badge" style="background: ${priorityBgColor}; color: ${priorityColor};">
+                                                                            ${escapeHtml(priority)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            `;
+                                                        }).join('')}
+                                                    </div>
+                                                ` : ''}
+                                                
+                                                ${moduleUnmarked.length > 0 ? `
+                                                    <div class="status-section" style="${moduleMarked.length > 0 ? 'border-top: 1px solid #e2e8f0; padding-top: 12px;' : ''}">
+                                                        <div class="status-header pending">
+                                                            <i class="fas fa-clock"></i> To Be Completed Product Backlogs (${moduleUnmarked.length})
+                                                        </div>
+                                                        ${moduleUnmarked.map(backlog => {
+                                                            const priority = backlog.priority || 'medium';
+                                                            const priorityColor = getPriorityColor(priority);
+                                                            const priorityBgColor = getPriorityBgColor(priority);
+                                                            return `
+                                                                <div class="backlog-item pending">
+                                                                    <div class="backlog-task">
+                                                                        ○ ${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                                    </div>
+                                                                    <div class="backlog-meta">
+                                                                        <span class="priority-badge" style="background: ${priorityBgColor}; color: ${priorityColor};">
+                                                                            ${escapeHtml(priority)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            `;
+                                                        }).join('')}
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                    
+                                    ${sortedModules.length === 0 ? `
+                                        <div class="module-section">
+                                            <div class="empty-state">No product backlogs found for this team.</div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                        </div>
                     </body>
                     </html>
                 `;
