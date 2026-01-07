@@ -6563,10 +6563,6 @@ const app = {
         if (tabName === 'first-sprint-ppt') {
             setTimeout(() => this.loadFirstSprintPPTTeams(), 100);
         }
-        // Load marked product backlogs when tab is switched
-        if (tabName === 'marked-product-backlogs') {
-            setTimeout(() => this.loadMarkedProductBacklogsTeams(), 100);
-        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -8340,7 +8336,7 @@ const app = {
                         </div>
                     ` : ''}
                     
-                    ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewAllBacklogs.length > 0 ? `
+                    ${isFirstReviewStage && firstReviewScheduleData && firstReviewScheduleData.frozen === true && firstReviewBacklogs.length > 0 ? `
                         <!-- First Sprint Product Backlog Checklist -->
                         <div class="evaluation-section" style="margin-top: 1.5rem; margin-bottom: 1.5rem; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1.5rem;">
                             <h5 style="margin-bottom: 1rem; color: #059669; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
@@ -8369,85 +8365,32 @@ const app = {
                                 </div>
                             </div>
                             
-                            ${(() => {
-                                // Separate marked and unmarked backlogs
-                                const markedBacklogs = firstReviewAllBacklogs.filter(b => checkedBacklogIds.includes(String(b.id)));
-                                const unmarkedBacklogs = firstReviewAllBacklogs.filter(b => !checkedBacklogIds.includes(String(b.id)));
-                                
-                                // Group marked backlogs by module
-                                const markedByModule = new Map();
-                                markedBacklogs.forEach(b => {
-                                    const moduleName = b.moduleName || 'Unknown';
-                                    if (!markedByModule.has(moduleName)) {
-                                        markedByModule.set(moduleName, []);
-                                    }
-                                    markedByModule.get(moduleName).push(b);
-                                });
-                                
-                                // Sort modules alphabetically
-                                const sortedModules = Array.from(markedByModule.keys()).sort();
-                                
-                                return `
-                                    <!-- Marked Backlogs - Grouped by Module -->
-                                    ${markedBacklogs.length > 0 ? `
-                                        <div style="margin-bottom: 1.5rem; padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e;">
-                                            <div style="font-size: 0.9rem; font-weight: 600; color: #166534; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-                                                <i class="fas fa-check-circle" style="color: #22c55e;"></i> Marked Backlogs (${markedBacklogs.length})
-                                            </div>
-                                            ${sortedModules.map(moduleName => {
-                                                const moduleBacklogs = markedByModule.get(moduleName);
-                                                return `
-                                                    <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid #22c55e;">
-                                                        <div style="font-size: 0.85rem; font-weight: 600; color: #166534; margin-bottom: 0.4rem;">
-                                                            <i class="fas fa-folder" style="color: #22c55e; margin-right: 0.4rem; font-size: 0.75rem;"></i>${this.escapeHtml(moduleName)} (${moduleBacklogs.length})
-                                                        </div>
-                                                        <div style="font-size: 0.8rem; color: #15803d; padding-left: 1rem;">
-                                                            ${moduleBacklogs.map(b => `
-                                                                <div style="margin: 0.25rem 0; padding: 0.3rem; background: #f0fdf4; border-radius: 3px; display: flex; align-items: start; gap: 0.5rem;">
-                                                                    <i class="fas fa-check" style="color: #22c55e; margin-top: 0.2rem; font-size: 0.7rem;"></i>
-                                                                    <span>${this.escapeHtml(b.task || b.description || 'Untitled Task')}</span>
-                                                                </div>
-                                                            `).join('')}
-                                                        </div>
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #d1fae5; border-radius: 6px; padding: 0.75rem; background: white;">
+                                ${firstReviewBacklogs.map((backlog, index) => {
+                                    const isChecked = checkedBacklogIds.includes(String(backlog.id));
+                                    return `
+                                        <div style="padding: 0.75rem; margin-bottom: ${index < firstReviewBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < firstReviewBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: ${isChecked ? '#f0fdf4' : '#fafafa'}; transition: background 0.2s;">
+                                            <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" 
+                                                       class="first-review-backlog-checkbox" 
+                                                       data-backlog-id="${backlog.id}"
+                                                       ${isChecked ? 'checked' : ''}
+                                                       onchange="app.updateFirstReviewProgress()"
+                                                       style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
+                                                <div style="flex: 1;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
+                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
                                                     </div>
-                                                `;
-                                            }).join('')}
-                                        </div>
-                                    ` : ''}
-                                    
-                                    <!-- Unmarked Backlogs -->
-                                    ${unmarkedBacklogs.length > 0 ? `
-                                        <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; border-left: 3px solid #ef4444;">
-                                            <div style="font-size: 0.9rem; font-weight: 600; color: #991b1b; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                                                <i class="fas fa-times-circle" style="color: #ef4444;"></i> Unmarked Backlogs (${unmarkedBacklogs.length})
-                                            </div>
-                                            <div style="max-height: 400px; overflow-y: auto;">
-                                                ${unmarkedBacklogs.map((backlog, index) => `
-                                                    <div style="padding: 0.75rem; margin-bottom: ${index < unmarkedBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < unmarkedBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: white;">
-                                                        <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
-                                                            <input type="checkbox" 
-                                                                   class="first-review-backlog-checkbox" 
-                                                                   data-backlog-id="${backlog.id}"
-                                                                   ${checkedBacklogIds.includes(String(backlog.id)) ? 'checked' : ''}
-                                                                   onchange="app.updateFirstReviewProgress()"
-                                                                   style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
-                                                            <div style="flex: 1;">
-                                                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
-                                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
-                                                                </div>
-                                                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                                                                    <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
-                                                                    ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
-                                                                </div>
-                                                            </div>
-                                                        </label>
+                                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                        <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
+                                                        ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
                                                     </div>
-                                                `).join('')}
-                                            </div>
+                                                </div>
+                                            </label>
                                         </div>
-                                    ` : ''}
-                                `;
-                            })()}
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     ` : ''}
                     
@@ -8875,14 +8818,12 @@ const app = {
             
             // Get first review checked backlogs if applicable
             let firstReviewCheckedBacklogs = [];
-            const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first review') || stage.name.toLowerCase().includes('first sprint'));
+            const isFirstReviewStage = stage.name && stage.name.toLowerCase().includes('first review');
             if (isFirstReviewStage) {
                 const checkboxes = document.querySelectorAll('.first-review-backlog-checkbox');
                 firstReviewCheckedBacklogs = Array.from(checkboxes)
                     .filter(cb => cb.checked)
-                    .map(cb => cb.dataset.backlogId)
-                    .filter(id => id); // Filter out any undefined/null values
-                console.log('[Evaluator Save] First Review checked backlogs:', firstReviewCheckedBacklogs);
+                    .map(cb => cb.dataset.backlogId);
             }
             
             // Get evaluator info
@@ -8910,58 +8851,13 @@ const app = {
                 individualEvaluations: individualEvaluations,
                 comments: teamComments || '', // For backward compatibility
                 marks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
+                firstReviewCheckedBacklogs: firstReviewCheckedBacklogs,
                 timestamp: serverTimestamp(),
                 updatedAt: serverTimestamp()
             };
             
-            // Always include firstReviewCheckedBacklogs for First Review stage (even if empty array)
-            if (isFirstReviewStage) {
-                evaluatorEntryData.firstReviewCheckedBacklogs = firstReviewCheckedBacklogs || [];
-                console.log('[Evaluator Save] Saving firstReviewCheckedBacklogs:', evaluatorEntryData.firstReviewCheckedBacklogs, 'for stage:', stage.name);
-                console.log('[Evaluator Save] firstReviewCheckedBacklogs length:', evaluatorEntryData.firstReviewCheckedBacklogs.length);
-            }
-            
-            // Check if document exists first
-            const existingDoc = await getDoc(evaluatorEntryRef);
-            const documentId = evaluatorEntryRef.id;
-            console.log('[Evaluator Save] Document ID:', documentId);
-            console.log('[Evaluator Save] Document path:', evaluatorEntryRef.path);
-            console.log('[Evaluator Save] Document exists:', existingDoc.exists());
-            console.log('[Evaluator Save] evaluatorEntryData keys:', Object.keys(evaluatorEntryData));
-            console.log('[Evaluator Save] evaluatorEntryData.firstReviewCheckedBacklogs:', evaluatorEntryData.firstReviewCheckedBacklogs);
-            
-            if (existingDoc.exists()) {
-                // Document exists, use updateDoc to explicitly set ALL properties including firstReviewCheckedBacklogs
-                // Use updateDoc with the complete evaluatorEntryData object
-                await updateDoc(evaluatorEntryRef, evaluatorEntryData);
-                console.log('[Evaluator Save] Updated existing evaluator entry with', Object.keys(evaluatorEntryData).length, 'properties');
-            } else {
-                // Document doesn't exist, use setDoc
-                await setDoc(evaluatorEntryRef, evaluatorEntryData);
-                console.log('[Evaluator Save] Created new evaluator entry with', Object.keys(evaluatorEntryData).length, 'properties');
-            }
-            
-            // Verify the save by reading it back immediately (for debugging)
-            if (isFirstReviewStage) {
-                try {
-                    // Small delay to ensure write is complete
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    const verifyDoc = await getDoc(evaluatorEntryRef);
-                    if (verifyDoc.exists()) {
-                        const verifyData = verifyDoc.data();
-                        console.log('[Evaluator Save] Verification - Document ID:', verifyDoc.id);
-                        console.log('[Evaluator Save] Verification - firstReviewCheckedBacklogs in saved doc:', verifyData.firstReviewCheckedBacklogs);
-                        console.log('[Evaluator Save] Verification - All keys in saved doc:', Object.keys(verifyData));
-                        if (!verifyData.firstReviewCheckedBacklogs) {
-                            console.error('[Evaluator Save] ERROR: firstReviewCheckedBacklogs is missing after save!');
-                        }
-                    } else {
-                        console.error('[Evaluator Save] ERROR: Document does not exist after save!');
-                    }
-                } catch (error) {
-                    console.warn('[Evaluator Save] Could not verify save:', error);
-                }
-            }
+            await setDoc(evaluatorEntryRef, evaluatorEntryData, { merge: true });
+            console.log('Saved to evaluatorEntries subcollection:', evaluatorEntryData);
             
             alert('Evaluation data saved successfully!');
         
@@ -8981,96 +8877,28 @@ const app = {
     
     // ========== EVALUATION DATA LOADING FUNCTIONS ==========
     
-    // Load evaluator entries for a team and stage - UPDATED VERSION 2025-01-05
-    // Uses direct getDoc to fetch ALL document fields including firstReviewCheckedBacklogs
-    // IMPORTANT: This function MUST use direct getDoc calls to get all fields
+    // Load evaluator entries for a team and stage
     async loadEvaluatorEntriesForTeam(teamId, stageIndex) {
-        const FUNCTION_TAG = '[LOAD_EVAL_ENTRIES_FIXED_2025]';
-        console.log(`${FUNCTION_TAG} ========== LOADING EVALUATOR ENTRIES ==========`);
-        console.log(`${FUNCTION_TAG} Team ID: ${teamId}, Stage Index: ${stageIndex}`);
-        
         try {
-            // Use proper collection path with path segments
-            const evaluatorEntriesCollection = collection(
+            const evaluatorEntriesRef = collection(
                 window.firebaseDb,
                 'evaluations',
                 `${teamId}_${stageIndex}`,
                 'evaluatorEntries'
             );
+            const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
             
-            // Step 1: Get list of document IDs
-            console.log(`${FUNCTION_TAG} Step 1: Getting document list from collection: evaluations/${teamId}_${stageIndex}/evaluatorEntries`);
-            const snapshot = await getDocs(evaluatorEntriesCollection);
-            const documentIds = [];
-            snapshot.forEach(docSnapshot => {
-                documentIds.push(docSnapshot.id);
-            });
-            console.log(`${FUNCTION_TAG} Step 1 Complete: Found ${documentIds.length} document(s):`, documentIds);
-            
-            // Step 2: Fetch each document individually using getDoc to get ALL fields
-            console.log(`${FUNCTION_TAG} Step 2: Fetching each document individually using getDoc`);
-            const resultEntries = [];
-            
-            for (let idx = 0; idx < documentIds.length; idx++) {
-                const docId = documentIds[idx];
-                // Use proper doc() constructor with path segments
-                const documentRef = doc(window.firebaseDb, 'evaluations', `${teamId}_${stageIndex}`, 'evaluatorEntries', docId);
-                
-                console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Fetching document ${idx + 1}/${documentIds.length} (ID: ${docId})`);
-                const documentSnapshot = await getDoc(documentRef);
-                
-                if (documentSnapshot.exists()) {
-                    const documentData = documentSnapshot.data();
-                    const fieldNames = Object.keys(documentData);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Document exists with ${fieldNames.length} fields`);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Field names:`, fieldNames);
-                    
-                    // Check for firstReviewCheckedBacklogs field
-                    const hasFirstReviewBacklogs = 'firstReviewCheckedBacklogs' in documentData;
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Has 'firstReviewCheckedBacklogs' field: ${hasFirstReviewBacklogs}`);
-                    
-                    if (hasFirstReviewBacklogs) {
-                        const backlogsValue = documentData.firstReviewCheckedBacklogs;
-                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs value:`, backlogsValue);
-                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs type:`, typeof backlogsValue);
-                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs is array:`, Array.isArray(backlogsValue));
-                        if (Array.isArray(backlogsValue)) {
-                            console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs array length:`, backlogsValue.length);
-                            console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs array contents:`, backlogsValue);
-                        }
-                    } else {
-                        console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: WARNING - firstReviewCheckedBacklogs field NOT found in document!`);
-                    }
-                    
-                    // Create entry object with all fields - EXPLICITLY include firstReviewCheckedBacklogs
-                    const entryObject = {
-                        id: documentSnapshot.id,
-                        ...documentData,
-                        // Explicitly ensure firstReviewCheckedBacklogs is included
-                        firstReviewCheckedBacklogs: documentData.firstReviewCheckedBacklogs || []
-                    };
-                    resultEntries.push(entryObject);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Added entry to result array (total fields: ${Object.keys(entryObject).length})`);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Entry has firstReviewCheckedBacklogs:`, 'firstReviewCheckedBacklogs' in entryObject);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: firstReviewCheckedBacklogs value:`, entryObject.firstReviewCheckedBacklogs);
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: All entry keys:`, Object.keys(entryObject));
-                } else {
-                    console.log(`${FUNCTION_TAG} Step 2.${idx + 1}: Document does not exist (ID: ${docId})`);
-                }
-            }
-            
-            console.log(`${FUNCTION_TAG} Step 2 Complete: Fetched ${resultEntries.length} entry/entries`);
-            console.log(`${FUNCTION_TAG} Final result: Returning ${resultEntries.length} evaluator entry/entries`);
-            if (resultEntries.length > 0) {
-                resultEntries.forEach((entry, i) => {
-                    console.log(`${FUNCTION_TAG} Result entry ${i + 1} has ${Object.keys(entry).length} fields:`, Object.keys(entry));
+            const entries = [];
+            evaluatorEntriesSnapshot.forEach(doc => {
+                entries.push({
+                    id: doc.id,
+                    ...doc.data()
                 });
-            }
+            });
             
-            return resultEntries;
+            return entries;
         } catch (error) {
-            console.error(`${FUNCTION_TAG} ERROR occurred:`, error);
-            console.error(`${FUNCTION_TAG} Error stack:`, error.stack);
+            console.error('Error loading evaluator entries:', error);
             return [];
         }
     },
@@ -12680,89 +12508,6 @@ const app = {
             // Load evaluation stages
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
-            const firstReviewTotalMarks = settingsDoc.exists() ? (settingsDoc.data().firstReviewTotalMarks || 0) : 0;
-            
-            // Load first review schedule for backlog completion data - USING SAME LOGIC AS ADMIN VIEW
-            let firstReviewScheduleData = null;
-            let firstReviewTotalBacklogs = 0;
-            let firstReviewAllBacklogs = [];
-            try {
-                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', studentTeam.id));
-                if (scheduleDoc.exists()) {
-                    firstReviewScheduleData = scheduleDoc.data();
-                    // Calculate total backlogs and load all backlogs - ONLY FROM SCHEDULE
-                    if (firstReviewScheduleData.frozen === true) {
-                        const backlogToModuleMap = new Map(); // Map backlogId -> moduleName
-                        const scheduledBacklogIds = new Set(); // Track which backlogs are in the schedule
-                        
-                        // Load modules
-                        const modulesQuery = query(
-                            collection(window.firebaseDb, 'cardSortingModules'),
-                            where('teamId', '==', studentTeam.id)
-                        );
-                        const modulesSnapshot = await getDocs(modulesQuery);
-                        const modulesMap = new Map();
-                        modulesSnapshot.forEach(doc => {
-                            modulesMap.set(doc.id, doc.data().name || 'Unnamed Module');
-                        });
-                        
-                        // Map backlogs in modules and collect scheduled backlog IDs
-                        if (firstReviewScheduleData.modules && Array.isArray(firstReviewScheduleData.modules)) {
-                            firstReviewScheduleData.modules.forEach(scheduleModule => {
-                                const moduleName = modulesMap.get(scheduleModule.moduleId) || 'Unnamed Module';
-                                if (scheduleModule.productBacklogs && Array.isArray(scheduleModule.productBacklogs)) {
-                                    scheduleModule.productBacklogs.forEach(pb => {
-                                        const backlogId = String(pb.backlogId);
-                                        backlogToModuleMap.set(backlogId, moduleName);
-                                        scheduledBacklogIds.add(backlogId);
-                                    });
-                                }
-                            });
-                        }
-                        
-                        // Mark standalone backlogs and collect their IDs
-                        if (firstReviewScheduleData.standaloneBacklogs && Array.isArray(firstReviewScheduleData.standaloneBacklogs)) {
-                            firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
-                                const backlogId = String(pb.backlogId);
-                                backlogToModuleMap.set(backlogId, 'Standalone');
-                                scheduledBacklogIds.add(backlogId);
-                            });
-                        }
-                        
-                        // Calculate total from schedule
-                        firstReviewTotalBacklogs = scheduledBacklogIds.size;
-                        
-                        // Only load backlogs that are in the schedule
-                        if (scheduledBacklogIds.size > 0) {
-                            // Load from firstReviewBacklogs collection
-                            const firstReviewBacklogQuery = query(
-                                collection(window.firebaseDb, 'firstReviewBacklogs'),
-                                where('teamId', '==', studentTeam.id)
-                            );
-                            const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
-                            firstReviewBacklogSnapshot.forEach(doc => {
-                                const backlogId = String(doc.id);
-                                // Only include backlogs that are in the schedule
-                                if (scheduledBacklogIds.has(backlogId)) {
-                                    const backlogData = { id: doc.id, ...doc.data() };
-                                    backlogData.moduleName = backlogToModuleMap.get(backlogId) || 'Unknown';
-                                    firstReviewAllBacklogs.push(backlogData);
-                                }
-                            });
-                        }
-                    } else {
-                        // If not frozen, just calculate total
-                        if (firstReviewScheduleData.modules) {
-                            firstReviewScheduleData.modules.forEach(module => {
-                                firstReviewTotalBacklogs += (module.productBacklogs?.length || 0);
-                            });
-                        }
-                        firstReviewTotalBacklogs += (firstReviewScheduleData.standaloneBacklogs?.length || 0);
-                    }
-                }
-            } catch (error) {
-                console.warn('Error loading first review schedule:', error);
-            }
             
             // Load all evaluations for this team (from main collection and evaluatorEntries)
             const evaluations = {};
@@ -12772,55 +12517,7 @@ const app = {
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
                     let evalData = evalDoc.exists() ? evalDoc.data() : {};
                     
-                    // Collect firstReviewCheckedBacklogs from all evaluators (for First Review stage)
-                    // USE EXACT SAME LOGIC AS ADMIN VIEW - Direct getDoc calls
-                    let aggregatedCheckedBacklogs = [];
-                    const isFirstReviewStage = stages[i].name && (
-                        stages[i].name.toLowerCase().includes('first review') || 
-                        stages[i].name.toLowerCase().includes('first sprint')
-                    );
-                    if (isFirstReviewStage) {
-                        // First, check main eval doc (might have data from admin)
-                        if (evalData.firstReviewCheckedBacklogs && Array.isArray(evalData.firstReviewCheckedBacklogs)) {
-                            evalData.firstReviewCheckedBacklogs.forEach(backlogId => {
-                                const normalizedId = String(backlogId);
-                                if (normalizedId && !aggregatedCheckedBacklogs.includes(normalizedId)) {
-                                    aggregatedCheckedBacklogs.push(normalizedId);
-                                }
-                            });
-                        }
-                        
-                        // Then, collect from all evaluator entries - USE EXACT SAME LOGIC AS ADMIN VIEW
-                        const evaluatorEntriesRef = collection(
-                            window.firebaseDb,
-                            'evaluations',
-                            `${studentTeam.id}_${i}`,
-                            'evaluatorEntries'
-                        );
-                        const evaluatorEntriesSnapshot = await getDocs(evaluatorEntriesRef);
-                        
-                        // Use direct getDoc calls to get all fields - EXACT SAME AS ADMIN VIEW
-                        for (const evalDoc of evaluatorEntriesSnapshot.docs) {
-                            const evalDocRef = doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`, 'evaluatorEntries', evalDoc.id);
-                            const evalDocSnapshot = await getDoc(evalDocRef);
-                            
-                            if (evalDocSnapshot.exists()) {
-                                const evalEntryData = evalDocSnapshot.data();
-                                const checkedBacklogs = evalEntryData.firstReviewCheckedBacklogs || [];
-                                
-                                if (Array.isArray(checkedBacklogs) && checkedBacklogs.length > 0) {
-                                    checkedBacklogs.forEach(backlogId => {
-                                        const normalizedId = String(backlogId);
-                                        if (normalizedId && normalizedId !== 'undefined' && normalizedId !== 'null' && normalizedId !== '' && !aggregatedCheckedBacklogs.includes(normalizedId)) {
-                                            aggregatedCheckedBacklogs.push(normalizedId);
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Load evaluator entries to aggregate comments and marks (for other purposes)
+                    // Load evaluator entries to aggregate comments and marks
                     const evaluatorEntries = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
                     
                     // Aggregate team marks from all evaluators (including admin from main doc)
@@ -13052,22 +12749,8 @@ const app = {
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                     }
                     
-                    // Set aggregated checked backlogs for First Review (always set if collected)
-                    if (isFirstReviewStage) {
-                        // Always set the aggregated checked backlogs (even if empty array)
-                        evalData.firstReviewCheckedBacklogs = aggregatedCheckedBacklogs.map(id => String(id)).filter(id => id && id !== 'undefined' && id !== 'null');
-                        console.log(`[First Review] Stage ${i} (${stages[i].name}): Aggregated ${aggregatedCheckedBacklogs.length} checked backlogs:`, aggregatedCheckedBacklogs);
-                        console.log(`[First Review] Stage ${i}: Setting evalData.firstReviewCheckedBacklogs =`, evalData.firstReviewCheckedBacklogs);
-                    }
-                    
-                    // Store evaluation data if it exists or has evaluator entries OR if we have checked backlogs for First Review
-                    if (evalDoc.exists() || evaluatorEntries.length > 0 || (isFirstReviewStage && aggregatedCheckedBacklogs.length > 0)) {
+                    if (evalDoc.exists() || evaluatorEntries.length > 0) {
                         evaluations[i] = evalData;
-                        if (isFirstReviewStage) {
-                            console.log(`[First Review] Stage ${i}: Stored evaluation data. Checked backlogs:`, evalData.firstReviewCheckedBacklogs, `(length: ${evalData.firstReviewCheckedBacklogs.length})`);
-                        }
-                    } else if (isFirstReviewStage) {
-                        console.log(`[First Review] Stage ${i}: NOT storing evaluation - no evalDoc, no entries, no checked backlogs`);
                     }
                 } catch (error) {
                     console.error(`Error loading evaluation for stage ${i}:`, error);
@@ -13196,22 +12879,13 @@ const app = {
                                 <h3 class="section-title"><i class="fas fa-clipboard-check"></i> Evaluations</h3>
                                 <div class="evaluations-grid">
                                     ${stages.map((stage, index) => {
-                                        const evalData = evaluations[index] || {};
+                                        const evalData = evaluations[index];
                                         const pptRequired = stage.pptRequired || false;
                                     // Get mark parameters (even for pending evaluations)
                                     const teamParams = stage.teamMarkParams || [];
                                     const individualParams = stage.individualMarkParams || [];
-                                    let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                     const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-                                    
-                                    // For First Review, if teamTotal is 0, use firstReviewTotalMarks from settings
-                                    const isFirstReviewStage = stage.name && (
-                                        stage.name.toLowerCase().includes('first review') || 
-                                        stage.name.toLowerCase().includes('first sprint')
-                                    );
-                                    if (teamTotal === 0 && isFirstReviewStage && firstReviewTotalMarks > 0) {
-                                        teamTotal = firstReviewTotalMarks;
-                                    }
                                     
                                     if (!evalData) {
                                         return `
@@ -13320,131 +12994,6 @@ const app = {
                                                                     <span class="breakdown-label"><strong>Total:</strong></span>
                                                                     <span class="breakdown-value"><strong>${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0} / ${teamTotal}</strong></span>
                                                                 </div>
-                                                            </div>
-                                                        ` : ''}
-                                                        ${isFirstReviewStage && Array.isArray(evalData.firstReviewCheckedBacklogs) && firstReviewTotalBacklogs > 0 ? `
-                                                            <div style="margin-top: 1rem; padding: 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
-                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                                                                    <div style="font-weight: 600; color: #065f46; font-size: 0.95rem;">
-                                                                        <i class="fas fa-clipboard-check"></i> Product Backlog Completion
-                                                                    </div>
-                                                                    <div style="font-size: 1.1rem; font-weight: 700; color: #059669;">
-                                                                        ${evalData.firstReviewCheckedBacklogs.length} / ${firstReviewTotalBacklogs}
-                                                                    </div>
-                                                                </div>
-                                                                ${(() => {
-                                                                    const completionPercentage = firstReviewTotalBacklogs > 0 
-                                                                        ? Math.round((evalData.firstReviewCheckedBacklogs.length / firstReviewTotalBacklogs) * 100) 
-                                                                        : 0;
-                                                                    const calculatedMarks = firstReviewTotalMarks > 0 
-                                                                        ? Math.round((completionPercentage / 100) * firstReviewTotalMarks * 100) / 100 
-                                                                        : 0;
-                                                                    return `
-                                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                                                            <span style="color: #047857; font-size: 0.9rem;">Completion Percentage:</span>
-                                                                            <span style="font-weight: 600; color: #065f46; font-size: 1rem;">${completionPercentage}%</span>
-                                                                        </div>
-                                                                        <div style="width: 100%; height: 10px; background: #d1fae5; border-radius: 5px; overflow: hidden; margin-bottom: 0.5rem;">
-                                                                            <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
-                                                                        </div>
-                                                                        ${calculatedMarks > 0 ? `
-                                                                            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid #86efac;">
-                                                                                <span style="color: #047857; font-size: 0.9rem; font-weight: 600;">Marks Awarded:</span>
-                                                                                <span style="font-weight: 700; color: #065f46; font-size: 1.1rem;">${calculatedMarks.toFixed(2)} / ${firstReviewTotalMarks}</span>
-                                                                            </div>
-                                                                        ` : ''}
-                                                                    `;
-                                                                })()}
-                                                                ${firstReviewAllBacklogs.length > 0 ? `
-                                                                    ${(() => {
-                                                                        // Separate marked and unmarked backlogs - EXACT SAME LOGIC AS ADMIN VIEW
-                                                                        // Get checked backlog IDs from evalData (already aggregated from all evaluators)
-                                                                        const checkedBacklogIds = evalData.firstReviewCheckedBacklogs || [];
-                                                                        // Normalize all IDs to strings for comparison - EXACT SAME AS ADMIN VIEW
-                                                                        // Convert all IDs to strings and filter out invalid ones
-                                                                        const normalizedCheckedIds = checkedBacklogIds.map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null' && id !== '');
-                                                                        const markedBacklogIdsSet = new Set(normalizedCheckedIds);
-                                                                        
-                                                                        // Debug log to verify data
-                                                                        console.log('[Student View Display] First Review Stage - Checked backlog IDs:', checkedBacklogIds);
-                                                                        console.log('[Student View Display] Normalized checked IDs:', normalizedCheckedIds);
-                                                                        console.log('[Student View Display] Total backlogs to check:', firstReviewAllBacklogs.length);
-                                                                        if (firstReviewAllBacklogs.length > 0) {
-                                                                            console.log('[Student View Display] First backlog ID:', firstReviewAllBacklogs[0].id, 'Type:', typeof firstReviewAllBacklogs[0].id);
-                                                                            console.log('[Student View Display] First backlog ID normalized:', String(firstReviewAllBacklogs[0].id).trim());
-                                                                            console.log('[Student View Display] Is first backlog marked?', markedBacklogIdsSet.has(String(firstReviewAllBacklogs[0].id).trim()));
-                                                                        }
-                                                                        
-                                                                        const markedBacklogs = firstReviewAllBacklogs.filter(b => {
-                                                                            const backlogId = String(b.id).trim();
-                                                                            return markedBacklogIdsSet.has(backlogId);
-                                                                        });
-                                                                        const unmarkedBacklogs = firstReviewAllBacklogs.filter(b => {
-                                                                            const backlogId = String(b.id).trim();
-                                                                            return !markedBacklogIdsSet.has(backlogId);
-                                                                        });
-                                                                        
-                                                                        console.log('[Student View Display] Marked backlogs count:', markedBacklogs.length);
-                                                                        console.log('[Student View Display] Unmarked backlogs count:', unmarkedBacklogs.length);
-                                                                        
-                                                                        // Group marked backlogs by module - EXACT SAME AS ADMIN VIEW
-                                                                        const markedByModule = new Map();
-                                                                        markedBacklogs.forEach(b => {
-                                                                            const moduleName = b.moduleName || 'Unknown';
-                                                                            if (!markedByModule.has(moduleName)) {
-                                                                                markedByModule.set(moduleName, []);
-                                                                            }
-                                                                            markedByModule.get(moduleName).push(b);
-                                                                        });
-                                                                        
-                                                                        // Sort modules alphabetically
-                                                                        const sortedModules = Array.from(markedByModule.keys()).sort();
-                                                                        
-                                                                        return `
-                                                                            <!-- Marked Backlogs Section - Grouped by Module - EXACT SAME AS ADMIN VIEW -->
-                                                                            ${markedBacklogs.length > 0 ? `
-                                                                                <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #22c55e; margin-bottom: 0.75rem;">
-                                                                                    <div style="font-size: 0.8rem; font-weight: 600; color: #166534; margin-bottom: 0.75rem;">
-                                                                                        <i class="fas fa-check-circle" style="color: #22c55e; margin-right: 0.5rem;"></i>Marked Backlogs (${markedBacklogs.length})
-                                                                                    </div>
-                                                                                    ${sortedModules.map(moduleName => {
-                                                                                        const moduleBacklogs = markedByModule.get(moduleName);
-                                                                                        return `
-                                                                                            <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border-left: 2px solid #22c55e;">
-                                                                                                <div style="font-size: 0.75rem; font-weight: 600; color: #166534; margin-bottom: 0.4rem;">
-                                                                                                    <i class="fas fa-folder" style="color: #22c55e; margin-right: 0.4rem; font-size: 0.7rem;"></i>${this.escapeHtml(moduleName)} (${moduleBacklogs.length})
-                                                                                                </div>
-                                                                                                <div style="font-size: 0.7rem; color: #15803d; padding-left: 1rem;">
-                                                                                                    ${moduleBacklogs.map(b => `
-                                                                                                        <div style="margin: 0.3rem 0; padding: 0.4rem; background: white; border-radius: 4px;">
-                                                                                                            ✓ ${this.escapeHtml(b.task || b.description || 'Untitled Task')}
-                                                                                                        </div>
-                                                                                                    `).join('')}
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        `;
-                                                                                    }).join('')}
-                                                                                </div>
-                                                                            ` : ''}
-                                                                            
-                                                                            <!-- Unmarked Backlogs Section - EXACT SAME AS ADMIN VIEW -->
-                                                                            ${unmarkedBacklogs.length > 0 ? `
-                                                                                <div style="padding: 0.75rem; background: #fef2f2; border-radius: 6px; border-left: 3px solid #ef4444;">
-                                                                                    <div style="font-size: 0.8rem; font-weight: 600; color: #991b1b; margin-bottom: 0.5rem;">
-                                                                                        <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>Unmarked Backlogs (${unmarkedBacklogs.length})
-                                                                                    </div>
-                                                                                    <div style="font-size: 0.75rem; color: #991b1b;">
-                                                                                        ${unmarkedBacklogs.map(b => `
-                                                                                            <div style="margin: 0.3rem 0; padding: 0.4rem; background: white; border-radius: 4px;">
-                                                                                                ○ <strong style="color: #8b5cf6; font-size: 0.7rem;">[${this.escapeHtml(b.moduleName || 'Unknown')}]</strong> ${this.escapeHtml(b.task || b.description || 'Untitled Task')}
-                                                                                            </div>
-                                                                                        `).join('')}
-                                                                                    </div>
-                                                                                </div>
-                                                                            ` : ''}
-                                                                        `;
-                                                                    })()}
-                                                                ` : ''}
                                                             </div>
                                                         ` : ''}
                                                         ${evalData.teamComments || (evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) ? `
@@ -15538,7 +15087,7 @@ const app = {
     // Switch mini project tab
     async switchMiniProjectTab(tabName) {
         // Hide all tabs
-        document.querySelectorAll('#project-details-tab, #project-planning-tab, #first-review-tab').forEach(tab => {
+        document.querySelectorAll('#project-details-tab, #project-planning-tab, #first-review-tab, #second-review-tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
@@ -15565,6 +15114,8 @@ const app = {
         // Load data for the selected tab
         if (tabName === 'first-review') {
             await this.loadFirstReviewSchedule();
+        } else if (tabName === 'second-review') {
+            await this.loadSecondReviewSchedule();
         }
     },
     
@@ -32482,6 +32033,1036 @@ const app = {
         }, (error) => {
             console.error('Error in real-time listener:', error);
         });
+    },
+    
+    // ========== SECOND SPRINT SCHEDULE FUNCTIONS ==========
+    // These functions mirror the first sprint functions but use secondReviewSchedule and secondReviewBacklogs collections
+    
+    async loadSecondReviewSchedule() {
+        const modulesListContainer = document.getElementById('second-review-modules-list');
+        const standaloneBacklogsContainer = document.getElementById('second-review-standalone-backlogs');
+        const statusContainer = document.getElementById('second-review-submission-status');
+        const submitBtn = document.getElementById('submit-second-review-btn');
+        const moduleSelect = document.getElementById('second-review-module-select');
+        const secondReviewTab = document.getElementById('second-review-tab');
+        
+        if (!modulesListContainer) {
+            console.error('Second review modules list container not found');
+            if (secondReviewTab) {
+                secondReviewTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><p class="error-message">Error: Container not found. Please refresh the page.</p></div>';
+            }
+            return;
+        }
+        
+        // Load PPT list
+        await this.loadSecondSprintPPT();
+        
+        try {
+            modulesListContainer.innerHTML = '<div class="loading-state">Loading second sprint schedule...</div>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                modulesListContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            // Load second review schedule data
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false,
+                verified: false,
+                frozen: false
+            };
+            
+            // Load student progress (completed tasks and image links)
+            let completedBacklogIds = [];
+            let imageLinks = [];
+            try {
+                const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id));
+                if (studentProgressDoc.exists()) {
+                    const progressData = studentProgressDoc.data();
+                    completedBacklogIds = progressData.completedBacklogIds || [];
+                    imageLinks = progressData.imageLinks || [];
+                }
+            } catch (error) {
+                console.warn('Error loading student progress:', error);
+            }
+            
+            // Check submission status
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            console.log('Second Sprint Schedule Status:', { isSubmitted, isVerified, isFrozen, hasSchedule: scheduleDoc.exists() });
+            
+            // If submitted but not verified, show message
+            if (isSubmitted && !isVerified) {
+                modulesListContainer.innerHTML = `
+                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);">
+                        <div style="text-align: center; margin-bottom: 1.5rem;">
+                            <i class="fas fa-hourglass-half" style="font-size: 3rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        </div>
+                        <h3 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1.3rem; font-weight: 600; text-align: center;">
+                            Admin Verification In Progress
+                        </h3>
+                        <div style="background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem; line-height: 1.6;">
+                                <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
+                                Your second sprint schedule has been submitted and is currently under admin review.
+                            </p>
+                            <p style="margin: 0.75rem 0; color: #92400e; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                <strong>Submitted on:</strong> ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                            </p>
+                        </div>
+                        <div style="padding: 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 6px; border-left: 3px solid #f59e0b;">
+                            <p style="margin: 0; color: #92400e; font-size: 0.9rem; font-style: italic; text-align: center;">
+                                <i class="fas fa-lock" style="margin-right: 0.5rem;"></i>
+                                The schedule is locked for editing until admin verifies and adds comments. You will be notified once verification is complete.
+                            </p>
+                        </div>
+                    </div>
+                `;
+                
+                if (statusContainer) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Submitted - Awaiting Admin Verification</strong>
+                            </div>
+                            <p style="margin: 0.25rem 0; color: #92400e; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                            <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
+                                <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                // Hide editing sections
+                if (secondReviewTab) {
+                    const addModuleSection = secondReviewTab.querySelector('div[style*="Add Module from Project Planning"]') || 
+                                           Array.from(secondReviewTab.querySelectorAll('div')).find(div => {
+                                               const h4 = div.querySelector('h4');
+                                               return h4 && h4.textContent.includes('Add Module from Project Planning');
+                                           });
+                    if (addModuleSection) {
+                        addModuleSection.style.display = 'none';
+                    }
+                    
+                    const standaloneSection = Array.from(secondReviewTab.querySelectorAll('div')).find(div => {
+                        const h4 = div.querySelector('h4');
+                        return h4 && h4.textContent.includes('Standalone Product Backlogs');
+                    });
+                    if (standaloneSection) {
+                        standaloneSection.style.display = 'none';
+                    }
+                }
+                
+                if (standaloneBacklogsContainer) {
+                    standaloneBacklogsContainer.innerHTML = '';
+                }
+                
+                if (moduleSelect) {
+                    moduleSelect.disabled = true;
+                    moduleSelect.style.opacity = '0.6';
+                    moduleSelect.style.cursor = 'not-allowed';
+                }
+                
+                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToSecondReview()"]');
+                if (addModuleBtn) {
+                    addModuleBtn.disabled = true;
+                    addModuleBtn.style.opacity = '0.6';
+                    addModuleBtn.style.cursor = 'not-allowed';
+                }
+                
+                if (submitBtn) {
+                    submitBtn.style.display = 'none';
+                }
+                
+                setTimeout(async () => {
+                    try {
+                        await this.renderSecondReviewProgressSection(team.id, imageLinks, true);
+                    } catch (error) {
+                        console.error('Error rendering progress section:', error);
+                    }
+                }, 300);
+                
+                try {
+                    await this.renderSecondReviewGanttChart();
+                } catch (ganttError) {
+                    console.error('Error rendering Gantt chart:', ganttError);
+                }
+                
+                return;
+            }
+            
+            // Load modules from project planning
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load product backlogs from project planning
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const allBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+            });
+            
+            // Load second review backlogs
+            const secondReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'secondReviewBacklogs'),
+                where('teamId', '==', team.id)
+            );
+            const secondReviewBacklogSnapshot = await getDocs(secondReviewBacklogQuery);
+            secondReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'secondReview' });
+            });
+            
+            // Load module assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogToModule = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                backlogToModule[data.backlogId] = data.moduleId;
+            });
+            
+            const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+            
+            // Populate module dropdown
+            if (moduleSelect) {
+                const addedModuleIds = new Set(scheduleData.modules.map(m => m.moduleId));
+                moduleSelect.innerHTML = '<option value="">-- Select a module --</option>';
+                allModules.forEach(module => {
+                    if (!addedModuleIds.has(module.id)) {
+                        const option = document.createElement('option');
+                        option.value = module.id;
+                        option.textContent = module.name || `Module ${module.id}`;
+                        moduleSelect.appendChild(option);
+                    }
+                });
+                moduleSelect.disabled = !canEdit;
+                if (!canEdit) {
+                    moduleSelect.style.opacity = '0.6';
+                    moduleSelect.style.cursor = 'not-allowed';
+                } else {
+                    moduleSelect.style.opacity = '1';
+                    moduleSelect.style.cursor = 'default';
+                }
+            }
+            
+            // Disable/enable buttons
+            const addModuleBtn = document.querySelector('button[onclick="app.addModuleToSecondReview()"]');
+            if (addModuleBtn) {
+                if (!canEdit) {
+                    addModuleBtn.disabled = true;
+                    addModuleBtn.style.opacity = '0.6';
+                    addModuleBtn.style.cursor = 'not-allowed';
+                } else {
+                    addModuleBtn.disabled = false;
+                    addModuleBtn.style.opacity = '1';
+                    addModuleBtn.style.cursor = 'pointer';
+                }
+            }
+            
+            const addStandaloneBacklogBtn = document.querySelector('button[onclick="app.showAddSecondReviewBacklogModal(null)"]');
+            if (addStandaloneBacklogBtn) {
+                if (!canEdit) {
+                    addStandaloneBacklogBtn.disabled = true;
+                    addStandaloneBacklogBtn.style.opacity = '0.6';
+                    addStandaloneBacklogBtn.style.cursor = 'not-allowed';
+                } else {
+                    addStandaloneBacklogBtn.disabled = false;
+                    addStandaloneBacklogBtn.style.opacity = '1';
+                    addStandaloneBacklogBtn.style.cursor = 'pointer';
+                }
+            }
+            
+            // Update status display
+            if (statusContainer) {
+                if (isSubmitted) {
+                    if (isVerified) {
+                        const frozenMessage = isFrozen ? `
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #991b1b; margin-bottom: 0.25rem;">
+                                    <i class="fas fa-lock" style="font-size: 1rem;"></i>
+                                    <strong style="font-size: 0.9rem;">Frozen - Product backlogs are finalized and cannot be edited</strong>
+                                </div>
+                                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
+                                    The schedule has been frozen by admin. You can still resubmit the agreement, but product backlogs cannot be edited.
+                                </p>
+                            </div>
+                        ` : '';
+                        
+                        statusContainer.innerHTML = `
+                            <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #1e40af; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
+                                    <strong style="font-size: 0.95rem;">Verified - You can now edit the schedule${isFrozen ? ' (backlogs frozen)' : ''}</strong>
+                                </div>
+                                <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-clock"></i>
+                                    Submitted: ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                                <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-user-check"></i>
+                                    Verified: ${scheduleData.verifiedAt?.toDate ? scheduleData.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                    ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                </p>
+                                ${scheduleData.adminComments ? `
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: #ffffff; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                                        <div style="font-size: 0.8rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                            <i class="fas fa-comment-alt"></i> Admin Comments:
+                                        </div>
+                                        <div style="font-size: 0.85rem; color: var(--text-primary); line-height: 1.5;">
+                                            ${this.escapeHtml(scheduleData.adminComments)}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                ${frozenMessage}
+                            </div>
+                        `;
+                    } else {
+                        statusContainer.innerHTML = `
+                            <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                    <strong style="font-size: 0.95rem;">Submitted - Awaiting Admin Verification</strong>
+                                </div>
+                                <p style="margin: 0.25rem 0; color: #92400e; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-clock"></i>
+                                    Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                                </p>
+                                <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
+                                    <i class="fas fa-info-circle"></i> The schedule is locked for editing until admin verifies and adds comments.
+                                </p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                <i class="fas fa-edit" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Draft - Schedule your second sprint tasks</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            if (submitBtn) {
+                const hasContent = scheduleData.modules.length > 0 || scheduleData.standaloneBacklogs.length > 0;
+                const canSubmit = hasContent && (!isSubmitted || (isSubmitted && isVerified));
+                submitBtn.style.display = canSubmit ? 'inline-flex' : 'none';
+            }
+            
+            scheduleData._canEdit = canEdit;
+            
+            // Render modules if not in verification state
+            if (!(isSubmitted && !isVerified)) {
+                if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
+                    modulesListContainer.innerHTML = `
+                        <div style="padding: 3rem 2rem; text-align: center; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 12px; border: 2px dashed #3b82f6; margin: 2rem 0;">
+                            <i class="fas fa-clipboard-list" style="font-size: 3rem; color: #3b82f6; margin-bottom: 1rem;"></i>
+                            <h3 style="margin: 0 0 0.75rem 0; color: #1e40af; font-size: 1.2rem; font-weight: 600;">
+                                No Second Sprint Schedule Yet
+                            </h3>
+                            <p style="margin: 0.5rem 0; color: #1e40af; font-size: 1rem; line-height: 1.6;">
+                                Add modules from project planning to schedule your second sprint tasks.
+                            </p>
+                            <p style="margin: 1rem 0 0 0; color: #64748b; font-size: 0.9rem;">
+                                Use the "Add Module from Project Planning" section above to get started.
+                            </p>
+                        </div>
+                    `;
+                    setTimeout(async () => {
+                        try {
+                            if (!(isSubmitted && !isVerified)) {
+                                await this.renderSecondReviewProgressSection(team.id, imageLinks);
+                            } else {
+                                await this.renderSecondReviewProgressSection(team.id, imageLinks, true);
+                            }
+                        } catch (error) {
+                            console.error('Error rendering progress section:', error);
+                        }
+                    }, 200);
+                } else {
+                    // Sort modules by order
+                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    
+                    const moduleCards = sortedModules.map((scheduleModule, moduleIndex) => {
+                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                        if (!module) return '';
+                        
+                        const scheduledBacklogIds = (scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId));
+                        const moduleBacklogs = allBacklogs.filter(b => 
+                            b.source === 'secondReview' && 
+                            scheduledBacklogIds.includes(String(b.id))
+                        );
+                        
+                        const scheduledBacklogs = moduleBacklogs.map(backlog => {
+                            const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                            return {
+                                ...backlog,
+                                startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
+                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
+                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                                isCompleted: completedBacklogIds.includes(String(backlog.id))
+                            };
+                        }).sort((a, b) => {
+                            const orderA = a.order !== undefined ? a.order : 999999;
+                            const orderB = b.order !== undefined ? b.order : 999999;
+                            return orderA - orderB;
+                        });
+                        
+                        return this.renderSecondReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit, moduleIndex);
+                    });
+                    modulesListContainer.innerHTML = moduleCards.join('');
+                }
+            }
+            
+            // Render standalone backlogs
+            if (standaloneBacklogsContainer) {
+                const standaloneBacklogIds = scheduleData.standaloneBacklogs.map(b => String(b.backlogId));
+                const standaloneBacklogs = allBacklogs.filter(b => 
+                    b.source === 'secondReview' && 
+                    standaloneBacklogIds.includes(String(b.id))
+                );
+                
+                const scheduledStandalone = standaloneBacklogs.map((backlog, index) => {
+                    const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        startDate: scheduleBacklog?.startDate || '',
+                        endDate: scheduleBacklog?.endDate || '',
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        _standaloneIndex: index,
+                        isCompleted: completedBacklogIds.includes(String(backlog.id))
+                    };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                if (scheduledStandalone.length === 0) {
+                    standaloneBacklogsContainer.innerHTML = '<p class="empty-state">No standalone product backlogs yet.</p>';
+                } else {
+                    const standaloneCount = scheduledStandalone.length;
+                    standaloneBacklogsContainer.innerHTML = `
+                        <div class="second-review-standalone-backlogs-container second-review-sortable-container" 
+                             data-module-id="standalone"
+                             style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${scheduledStandalone.map((backlog, index) => {
+                                backlog._canEdit = canEdit;
+                                backlog._standaloneIndex = index;
+                                return backlog;
+                            }).map(backlog => {
+                        const priorityColors = {
+                            low: { bg: '#e5e7eb', text: '#4b5563', border: '#d1d5db' },
+                            medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                            high: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                            critical: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                        };
+                        
+                        const difficultyColors = {
+                            easy: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+                            medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                            hard: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                            'very-hard': { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                        };
+                        
+                        const priority = backlog.priority || 'medium';
+                        const difficulty = backlog.difficulty || 'medium';
+                        const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                        const difficultyStyle = difficultyColors[difficulty] || difficultyColors.medium;
+                        
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        let dateStatusColor = '#3b82f6';
+                        
+                        if (backlog.startDate) {
+                            const startDate = new Date(backlog.startDate);
+                            startDate.setHours(0, 0, 0, 0);
+                            if (startDate < today) {
+                                dateStatusColor = '#6b7280';
+                            } else if (startDate.getTime() === today.getTime()) {
+                                dateStatusColor = '#10b981';
+                            }
+                        }
+                        
+                            return `
+                            <div class="second-review-backlog-item second-review-backlog-card" 
+                                 data-backlog-id="${backlog.id}" 
+                                 data-module-id="standalone"
+                                 data-backlog-order="${backlog.order !== undefined ? backlog.order : backlog._standaloneIndex}"
+                                 style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.75rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                    ${backlog._canEdit ? `
+                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; margin-right: 0.5rem;">
+                                        <button type="button" 
+                                                class="btn btn-sm" 
+                                                onclick="app.moveSecondReviewBacklogUp('${backlog.id}', 'standalone', ${backlog._standaloneIndex})"
+                                                style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                title="Move up"
+                                                ${backlog._standaloneIndex === 0 ? 'disabled' : ''}>
+                                            <i class="fas fa-chevron-up"></i>
+                                        </button>
+                                        <button type="button" 
+                                                class="btn btn-sm" 
+                                                onclick="app.moveSecondReviewBacklogDown('${backlog.id}', 'standalone', ${backlog._standaloneIndex}, ${standaloneCount - 1})"
+                                                style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                title="Move down"
+                                                ${backlog._standaloneIndex === standaloneCount - 1 ? 'disabled' : ''}>
+                                            <i class="fas fa-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                    ` : ''}
+                                    <div style="flex: 1;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" 
+                                                       class="student-backlog-complete-checkbox" 
+                                                       data-backlog-id="${backlog.id}"
+                                                       ${backlog.isCompleted ? 'checked' : ''}
+                                                       onchange="app.saveStudentCompletedTasks()"
+                                                       style="width: 20px; height: 20px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
+                                                <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                    ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                </div>
+                                            </label>
+                                            <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
+                                                <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
+                                            </span>
+                                            <span style="padding: 0.25rem 0.5rem; background: ${difficultyStyle.bg}; color: ${difficultyStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${difficultyStyle.border};">
+                                                <i class="fas fa-signal"></i> ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('-', ' ')}
+                                            </span>
+                                        </div>
+                                        ${backlog.storyText ? `
+                                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">
+                                                ${this.escapeHtml(backlog.storyText)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    ${backlog._canEdit !== false ? `
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editSecondReviewBacklog('${backlog.id}', null)" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeSecondReviewBacklog('${backlog.id}', null)" title="Remove">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                    <div style="flex: 1;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                            <i class="fas fa-calendar-check" style="color: ${dateStatusColor};"></i> Start Date:
+                                        </label>
+                                        <input type="date" 
+                                               class="form-input" 
+                                               value="${backlog.startDate || ''}" 
+                                               ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateSecondReviewBacklogDate('${backlog.id}', null, 'startDate', this.value)"`}
+                                               style="width: 100%; border: 2px solid ${dateStatusColor}40; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                            <i class="fas fa-calendar-times" style="color: #ef4444;"></i> End Date:
+                                        </label>
+                                        <input type="date" 
+                                               class="form-input" 
+                                               value="${backlog.endDate || ''}" 
+                                               ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateSecondReviewBacklogDate('${backlog.id}', null, 'endDate', this.value)"`}
+                                               style="width: 100%; border: 2px solid #ef444440; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                        </div>
+                    `;
+                }
+            }
+            
+            // Recalculate module dates
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                let needsUpdate = false;
+                for (const scheduleModule of scheduleData.modules) {
+                    const oldStartDate = scheduleModule.startDate;
+                    const oldEndDate = scheduleModule.endDate;
+                    await this.recalculateSecondReviewModuleDatesFromBacklogs(team.id, scheduleModule.moduleId, scheduleData);
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === scheduleModule.moduleId);
+                    if (moduleIndex !== -1) {
+                        if (scheduleData.modules[moduleIndex].startDate !== oldStartDate || 
+                            scheduleData.modules[moduleIndex].endDate !== oldEndDate) {
+                            needsUpdate = true;
+                        }
+                    }
+                }
+                if (needsUpdate) {
+                    await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData, { merge: true });
+                }
+            }
+            
+            scheduleData._imageLinks = imageLinks;
+            
+            setTimeout(async () => {
+                try {
+                    if (!(isSubmitted && !isVerified)) {
+                        await this.renderSecondReviewProgressSection(team.id, imageLinks);
+                    } else {
+                        await this.renderSecondReviewProgressSection(team.id, imageLinks, true);
+                    }
+                } catch (error) {
+                    console.error('Error rendering progress section:', error);
+                }
+            }, 300);
+            
+            try {
+                await this.renderSecondReviewGanttChart();
+            } catch (ganttError) {
+                console.error('Error rendering Gantt chart:', ganttError);
+            }
+        } catch (error) {
+            console.error('Error loading second sprint schedule:', error);
+            if (modulesListContainer) {
+                modulesListContainer.innerHTML = '<p class="error-message">Error loading second sprint schedule. Please try again.</p>';
+            }
+        }
+    },
+    
+    async addModuleToSecondReview() {
+        const moduleSelect = document.getElementById('second-review-module-select');
+        if (!moduleSelect || !moduleSelect.value) {
+            alert('Please select a module to add.');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const moduleId = moduleSelect.value;
+            
+            const moduleDoc = await getDoc(doc(window.firebaseDb, 'cardSortingModules', moduleId));
+            if (!moduleDoc.exists()) {
+                alert('Module not found.');
+                return;
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (scheduleData.modules.some(m => m.moduleId === moduleId)) {
+                alert('This module is already added to the schedule.');
+                return;
+            }
+            
+            // Get product backlogs for this module
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogIds = [];
+            assignmentsSnapshot.forEach(doc => {
+                backlogIds.push(doc.data().backlogId);
+            });
+            
+            // Copy backlogs to secondReviewBacklogs
+            const productBacklogs = [];
+            for (const backlogId of backlogIds) {
+                const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                if (backlogDoc.exists()) {
+                    const backlogData = backlogDoc.data();
+                    const existingCopy = await getDoc(doc(window.firebaseDb, 'secondReviewBacklogs', backlogId));
+                    if (!existingCopy.exists()) {
+                        await setDoc(doc(window.firebaseDb, 'secondReviewBacklogs', backlogId), {
+                            ...backlogData,
+                            teamId: team.id,
+                            moduleId: moduleId,
+                            sourceBacklogId: backlogId
+                        });
+                    }
+                    productBacklogs.push({
+                        backlogId: backlogId,
+                        startDate: '',
+                        endDate: '',
+                        order: productBacklogs.length
+                    });
+                }
+            }
+            
+            // Add module to schedule
+            const maxOrder = scheduleData.modules.length > 0 
+                ? Math.max(...scheduleData.modules.map(m => m.order !== undefined ? m.order : -1))
+                : -1;
+            
+            scheduleData.modules.push({
+                moduleId: moduleId,
+                startDate: '',
+                endDate: '',
+                productBacklogs: productBacklogs,
+                order: maxOrder + 1
+            });
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            moduleSelect.value = '';
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error adding module to second review:', error);
+            alert('Error adding module. Please try again.');
+        }
+    },
+    
+    async submitSecondReviewSchedule() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) {
+                alert('No schedule to submit.');
+                return;
+            }
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
+                alert('Please add at least one module or product backlog before submitting.');
+                return;
+            }
+            
+            // Validate dates (simplified version - can be expanded)
+            const missingDates = [];
+            for (const scheduleModule of scheduleData.modules) {
+                if (!scheduleModule.startDate || !scheduleModule.endDate) {
+                    missingDates.push(`Module ${scheduleModule.moduleId}`);
+                }
+            }
+            for (const standaloneBacklog of scheduleData.standaloneBacklogs) {
+                if (!standaloneBacklog.startDate || !standaloneBacklog.endDate) {
+                    missingDates.push('Standalone backlog');
+                }
+            }
+            
+            if (missingDates.length > 0) {
+                alert(`Please set start and end dates for all items before submitting:\n\n${missingDates.join('\n')}`);
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to submit the second sprint schedule agreement? This will mark it as submitted for review.')) {
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), {
+                submitted: true,
+                submittedAt: serverTimestamp(),
+                verified: false,
+                verifiedAt: null,
+                adminComments: '',
+                verifiedBy: null
+            });
+            
+            await this.loadSecondReviewSchedule();
+            alert('Second sprint schedule agreement submitted successfully! It is now locked for editing until admin verification.');
+        } catch (error) {
+            console.error('Error submitting second review schedule:', error);
+            alert('Error submitting schedule. Please try again.');
+        }
+    },
+    
+    // Placeholder functions for second review - these need to be implemented similar to first review
+    async renderSecondReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true, moduleIndex = 0) {
+        // This is a simplified version - should mirror renderFirstReviewModuleCard
+        return `<div class="second-review-module-card" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+            <h4>${this.escapeHtml(module.name || 'Unnamed Module')}</h4>
+            <p>${scheduledBacklogs.length} product backlog(s)</p>
+        </div>`;
+    },
+    
+    async renderSecondReviewProgressSection(teamId, imageLinks = [], readOnly = false) {
+        // Simplified version - should mirror renderFirstReviewProgressSection
+        const secondReviewTab = document.getElementById('second-review-tab');
+        if (!secondReviewTab) return;
+        
+        let progressSection = document.getElementById('second-review-progress-section');
+        if (progressSection) {
+            progressSection.remove();
+        }
+        
+        progressSection = document.createElement('div');
+        progressSection.id = 'second-review-progress-section';
+        progressSection.innerHTML = `
+            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                <h3 style="margin: 0 0 1rem 0; color: #065f46;">
+                    <i class="fas fa-images"></i> Project Progress Images
+                </h3>
+                <div id="second-review-image-links-list">
+                    ${imageLinks.length === 0 ? '<p>No image links added yet.</p>' : imageLinks.map(link => `<p>${this.escapeHtml(link)}</p>`).join('')}
+                </div>
+            </div>
+        `;
+        
+        const planningSection = secondReviewTab.querySelector('.project-planning-section');
+        if (planningSection) {
+            planningSection.appendChild(progressSection);
+        }
+    },
+    
+    async renderSecondReviewGanttChart() {
+        const ganttContainer = document.getElementById('second-review-gantt-chart');
+        if (!ganttContainer) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                ganttContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) {
+                ganttContainer.innerHTML = '<p class="empty-state">No schedule data available.</p>';
+                return;
+            }
+            
+            // Simplified Gantt chart - should mirror renderFirstReviewGanttChart
+            ganttContainer.innerHTML = '<p class="empty-state">Gantt chart will be rendered here. Add modules and set dates to view.</p>';
+        } catch (error) {
+            console.error('Error rendering second review Gantt chart:', error);
+            ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart.</p>';
+        }
+    },
+    
+    async loadSecondSprintPPT() {
+        const container = document.getElementById('second-sprint-ppt-list');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading PPT links...</div>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) {
+                container.innerHTML = '<p class="empty-state">Team not found.</p>';
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const secondSprintPPT = teamData.secondSprintPPT || [];
+            
+            if (secondSprintPPT.length === 0) {
+                container.innerHTML = '<p class="empty-state">No PPT links added yet.</p>';
+            } else {
+                container.innerHTML = secondSprintPPT.map((link, index) => `
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: white; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <i class="fas fa-file-powerpoint" style="color: #f59e0b; font-size: 1.2rem;"></i>
+                                <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                   style="color: #f59e0b; text-decoration: none; word-break: break-all; font-weight: 500;">
+                                    PPT ${index + 1}
+                                </a>
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">
+                                ${this.escapeHtml(link)}
+                            </div>
+                        </div>
+                        <button type="button" 
+                                class="btn btn-danger btn-sm" 
+                                onclick="app.removeSecondSprintPPTLink(${index})"
+                                style="padding: 0.5rem 1rem;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading second sprint PPT:', error);
+            container.innerHTML = '<p class="error-message">Error loading PPT links.</p>';
+        }
+    },
+    
+    async addSecondSprintPPTLink() {
+        const input = document.getElementById('second-sprint-ppt-link-input');
+        if (!input || !input.value.trim()) {
+            alert('Please enter a PPT link URL');
+            return;
+        }
+        
+        const url = input.value.trim();
+        try {
+            new URL(url);
+        } catch (e) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) return;
+            
+            const teamData = teamDoc.data();
+            const secondSprintPPT = teamData.secondSprintPPT || [];
+            
+            if (secondSprintPPT.includes(url)) {
+                alert('This PPT link is already added.');
+                return;
+            }
+            
+            secondSprintPPT.push(url);
+            
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', team.id), {
+                secondSprintPPT: secondSprintPPT
+            });
+            
+            input.value = '';
+            await this.loadSecondSprintPPT();
+        } catch (error) {
+            console.error('Error adding second sprint PPT link:', error);
+            alert('Error adding PPT link. Please try again.');
+        }
+    },
+    
+    async removeSecondSprintPPTLink(index) {
+        if (!confirm('Are you sure you want to remove this PPT link?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            if (!teamDoc.exists()) return;
+            
+            const teamData = teamDoc.data();
+            const secondSprintPPT = teamData.secondSprintPPT || [];
+            
+            secondSprintPPT.splice(index, 1);
+            
+            await updateDoc(doc(window.firebaseDb, 'projectGroups', team.id), {
+                secondSprintPPT: secondSprintPPT
+            });
+            
+            await this.loadSecondSprintPPT();
+        } catch (error) {
+            console.error('Error removing second sprint PPT link:', error);
+            alert('Error removing PPT link. Please try again.');
+        }
+    },
+    
+    // Placeholder helper functions - these need full implementation
+    async updateSecondReviewBacklogDate(backlogId, moduleId, dateType, dateValue) {
+        // Should mirror updateFirstReviewBacklogDate
+        console.log('updateSecondReviewBacklogDate called', backlogId, moduleId, dateType, dateValue);
+    },
+    
+    async showAddSecondReviewBacklogModal(moduleId) {
+        // Should mirror showAddFirstReviewBacklogModal
+        alert('Add backlog modal - to be implemented');
+    },
+    
+    async editSecondReviewBacklog(backlogId, moduleId) {
+        // Should mirror editFirstReviewBacklog
+        alert('Edit backlog - to be implemented');
+    },
+    
+    async removeSecondReviewBacklog(backlogId, moduleId) {
+        // Should mirror removeFirstReviewBacklog
+        if (!confirm('Are you sure you want to remove this product backlog?')) {
+            return;
+        }
+        console.log('removeSecondReviewBacklog called', backlogId, moduleId);
+    },
+    
+    async moveSecondReviewBacklogUp(backlogId, moduleId, currentIndex) {
+        // Should mirror moveFirstReviewBacklogUp
+        console.log('moveSecondReviewBacklogUp called', backlogId, moduleId, currentIndex);
+    },
+    
+    async moveSecondReviewBacklogDown(backlogId, moduleId, currentIndex, maxIndex) {
+        // Should mirror moveFirstReviewBacklogDown
+        console.log('moveSecondReviewBacklogDown called', backlogId, moduleId, currentIndex, maxIndex);
+    },
+    
+    async recalculateSecondReviewModuleDatesFromBacklogs(teamId, moduleId, scheduleData) {
+        // Should mirror recalculateModuleDatesFromBacklogs but for second review
+        const module = scheduleData.modules.find(m => m.moduleId === moduleId);
+        if (!module || !module.productBacklogs || module.productBacklogs.length === 0) {
+            return;
+        }
+        
+        const dates = module.productBacklogs
+            .map(pb => ({ start: pb.startDate, end: pb.endDate }))
+            .filter(d => d.start && d.end);
+        
+        if (dates.length > 0) {
+            const startDates = dates.map(d => new Date(d.start)).filter(d => !isNaN(d.getTime()));
+            const endDates = dates.map(d => new Date(d.end)).filter(d => !isNaN(d.getTime()));
+            
+            if (startDates.length > 0 && endDates.length > 0) {
+                module.startDate = new Date(Math.min(...startDates)).toISOString().split('T')[0];
+                module.endDate = new Date(Math.max(...endDates)).toISOString().split('T')[0];
+            }
+        }
     }
 };
 
@@ -32566,4 +33147,3 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-

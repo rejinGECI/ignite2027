@@ -860,9 +860,6 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="first-sprint-ppt" onclick="app.switchAdminMiniProjectTab('first-sprint-ppt')">
                         <i class="fas fa-file-powerpoint"></i> First Sprint PPT
                     </button>
-                    <button class="tab-btn" data-tab="marked-product-backlogs" onclick="app.switchAdminMiniProjectTab('marked-product-backlogs')">
-                        <i class="fas fa-check-square"></i> Marked Product Backlogs
-                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -1125,27 +1122,6 @@ Bob Johnson,GHI789</pre>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Marked Product Backlogs Tab -->
-                    <div id="admin-miniproject-marked-product-backlogs-tab" class="admin-tab-content">
-                        <div class="admin-card">
-                            <h3><i class="fas fa-check-square"></i> Marked Product Backlogs by Evaluators</h3>
-                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
-                                View product backlogs marked as completed by evaluators for each team and generate reports.
-                            </p>
-                            
-                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-                                <input type="text" id="search-marked-product-backlogs-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
-                                <button type="button" class="btn btn-primary" onclick="app.generateMarkedProductBacklogsReport()">
-                                    <i class="fas fa-file-pdf"></i> Generate PDF Report
-                                </button>
-                            </div>
-                            
-                            <div id="marked-product-backlogs-teams-list" class="admin-teams-list">
-                                <div class="loading-state">Loading marked product backlogs...</div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -1281,6 +1257,9 @@ Bob Johnson,GHI789</pre>
                     </button>
                     <button class="tab-btn" data-tab="first-review" onclick="app.switchMiniProjectTab('first-review')">
                         <i class="fas fa-clipboard-check"></i> First Sprint
+                    </button>
+                    <button class="tab-btn" data-tab="second-review" onclick="app.switchMiniProjectTab('second-review')">
+                        <i class="fas fa-clipboard-check"></i> Second Sprint
                     </button>
                 </div>
                 
@@ -1557,6 +1536,106 @@ Bob Johnson,GHI789</pre>
                             <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
                                 <button type="button" class="btn btn-success" id="submit-first-review-btn" onclick="app.submitFirstReviewSchedule()" style="display: none;">
                                     <i class="fas fa-paper-plane"></i> Submit First Sprint Schedule Agreement
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Second Sprint Tab -->
+                <div id="second-review-tab" class="admin-tab-content">
+                    <div class="project-planning-container">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-clipboard-check"></i> Second Sprint Schedule</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Schedule your second sprint tasks by adding modules from project planning and setting start/end dates for product backlogs.
+                            </p>
+                            
+                            <div id="second-review-submission-status" style="margin-bottom: 1.5rem;"></div>
+                            
+                            <!-- Add Module from Project Planning -->
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);">
+                                <h4 style="margin: 0 0 1rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-plus-circle" style="color: #3b82f6;"></i> Add Module from Project Planning
+                                </h4>
+                                <div style="margin-bottom: 1rem;">
+                                    <label for="second-review-module-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Select Module:</label>
+                                    <select id="second-review-module-select" class="form-input" style="width: 100%; max-width: 500px;">
+                                        <option value="">-- Select a module --</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="app.addModuleToSecondReview()">
+                                    <i class="fas fa-plus"></i> Add Module
+                                </button>
+                            </div>
+                            
+                            <!-- Modules List -->
+                            <div id="second-review-modules-list" style="margin-bottom: 2rem;">
+                                <div class="loading-state">Loading second sprint schedule...</div>
+                            </div>
+                            
+                            <!-- Standalone Product Backlogs (not in modules) -->
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h4 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="fas fa-clipboard-list" style="color: #10b981;"></i> Standalone Product Backlogs
+                                    </h4>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.showAddSecondReviewBacklogModal(null)">
+                                        <i class="fas fa-plus"></i> Add Product Backlog
+                                    </button>
+                                </div>
+                                <div id="second-review-standalone-backlogs">
+                                    <p class="empty-state">No standalone product backlogs yet.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Gantt Chart -->
+                            <div style="margin-top: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-chart-gantt" style="color: #3b82f6;"></i> Timeline Gantt Chart
+                                </h4>
+                                <div id="second-review-gantt-chart" style="overflow-x: auto; min-height: 300px;">
+                                    <p class="empty-state">Add modules and set dates to view the Gantt chart.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Second Sprint PPT Section -->
+                            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                                <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-file-powerpoint"></i> Second Sprint PPT
+                                </h3>
+                                <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                    Add links to your Second Sprint PowerPoint presentation. You can use file hosting services like Google Drive, OneDrive, or any public file sharing link.
+                                </p>
+                                
+                                <div id="second-sprint-ppt-add-section" style="margin-bottom: 2rem;">
+                                    <label for="second-sprint-ppt-link-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                        PPT Link URL:
+                                    </label>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <input type="url" 
+                                               id="second-sprint-ppt-link-input" 
+                                               class="form-input" 
+                                               placeholder="https://drive.google.com/file/d/... or https://example.com/presentation.pptx"
+                                               style="flex: 1; padding: 0.75rem; border: 2px solid #f59e0b40; border-radius: 6px;">
+                                        <button type="button" 
+                                                class="btn btn-success" 
+                                                onclick="app.addSecondSprintPPTLink()"
+                                                style="padding: 0.75rem 1.5rem; background: #f59e0b; border: none;">
+                                            <i class="fas fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div id="second-sprint-ppt-list" class="architecture-diagrams-container">
+                                    <div class="loading-state">Loading PPT links...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Submit Button -->
+                            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" id="submit-second-review-btn" onclick="app.submitSecondReviewSchedule()" style="display: none;">
+                                    <i class="fas fa-paper-plane"></i> Submit Second Sprint Schedule Agreement
                                 </button>
                             </div>
                         </div>
