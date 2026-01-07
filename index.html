@@ -851,6 +851,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="first-review" onclick="app.switchAdminMiniProjectTab('first-review')">
                         <i class="fas fa-check-circle"></i> First Sprint Verification
                     </button>
+                    <button class="tab-btn" data-tab="second-review" onclick="app.switchAdminMiniProjectTab('second-review')">
+                        <i class="fas fa-check-circle"></i> Second Sprint Verification
+                    </button>
                     <button class="tab-btn" data-tab="github-repos" onclick="app.switchAdminMiniProjectTab('github-repos')">
                         <i class="fab fa-github"></i> GitHub Repositories
                     </button>
@@ -1055,6 +1058,34 @@ Bob Johnson,GHI789</pre>
                             </div>
                             
                             <div id="admin-first-review-teams-list" class="admin-teams-list" style="display: none;">
+                                <div class="loading-state">Loading teams...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Second Sprint Verification Tab -->
+                    <div id="admin-miniproject-second-review-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-check-circle"></i> Second Sprint Schedule Agreement - Consolidated View</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Consolidated view of all teams' second sprint schedule agreements. Review status, freeze status, and generate reports.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-second-review-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateSecondSprintScheduleReport()">
+                                    <i class="fas fa-file-download"></i> Generate Schedule Report
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="app.generateSecondSprintProgressReport()">
+                                    <i class="fas fa-chart-line"></i> Generate Progress Report
+                                </button>
+                            </div>
+                            
+                            <div id="admin-second-review-consolidated-view" style="margin-bottom: 1.5rem;">
+                                <div class="loading-state">Loading consolidated view...</div>
+                            </div>
+                            
+                            <div id="admin-second-review-teams-list" class="admin-teams-list" style="display: none;">
                                 <div class="loading-state">Loading teams...</div>
                             </div>
                         </div>

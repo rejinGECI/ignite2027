@@ -512,6 +512,287 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
+        async loadAdminSecondReviewVerification() {
+            if (!app.isAdmin) return;
+            
+            const consolidatedView = document.getElementById('admin-second-review-consolidated-view');
+            const container = document.getElementById('admin-second-review-teams-list');
+            
+            if (!consolidatedView) return;
+            
+            consolidatedView.innerHTML = '<div class="loading-state">Loading consolidated view...</div>';
+            
+            try {
+                // Load all teams
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const teamDoc of teamsSnapshot.docs) {
+                    const teamData = teamDoc.data();
+                    if (teamData.deleted) continue;
+                    
+                    // Load second review schedule
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamDoc.id));
+                    const hasSchedule = scheduleDoc.exists();
+                    const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                    
+                    // Calculate total backlogs
+                    let totalBacklogs = 0;
+                    if (scheduleData?.modules) {
+                        scheduleData.modules.forEach(module => {
+                            totalBacklogs += (module.productBacklogs?.length || 0);
+                        });
+                    }
+                    totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
+                    
+                    // Load student progress (completed tasks)
+                    let completedBacklogIds = [];
+                    let progressPercentage = 0;
+                    try {
+                        const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', teamDoc.id));
+                        if (studentProgressDoc.exists()) {
+                            const progressData = studentProgressDoc.data();
+                            completedBacklogIds = progressData.completedBacklogIds || [];
+                        }
+                        // Calculate progress percentage
+                        if (totalBacklogs > 0) {
+                            progressPercentage = Math.round((completedBacklogIds.length / totalBacklogs) * 100);
+                        }
+                    } catch (error) {
+                        console.warn(`Error loading progress for team ${teamDoc.id}:`, error);
+                    }
+                    
+                    teams.push({
+                        id: teamDoc.id,
+                        name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                        guideId: teamData.guideId || '',
+                        guideName: teamData.guideName || 'No Guide',
+                        hasSchedule: hasSchedule,
+                        submitted: scheduleData?.submitted || false,
+                        verified: scheduleData?.verified || false,
+                        frozen: scheduleData?.frozen || false,
+                        submittedAt: scheduleData?.submittedAt || null,
+                        verifiedAt: scheduleData?.verifiedAt || null,
+                        frozenAt: scheduleData?.frozenAt || null,
+                        modulesCount: scheduleData?.modules?.length || 0,
+                        standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                        totalBacklogs: totalBacklogs,
+                        completedTasks: completedBacklogIds.length,
+                        progressPercentage: progressPercentage
+                    });
+                }
+                
+                if (teams.length === 0) {
+                    consolidatedView.innerHTML = '<p class="empty-state">No teams found.</p>';
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.name
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                
+                // Map back to original team objects maintaining the order
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Calculate statistics
+                const stats = {
+                    total: sortedTeams.length,
+                    hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                    submitted: sortedTeams.filter(t => t.submitted).length,
+                    verified: sortedTeams.filter(t => t.verified).length,
+                    frozen: sortedTeams.filter(t => t.frozen).length,
+                    lowProgress: sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50).length
+                };
+                
+                // Get teams with low progress (< 50%)
+                const lowProgressTeams = sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50)
+                    .sort((a, b) => a.progressPercentage - b.progressPercentage);
+                
+                // Render consolidated view
+                consolidatedView.innerHTML = `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <h4 style="margin: 0 0 1rem 0; color: #1e40af; font-size: 1.1rem; font-weight: 600;">
+                            <i class="fas fa-chart-bar"></i> Statistics
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.total}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Total Teams</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.hasSchedule}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Has Schedule</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.submitted}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Submitted</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.verified}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Verified</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin-bottom: 0.25rem;">${stats.frozen}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Frozen</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: ${stats.lowProgress > 0 ? '#ef4444' : '#10b981'}; margin-bottom: 0.25rem;">${stats.lowProgress}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Low Progress</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${lowProgressTeams.length > 0 ? `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 8px; border-left: 4px solid #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1);">
+                        <h4 style="margin: 0 0 1rem 0; color: #991b1b; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Teams with Low Progress (< 50%)
+                        </h4>
+                        <p style="margin: 0 0 1rem 0; color: #7f1d1d; font-size: 0.9rem;">
+                            The following teams have completed less than 50% of their second sprint tasks. Consider reaching out to provide additional support.
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${lowProgressTeams.map(team => {
+                                const progressColor = team.progressPercentage < 25 ? '#ef4444' : (team.progressPercentage < 40 ? '#f59e0b' : '#3b82f6');
+                                return `
+                                    <div style="padding: 0.875rem; background: white; border-radius: 6px; border-left: 3px solid ${progressColor}; display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">${escapeHtml(team.name)}</div>
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary);">Guide: ${escapeHtml(team.guideName)}</div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                            <div style="min-width: 140px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.5rem;">
+                                                    <span style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">Progress:</span>
+                                                    <span style="font-weight: 600; color: ${progressColor}; font-size: 0.85rem; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                </div>
+                                                <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                    <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                </div>
+                                                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem; text-align: right;">
+                                                    ${team.completedTasks} / ${team.totalBacklogs} tasks
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminSecondReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; white-space: nowrap;">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; table-layout: auto;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Team Name</th>
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Guide</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Schedule</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Status</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Freeze</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem; min-width: 110px;">Progress</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Modules</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Backlogs</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sortedTeams.map((team, index) => {
+                                    const statusColor = team.verified ? '#10b981' : (team.submitted ? '#3b82f6' : '#6b7280');
+                                    const statusText = team.verified ? 'Verified' : (team.submitted ? 'Submitted' : 'Not Submitted');
+                                    const freezeColor = team.frozen ? '#f59e0b' : '#6b7280';
+                                    const freezeText = team.frozen ? 'Frozen' : 'Active';
+                                    
+                                    // Progress bar color based on percentage
+                                    let progressColor = '#10b981'; // Green for high progress
+                                    if (team.progressPercentage < 25) {
+                                        progressColor = '#ef4444'; // Red for very low progress
+                                    } else if (team.progressPercentage < 50) {
+                                        progressColor = '#f59e0b'; // Orange for low progress
+                                    } else if (team.progressPercentage < 75) {
+                                        progressColor = '#3b82f6'; // Blue for medium progress
+                                    }
+                                    
+                                    return `
+                                        <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
+                                            <td style="padding: 0.75rem; font-weight: 600; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
+                                                ${escapeHtml(team.name)}
+                                            </td>
+                                            <td style="padding: 0.75rem; color: var(--text-secondary); font-size: 0.85rem; vertical-align: middle;">
+                                                ${escapeHtml(team.guideName)}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
+                                                    ${team.hasSchedule ? '<i class="fas fa-check"></i> Yes' : '<i class="fas fa-times"></i> No'}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${statusColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
+                                                    ${statusText}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${freezeColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
+                                                    <i class="fas ${team.frozen ? 'fa-lock' : 'fa-unlock'}"></i> ${freezeText}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                ${team.hasSchedule ? `
+                                                    <div style="min-width: 100px; max-width: 130px; margin: 0 auto;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.25rem;">
+                                                            <span style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                            <span style="font-size: 0.65rem; color: var(--text-secondary); white-space: nowrap;">${team.completedTasks}/${team.totalBacklogs}</span>
+                                                        </div>
+                                                        <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                            <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                        </div>
+                                                    </div>
+                                                ` : '<span style="color: var(--text-secondary); font-size: 0.75rem;">N/A</span>'}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
+                                                ${team.modulesCount}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">
+                                                ${team.totalBacklogs}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminSecondReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem;">
+                                                    <i class="fas fa-eye"></i> View
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                // Setup search
+                const searchInput = document.getElementById('search-second-review-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const rows = consolidatedView.querySelectorAll('tbody tr');
+                        rows.forEach(row => {
+                            const teamName = row.textContent.toLowerCase();
+                            row.style.display = teamName.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading second sprint consolidated view:', error);
+                consolidatedView.innerHTML = '<p class="error-message">Error loading consolidated view. Please try again.</p>';
+            }
+        },
+        
         async generateFirstSprintProgressReport() {
             if (!app.isAdmin) return;
             

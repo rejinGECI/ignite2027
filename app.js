@@ -6551,6 +6551,10 @@ const app = {
         if (tabName === 'first-review') {
             setTimeout(() => this.loadAdminFirstReviewVerification(), 100);
         }
+        // Load second review verification when tab is switched
+        if (tabName === 'second-review') {
+            setTimeout(() => this.loadAdminSecondReviewVerification(), 100);
+        }
         // Load GitHub repositories when tab is switched
         if (tabName === 'github-repos') {
             setTimeout(() => this.loadGitHubReposTeams(), 100);
@@ -30846,6 +30850,562 @@ const app = {
             console.error('Error unfreezing schedule:', error);
             alert('Error unfreezing schedule. Please try again.');
         }
+    },
+    
+    // ========== SECOND SPRINT VERIFICATION FUNCTIONS ==========
+    
+    async loadAdminSecondReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        
+        // Create modal for viewing/editing schedule
+        const existingModal = document.getElementById('admin-second-review-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'admin-second-review-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        try {
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.name || teamData.groupName || `Team ${teamId.substring(0, 8)}`;
+            
+            // Load schedule
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', teamId)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load all backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', teamId)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const allBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+            });
+            
+            const secondReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'secondReviewBacklogs'),
+                where('teamId', '==', teamId)
+            );
+            const secondReviewBacklogSnapshot = await getDocs(secondReviewBacklogQuery);
+            secondReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'secondReview' });
+            });
+            
+            // Load student progress
+            let completedBacklogIds = [];
+            let imageLinks = [];
+            try {
+                const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', teamId));
+                if (studentProgressDoc.exists()) {
+                    const progressData = studentProgressDoc.data();
+                    completedBacklogIds = progressData.completedBacklogIds || [];
+                    imageLinks = progressData.imageLinks || [];
+                }
+            } catch (error) {
+                console.warn('Error loading student progress:', error);
+            }
+            
+            // Load assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', teamId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogToModule = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                backlogToModule[data.backlogId] = data.moduleId;
+            });
+            
+            // Render modal content (mirroring first review structure)
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 95vw; max-height: 95vh; overflow-y: auto; padding: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                        <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-check-circle" style="color: #3b82f6; font-size: 1rem;"></i> Second Sprint Schedule - ${this.escapeHtml(teamName)}
+                        </h2>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-second-review-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                            <i class="fas fa-times" style="font-size: 0.85rem;"></i> Close
+                        </button>
+                    </div>
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem;">
+                            <span style="padding: 0.35rem 0.75rem; background: ${scheduleData.submitted ? (scheduleData.verified ? '#3b82f6' : '#10b981') : '#f59e0b'}; color: white; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                Status: ${scheduleData.verified ? 'Verified' : (scheduleData.submitted ? 'Submitted' : 'Draft')}
+                            </span>
+                            ${scheduleData.submittedAt ? `
+                                <span style="padding: 0.35rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 4px; font-size: 0.75rem;">
+                                    Submitted: ${scheduleData.submittedAt.toDate ? scheduleData.submittedAt.toDate().toLocaleString() : 'Unknown'}
+                                </span>
+                            ` : ''}
+                            ${scheduleData.verifiedAt ? `
+                                <span style="padding: 0.35rem 0.75rem; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.75rem;">
+                                    Verified: ${scheduleData.verifiedAt.toDate ? scheduleData.verifiedAt.toDate().toLocaleString() : 'Unknown'}
+                                    ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                </span>
+                            ` : ''}
+                        </div>
+                        ${scheduleData.submitted && !scheduleData.verified ? `
+                        <div style="padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 0.75rem;">
+                            <div style="font-size: 0.8rem; font-weight: 600; color: #92400e; margin-bottom: 0.5rem;">
+                                <i class="fas fa-info-circle"></i> Verification Required
+                            </div>
+                            <form onsubmit="app.verifySecondReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <div>
+                                    <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Admin Comments:</label>
+                                    <textarea id="admin-verification-comments-second" class="form-input" rows="3" placeholder="Add comments for the team..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                        <i class="fas fa-check-circle" style="font-size: 0.7rem;"></i> Verify & Unlock
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        ` : scheduleData.verified ? `
+                        <div style="padding: 0.75rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">
+                            ${scheduleData.adminComments ? `
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                    <i class="fas fa-comment-alt"></i> Admin Comments:
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 0.75rem;">
+                                    ${this.escapeHtml(scheduleData.adminComments)}
+                                </div>
+                            ` : ''}
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; flex-wrap: wrap;">
+                                ${scheduleData.frozen ? `
+                                    <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                        <i class="fas fa-lock"></i> Frozen - Students cannot edit
+                                    </span>
+                                    <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeSecondReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                        <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
+                                    </button>
+                                ` : `
+                                    <button type="button" class="btn btn-warning btn-sm" onclick="app.freezeSecondReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                        <i class="fas fa-lock" style="font-size: 0.7rem;"></i> Freeze Backlogs
+                                    </button>
+                                `}
+                            </div>
+                            <form onsubmit="app.revertSecondReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <div>
+                                    <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Update Comments (optional):</label>
+                                    <textarea id="admin-revert-comments-second" class="form-input" rows="3" placeholder="Add comments for reverting back to student..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <button type="submit" class="btn btn-warning btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                        <i class="fas fa-undo" style="font-size: 0.7rem;"></i> Revert to Student
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div id="admin-second-review-schedule-content">
+                        <!-- Schedule content will be loaded here -->
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Load schedule content - using the same detailed rendering as first review
+            await this.renderAdminSecondReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule, completedBacklogIds, imageLinks);
+            
+        } catch (error) {
+            console.error('Error loading second review schedule:', error);
+            alert('Error loading schedule. Please try again.');
+            modal.remove();
+        }
+    },
+    
+    async verifySecondReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const comments = document.getElementById('admin-verification-comments-second')?.value.trim() || '';
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId), {
+                verified: true,
+                verifiedAt: serverTimestamp(),
+                verifiedBy: adminName,
+                adminComments: comments
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminSecondReviewSchedule(teamId);
+            
+            alert('Schedule verified successfully! Students can now edit the schedule.');
+        } catch (error) {
+            console.error('Error verifying schedule:', error);
+            alert('Error verifying schedule. Please try again.');
+        }
+    },
+    
+    async revertSecondReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        
+        const comments = document.getElementById('admin-revert-comments-second')?.value.trim() || '';
+        
+        if (!confirm('Are you sure you want to revert this schedule back to the student for editing? The verification and submission status will be reset, allowing the student to edit again.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId), {
+                submitted: false,
+                submittedAt: null,
+                verified: false,
+                verifiedAt: null,
+                verifiedBy: null,
+                adminComments: comments || null,
+                revertedAt: serverTimestamp(),
+                revertedBy: adminName
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminSecondReviewSchedule(teamId);
+            
+            alert('Schedule reverted successfully! Student can now edit the schedule again.');
+        } catch (error) {
+            console.error('Error reverting schedule:', error);
+            alert('Error reverting schedule. Please try again.');
+        }
+    },
+    
+    async freezeSecondReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to freeze this schedule? Students will not be able to edit any product backlogs after freezing. This action finalizes the schedule.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId), {
+                frozen: true,
+                frozenAt: serverTimestamp(),
+                frozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminSecondReviewSchedule(teamId);
+            
+            alert('Schedule frozen successfully! Students can no longer edit product backlogs.');
+        } catch (error) {
+            console.error('Error freezing schedule:', error);
+            alert('Error freezing schedule. Please try again.');
+        }
+    },
+    
+    async unfreezeSecondReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        
+        if (!confirm('Are you sure you want to unfreeze this schedule? Students will be able to edit product backlogs again.')) {
+            return;
+        }
+        
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId), {
+                frozen: false,
+                frozenAt: null,
+                frozenBy: null,
+                unfrozenAt: serverTimestamp(),
+                unfrozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            
+            // Reload the schedule view
+            await this.loadAdminSecondReviewSchedule(teamId);
+            
+            alert('Schedule unfrozen successfully! Students can now edit product backlogs again.');
+        } catch (error) {
+            console.error('Error unfreezing schedule:', error);
+            alert('Error unfreezing schedule. Please try again.');
+        }
+    },
+    
+    async renderAdminSecondReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule, completedBacklogIds = [], imageLinks = []) {
+        const container = document.getElementById('admin-second-review-schedule-content');
+        if (!container) return;
+        
+        try {
+            let html = '';
+            
+            // Render modules (mirroring first review structure)
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-folder" style="font-size: 0.9rem; color: #3b82f6;"></i> Modules</h3>';
+                
+                // Sort modules by order
+                const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedModules.forEach((scheduleModule, moduleIndex) => {
+                    const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                    if (!module) return;
+                    
+                    // Get backlogs from secondReviewBacklogs that are in the schedule
+                    const scheduledBacklogIds = new Set((scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId)));
+                    const moduleBacklogs = allBacklogs.filter(b => 
+                        b.source === 'secondReview' && 
+                        scheduledBacklogIds.has(String(b.id))
+                    );
+                    
+                    // Sort backlogs by order
+                    const sortedBacklogs = [...moduleBacklogs].map(backlog => {
+                        const backlogSchedule = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                        return {
+                            ...backlog,
+                            order: backlogSchedule?.order !== undefined ? backlogSchedule.order : 999999
+                        };
+                    }).sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    
+                    html += `
+                        <div class="admin-module-card" 
+                             data-module-id="${scheduleModule.moduleId}" 
+                             style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+                                    <i class="fas fa-folder" style="color: #3b82f6; font-size: 0.85rem;"></i> ${this.escapeHtml(module.name || 'Unnamed Module')}
+                                </h4>
+                            </div>
+                            
+                            <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem; align-items: end;">
+                                <div style="flex: 1;">
+                                    <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">Start Date</label>
+                                    <input type="date" class="form-input" value="${scheduleModule.startDate || ''}" 
+                                           readonly
+                                           style="width: 100%; padding: 0.4rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; background: #f3f4f6;">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">End Date</label>
+                                    <input type="date" class="form-input" value="${scheduleModule.endDate || ''}" 
+                                           readonly
+                                           style="width: 100%; padding: 0.4rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; background: #f3f4f6;">
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                ${sortedBacklogs.map(backlog => {
+                                    const backlogSchedule = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                                    const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                                    return this.renderAdminSecondReviewBacklogItem(backlog, backlogSchedule, scheduleModule.moduleId, teamId, isCompleted);
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Render standalone backlogs
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-tasks" style="font-size: 0.9rem; color: #3b82f6;"></i> Standalone Product Backlogs</h3>';
+                html += '<div class="admin-card" style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">';
+                
+                const standaloneBacklogIds = new Set(scheduleData.standaloneBacklogs.map(b => String(b.backlogId)));
+                const standaloneBacklogs = allBacklogs.filter(b => 
+                    b.source === 'secondReview' && 
+                    standaloneBacklogIds.has(String(b.id))
+                );
+                
+                standaloneBacklogs.forEach(backlog => {
+                    const backlogSchedule = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    if (backlogSchedule) {
+                        const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                        html += this.renderAdminSecondReviewBacklogItem(backlog, backlogSchedule, null, teamId, isCompleted);
+                    }
+                });
+                
+                html += '</div>';
+            } else {
+                html += '<div class="admin-card" style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">';
+                html += '<p class="empty-state" style="font-size: 0.85rem; margin: 0;">No standalone backlogs.</p>';
+                html += '</div>';
+            }
+            
+            // Add student progress section
+            html += '<div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">';
+            html += '<h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem;"><i class="fas fa-chart-line" style="color: #10b981;"></i> Student Progress</h3>';
+            
+            // Completed tasks summary
+            const totalBacklogs = (scheduleData.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData.standaloneBacklogs?.length || 0);
+            const completedCount = completedBacklogIds.length;
+            const completionPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+            
+            html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong style="color: var(--text-primary); font-size: 0.9rem;">Completed Tasks:</strong>
+                    <span style="font-size: 1.1rem; font-weight: 600; color: #10b981;">${completedCount} / ${totalBacklogs} (${completionPercentage}%)</span>
+                </div>
+                <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                    <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
+                </div>
+            </div>`;
+            
+            // Image links
+            html += '<div style="margin-top: 1rem;"><h4 style="margin: 0 0 0.75rem 0; color: #065f46; font-size: 0.95rem;"><i class="fas fa-images"></i> Project Progress Images</h4>';
+            if (imageLinks.length > 0) {
+                html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+                imageLinks.forEach((link) => {
+                    html += `<div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                        <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>${this.escapeHtml(link)}</span>
+                        </a>
+                    </div>`;
+                });
+                html += '</div>';
+            } else {
+                html += '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>';
+            }
+            html += '</div></div>';
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Error rendering second review schedule content:', error);
+            container.innerHTML = '<p class="error-message">Error rendering schedule. Please try again.</p>';
+        }
+    },
+    
+    renderAdminSecondReviewBacklogItem(backlog, backlogSchedule, moduleId, teamId, isCompleted = false) {
+        const startDate = backlogSchedule?.startDate || '';
+        const endDate = backlogSchedule?.endDate || '';
+        const priority = backlog.priority || 'medium';
+        const difficulty = backlog.difficulty || 'medium';
+        
+        // Priority colors
+        const priorityColors = {
+            low: '#6b7280',
+            medium: '#3b82f6',
+            high: '#f59e0b',
+            critical: '#ef4444'
+        };
+        const priorityColor = priorityColors[priority] || '#3b82f6';
+        
+        // Difficulty colors
+        const difficultyColors = {
+            easy: '#10b981',
+            medium: '#3b82f6',
+            hard: '#f59e0b',
+            'very-hard': '#ef4444'
+        };
+        const difficultyColor = difficultyColors[difficulty] || '#3b82f6';
+        
+        return `
+            <div class="admin-backlog-item" 
+                 data-backlog-id="${backlog.id}" 
+                 data-module-id="${moduleId || 'standalone'}"
+                 style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#ffffff'}; border-radius: 4px; border-left: 3px solid ${priorityColor}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem; gap: 0.5rem;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                            ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981; font-size: 0.85rem;"></i>' : ''}
+                            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; line-height: 1.3; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+                            <span style="padding: 0.2rem 0.5rem; background: ${priorityColor}20; color: ${priorityColor}; border-radius: 3px; font-size: 0.7rem; font-weight: 600; border: 1px solid ${priorityColor}40;">
+                                <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
+                            </span>
+                            <span style="padding: 0.2rem 0.5rem; background: ${difficultyColor}20; color: ${difficultyColor}; border-radius: 3px; font-size: 0.7rem; font-weight: 600; border: 1px solid ${difficultyColor}40;">
+                                <i class="fas fa-signal"></i> ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('-', ' ')}
+                            </span>
+                        </div>
+                        ${backlog.storyText ? `
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.4rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">
+                                ${this.escapeHtml(backlog.storyText)}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.75rem; font-size: 0.75rem;">
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">Start Date</label>
+                        <input type="date" class="form-input" value="${startDate}" 
+                               readonly
+                               style="width: 100%; padding: 0.35rem; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px; background: #f3f4f6;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem;">End Date</label>
+                        <input type="date" class="form-input" value="${endDate}" 
+                               readonly
+                               style="width: 100%; padding: 0.35rem; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px; background: #f3f4f6;">
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+    
+    // Placeholder functions for second sprint reports (can be expanded to match first sprint)
+    async generateSecondSprintScheduleReport() {
+        if (!this.isAdmin) return;
+        alert('Second Sprint Schedule Report generation - to be implemented (mirror first sprint report functionality)');
+    },
+    
+    async generateSecondSprintProgressReport() {
+        if (!this.isAdmin) return;
+        alert('Second Sprint Progress Report generation - to be implemented (mirror first sprint progress report functionality)');
     },
     
     async generateFirstSprintScheduleContract(teamId) {
