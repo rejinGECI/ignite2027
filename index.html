@@ -863,6 +863,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="first-sprint-ppt" onclick="app.switchAdminMiniProjectTab('first-sprint-ppt')">
                         <i class="fas fa-file-powerpoint"></i> First Sprint PPT
                     </button>
+                    <button class="tab-btn" data-tab="attendance" onclick="app.switchAdminMiniProjectTab('attendance')">
+                        <i class="fas fa-calendar-check"></i> Attendance
+                    </button>
                 </div>
                 
                 <div class="admin-section">
@@ -1150,6 +1153,100 @@ Bob Johnson,GHI789</pre>
                             
                             <div id="first-sprint-ppt-teams-list" class="admin-teams-list">
                                 <div class="loading-state">Loading First Sprint PPT status...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Attendance Tab -->
+                    <div id="admin-miniproject-attendance-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-calendar-check"></i> Attendance Management</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Mark attendance for students in teams. Select a team and date to mark present/absent for individual students or mark not mini project hour for the team.
+                            </p>
+                            
+                            <!-- Team and Date Selection -->
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; align-items: end;">
+                                    <div>
+                                        <label for="attendance-team-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                            <i class="fas fa-users"></i> Select Team:
+                                        </label>
+                                        <select id="attendance-team-select" class="form-input" style="width: 100%; padding: 0.75rem;">
+                                            <option value="">-- Select a team --</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="attendance-date-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                            <i class="fas fa-calendar"></i> Select Date:
+                                        </label>
+                                        <input type="date" id="attendance-date-select" class="form-input" style="width: 100%; padding: 0.75rem;">
+                                    </div>
+                                    <div>
+                                        <button type="button" class="btn btn-primary" onclick="app.loadTeamAttendance()" style="padding: 0.75rem 1.5rem;">
+                                            <i class="fas fa-search"></i> Load
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Attendance Marking Section -->
+                            <div id="attendance-marking-section" style="display: none;">
+                                <!-- Hour Selection -->
+                                <div id="attendance-hours-selection" style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); border-radius: 8px; border-left: 4px solid #6366f1;">
+                                    <h4 style="margin: 0 0 0.75rem 0; color: #4338ca; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="fas fa-clock"></i> Select Hours
+                                    </h4>
+                                    <p style="margin: 0 0 0.75rem 0; color: #4338ca; font-size: 0.9rem;">
+                                        Select which hours (1-6) this attendance is for:
+                                    </p>
+                                    <div id="attendance-hours-checkboxes" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                        <!-- Hours will be generated dynamically -->
+                                    </div>
+                                    <p id="selected-hours-display" style="margin: 0.75rem 0 0 0; color: #4338ca; font-size: 0.85rem; font-weight: 600;">
+                                        Selected: None
+                                    </p>
+                                </div>
+                                
+                                <!-- Not Mini Project Hour Option -->
+                                <div style="margin-bottom: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <h4 style="margin: 0 0 0.5rem 0; color: #92400e; font-size: 1rem;">
+                                                <i class="fas fa-ban"></i> Not Mini Project Hour
+                                            </h4>
+                                            <p style="margin: 0; color: #92400e; font-size: 0.9rem;">
+                                                Mark this if the team did not have mini project hour on this date. This will exclude the date from attendance calculations.
+                                            </p>
+                                        </div>
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="no-presentation-checkbox" onchange="app.toggleNoPresentation()" style="width: 24px; height: 24px; cursor: pointer; accent-color: #f59e0b;">
+                                            <span style="font-weight: 600; color: #92400e;">Mark Not Mini Project Hour</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- Students List -->
+                                <div id="attendance-students-list" style="margin-bottom: 1.5rem;">
+                                    <!-- Students will be loaded here -->
+                                </div>
+                                
+                                <!-- Save Button -->
+                                <div style="display: flex; justify-content: flex-end; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                                    <button type="button" class="btn btn-success" onclick="app.saveAttendance()" style="padding: 0.75rem 2rem;">
+                                        <i class="fas fa-save"></i> Save Attendance
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Attendance Summary -->
+                            <div id="attendance-summary-section" style="margin-top: 2rem; display: none;">
+                                <h3 style="margin-bottom: 1rem; color: var(--text-primary);">
+                                    <i class="fas fa-chart-pie"></i> Attendance Summary
+                                </h3>
+                                <div id="attendance-summary-content">
+                                    <!-- Summary will be loaded here -->
+                                </div>
                             </div>
                         </div>
                     </div>

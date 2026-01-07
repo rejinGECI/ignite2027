@@ -6567,6 +6567,10 @@ const app = {
         if (tabName === 'first-sprint-ppt') {
             setTimeout(() => this.loadFirstSprintPPTTeams(), 100);
         }
+        // Load attendance module when tab is switched
+        if (tabName === 'attendance') {
+            setTimeout(() => this.loadAttendanceModule(), 100);
+        }
         // Update tab buttons
         document.querySelectorAll('.admin-tabs .tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -12785,6 +12789,9 @@ const app = {
             await this.loadUsers();
             await this.loadUserStories();
             
+            // Load attendance summary for student
+            await this.loadStudentAttendanceSummary(studentTeam.id, studentKtuid);
+            
             container.innerHTML = `
                 <div class="miniproject-card">
                     <div class="project-header">
@@ -12853,6 +12860,18 @@ const app = {
                         </div>
                     </div>
                     
+                    <!-- Attendance Summary Section -->
+                    <div class="attendance-summary-section" style="margin-top: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer; padding: 0.75rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);" onclick="app.toggleAttendanceSummarySection()">
+                            <h3 class="section-title" style="margin: 0;"><i class="fas fa-calendar-check"></i> Mini Project Attendance</h3>
+                            <i class="fas fa-chevron-down" id="attendance-summary-chevron" style="transition: transform 0.3s;"></i>
+                        </div>
+                        <div id="attendance-summary-container" style="display: none;">
+                            <div id="student-attendance-summary" class="attendance-summary-content">
+                                <div class="loading-state">Loading attendance summary...</div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- Problem Statement Section -->
                     <div class="problem-statements-section" style="margin-top: 2rem;">
@@ -31408,6 +31427,574 @@ const app = {
         alert('Second Sprint Progress Report generation - to be implemented (mirror first sprint progress report functionality)');
     },
     
+    // ========== ATTENDANCE MANAGEMENT FUNCTIONS ==========
+    
+    async loadAttendanceModule() {
+        if (!this.isAdmin) return;
+        
+        const teamSelect = document.getElementById('attendance-team-select');
+        if (!teamSelect) return;
+        
+        try {
+            teamSelect.innerHTML = '<option value="">-- Select a team --</option>';
+            
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            teamsSnapshot.forEach(doc => {
+                const teamData = doc.data();
+                if (!teamData.deleted) {
+                    teams.push({
+                        id: doc.id,
+                        name: teamData.name || teamData.groupName || `Team ${doc.id.substring(0, 8)}`
+                    });
+                }
+            });
+            
+            // Sort teams by name
+            teams.sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Populate dropdown
+            teams.forEach(team => {
+                const option = document.createElement('option');
+                option.value = team.id;
+                option.textContent = team.name;
+                teamSelect.appendChild(option);
+            });
+            
+            // Set today's date as default
+            const dateInput = document.getElementById('attendance-date-select');
+            if (dateInput) {
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.value = today;
+            }
+            
+            // Hide attendance marking section initially
+            const markingSection = document.getElementById('attendance-marking-section');
+            const summarySection = document.getElementById('attendance-summary-section');
+            if (markingSection) markingSection.style.display = 'none';
+            if (summarySection) summarySection.style.display = 'none';
+        } catch (error) {
+            console.error('Error loading attendance module:', error);
+            alert('Error loading teams. Please try again.');
+        }
+    },
+    
+    async loadTeamAttendance() {
+        if (!this.isAdmin) return;
+        
+        const teamSelect = document.getElementById('attendance-team-select');
+        const dateInput = document.getElementById('attendance-date-select');
+        const markingSection = document.getElementById('attendance-marking-section');
+        const studentsList = document.getElementById('attendance-students-list');
+        
+        if (!teamSelect || !dateInput || !markingSection || !studentsList) return;
+        
+        const teamId = teamSelect.value;
+        const date = dateInput.value;
+        
+        if (!teamId || !date) {
+            alert('Please select both team and date.');
+            return;
+        }
+        
+        try {
+            studentsList.innerHTML = '<div class="loading-state">Loading students...</div>';
+            markingSection.style.display = 'block';
+            
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            
+            const teamData = teamDoc.data();
+            const teamName = teamData.name || teamData.groupName || `Team ${teamId.substring(0, 8)}`;
+            const members = teamData.members || [];
+            
+            // Load existing attendance for this date
+            const attendanceDoc = await getDoc(doc(window.firebaseDb, 'attendance', `${teamId}_${date}`));
+            const attendanceData = attendanceDoc.exists() ? attendanceDoc.data() : {
+                teamId: teamId,
+                date: date,
+                students: {},
+                noPresentation: false,
+                hours: []
+            };
+            
+            // Initialize attendance data object
+            this.attendanceData = {};
+            
+            // Get saved hours for use throughout the function
+            const savedHours = attendanceData.hours || [];
+            
+            // Generate hour checkboxes dynamically
+            const hoursContainer = document.getElementById('attendance-hours-checkboxes');
+            if (hoursContainer) {
+                const hoursHtml = [1, 2, 3, 4, 5, 6].map(hour => {
+                    const isChecked = savedHours.includes(hour);
+                    return `
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.5rem 1rem; background: white; border-radius: 6px; border: 2px solid #c7d2fe; transition: all 0.2s;">
+                            <input type="checkbox" 
+                                   class="attendance-hour-checkbox" 
+                                   value="${hour}" 
+                                   onchange="app.updateSelectedHours()"
+                                   ${isChecked ? 'checked' : ''}
+                                   style="width: 20px; height: 20px; cursor: pointer; accent-color: #6366f1;">
+                            <span style="font-weight: 600; color: #4338ca;">Hour ${hour}</span>
+                        </label>
+                    `;
+                }).join('');
+                hoursContainer.innerHTML = hoursHtml;
+                
+                // Update display after rendering
+                setTimeout(() => {
+                    this.updateSelectedHours();
+                }, 50);
+            }
+            
+            // Set no presentation checkbox
+            const noPresentationCheckbox = document.getElementById('no-presentation-checkbox');
+            if (noPresentationCheckbox) {
+                noPresentationCheckbox.checked = attendanceData.noPresentation === true;
+                this.attendanceData._noPresentation = attendanceData.noPresentation === true;
+            }
+            
+            // Get student details from users collection
+            const students = [];
+            for (const member of members) {
+                const ktuid = member.ktuid || member;
+                if (typeof ktuid === 'string') {
+                    // Find user by username (ktuid)
+                    const usersQuery = query(
+                        collection(window.firebaseDb, 'users'),
+                        where('username', '==', ktuid)
+                    );
+                    const usersSnapshot = await getDocs(usersQuery);
+                    
+                    if (!usersSnapshot.empty) {
+                        const userDoc = usersSnapshot.docs[0];
+                        const userData = userDoc.data();
+                        students.push({
+                            id: userDoc.id,
+                            ktuid: ktuid,
+                            name: userData.name || ktuid,
+                            attendance: attendanceData.students[ktuid] || null // 'present', 'absent', or null
+                        });
+                    } else {
+                        // If user not found, still add with ktuid
+                        students.push({
+                            id: null,
+                            ktuid: ktuid,
+                            name: ktuid,
+                            attendance: attendanceData.students[ktuid] || null
+                        });
+                    }
+                }
+            }
+            
+            // Render students list
+            if (students.length === 0) {
+                studentsList.innerHTML = '<p class="empty-state">No students found in this team.</p>';
+                return;
+            }
+            
+            // Get hours display for header
+            const hoursDisplay = savedHours.length > 0 ? ` - Hours ${savedHours.join(', ')}` : '';
+            
+            studentsList.innerHTML = `
+                            <div style="margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border-left: 4px solid #3b82f6;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem;">
+                        <i class="fas fa-users"></i> ${this.escapeHtml(teamName)} - ${new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}${hoursDisplay}
+                    </h4>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                        Mark attendance for each student below. Use "Mark Not Mini Project Hour" above to exclude this date from attendance calculations.
+                    </p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    ${students.map((student, index) => `
+                        <div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+                                    ${this.escapeHtml(student.name)}
+                                </div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    KTU ID: ${this.escapeHtml(student.ktuid)}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 6px; background: ${student.attendance === 'present' ? '#dbeafe' : '#f3f4f6'}; border: 2px solid ${student.attendance === 'present' ? '#3b82f6' : '#d1d5db'};">
+                                    <input type="radio" 
+                                           name="attendance-${student.ktuid}" 
+                                           value="present" 
+                                           data-ktuid="${student.ktuid}"
+                                           ${student.attendance === 'present' ? 'checked' : ''}
+                                           onchange="app.updateStudentAttendance('${student.ktuid}', 'present')"
+                                           style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981;">
+                                    <span style="color: ${student.attendance === 'present' ? '#1e40af' : 'var(--text-secondary)'}; font-weight: ${student.attendance === 'present' ? '600' : '500'};">
+                                        <i class="fas fa-check-circle"></i> Present
+                                    </span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.5rem 1rem; border-radius: 6px; background: ${student.attendance === 'absent' ? '#fee2e2' : '#f3f4f6'}; border: 2px solid ${student.attendance === 'absent' ? '#ef4444' : '#d1d5db'};">
+                                    <input type="radio" 
+                                           name="attendance-${student.ktuid}" 
+                                           value="absent" 
+                                           data-ktuid="${student.ktuid}"
+                                           ${student.attendance === 'absent' ? 'checked' : ''}
+                                           onchange="app.updateStudentAttendance('${student.ktuid}', 'absent')"
+                                           style="width: 18px; height: 18px; cursor: pointer; accent-color: #ef4444;">
+                                    <span style="color: ${student.attendance === 'absent' ? '#991b1b' : 'var(--text-secondary)'}; font-weight: ${student.attendance === 'absent' ? '600' : '500'};">
+                                        <i class="fas fa-times-circle"></i> Absent
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            // Load attendance summary
+            await this.loadAttendanceSummary(teamId);
+        } catch (error) {
+            console.error('Error loading team attendance:', error);
+            alert('Error loading attendance. Please try again.');
+            studentsList.innerHTML = '<p class="error-message">Error loading attendance. Please try again.</p>';
+        }
+    },
+    
+    updateStudentAttendance(ktuid, status) {
+        // This is called when radio button changes - data is stored in memory and saved when Save is clicked
+        if (!this.attendanceData) {
+            this.attendanceData = {};
+        }
+        this.attendanceData[ktuid] = status;
+    },
+    
+    updateSelectedHours() {
+        const checkboxes = document.querySelectorAll('.attendance-hour-checkbox');
+        const selectedHours = [];
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedHours.push(parseInt(checkbox.value));
+            }
+        });
+        
+        // Sort hours
+        selectedHours.sort((a, b) => a - b);
+        
+        // Update display
+        const display = document.getElementById('selected-hours-display');
+        if (display) {
+            if (selectedHours.length === 0) {
+                display.textContent = 'Selected: None';
+                display.style.color = '#6b7280';
+            } else {
+                display.textContent = `Selected: Hours ${selectedHours.join(', ')}`;
+                display.style.color = '#4338ca';
+            }
+        }
+        
+        // Store in attendance data
+        if (!this.attendanceData) {
+            this.attendanceData = {};
+        }
+        this.attendanceData._hours = selectedHours;
+    },
+    
+    async toggleNoPresentation() {
+        const checkbox = document.getElementById('no-presentation-checkbox');
+        if (!checkbox) return;
+        
+        const teamSelect = document.getElementById('attendance-team-select');
+        const dateInput = document.getElementById('attendance-date-select');
+        
+        if (!teamSelect || !dateInput) return;
+        
+        const teamId = teamSelect.value;
+        const date = dateInput.value;
+        
+        if (!teamId || !date) {
+            alert('Please select both team and date first.');
+            checkbox.checked = false;
+            return;
+        }
+        
+        // Store no presentation status
+        if (!this.attendanceData) {
+            this.attendanceData = {};
+        }
+        this.attendanceData._noPresentation = checkbox.checked;
+        
+        // If marking no presentation, disable student attendance options and hour selection
+        const studentsList = document.getElementById('attendance-students-list');
+        if (studentsList) {
+            const radioButtons = studentsList.querySelectorAll('input[type="radio"]');
+            radioButtons.forEach(radio => {
+                radio.disabled = checkbox.checked;
+            });
+            
+            if (checkbox.checked) {
+                // Uncheck all attendance
+                radioButtons.forEach(radio => {
+                    radio.checked = false;
+                });
+            }
+        }
+        
+        // Disable/enable hour checkboxes
+        const hourCheckboxes = document.querySelectorAll('.attendance-hour-checkbox');
+        hourCheckboxes.forEach(cb => {
+            cb.disabled = checkbox.checked;
+            if (checkbox.checked) {
+                cb.checked = false;
+            }
+        });
+        
+        // Update hours display
+        this.updateSelectedHours();
+    },
+    
+    async saveAttendance() {
+        if (!this.isAdmin) return;
+        
+        const teamSelect = document.getElementById('attendance-team-select');
+        const dateInput = document.getElementById('attendance-date-select');
+        
+        if (!teamSelect || !dateInput) return;
+        
+        const teamId = teamSelect.value;
+        const date = dateInput.value;
+        
+        if (!teamId || !date) {
+            alert('Please select both team and date.');
+            return;
+        }
+        
+        try {
+            // Get current attendance data
+            const attendanceDoc = await getDoc(doc(window.firebaseDb, 'attendance', `${teamId}_${date}`));
+            const existingData = attendanceDoc.exists() ? attendanceDoc.data() : {
+                teamId: teamId,
+                date: date,
+                students: {},
+                noPresentation: false
+            };
+            
+            // Update with new data
+            const noPresentationCheckbox = document.getElementById('no-presentation-checkbox');
+            const noPresentation = noPresentationCheckbox ? noPresentationCheckbox.checked : false;
+            
+            // Get attendance from radio buttons
+            const studentsList = document.getElementById('attendance-students-list');
+            const students = {};
+            
+            if (!noPresentation && studentsList) {
+                const radioGroups = studentsList.querySelectorAll('input[type="radio"]:checked');
+                radioGroups.forEach(radio => {
+                    const ktuid = radio.getAttribute('data-ktuid');
+                    const status = radio.value;
+                    if (ktuid && status) {
+                        students[ktuid] = status;
+                    }
+                });
+            }
+            
+            // Get selected hours
+            const hourCheckboxes = document.querySelectorAll('.attendance-hour-checkbox:checked');
+            const selectedHours = Array.from(hourCheckboxes).map(cb => parseInt(cb.value)).sort((a, b) => a - b);
+            
+            // Validate: If not "Not Mini Project Hour", at least one hour must be selected
+            if (!noPresentation && selectedHours.length === 0) {
+                alert('Please select at least one hour (1-6) for this attendance, or mark "Not Mini Project Hour".');
+                return;
+            }
+            
+            // Save to Firebase
+            await setDoc(doc(window.firebaseDb, 'attendance', `${teamId}_${date}`), {
+                teamId: teamId,
+                date: date,
+                students: students,
+                noPresentation: noPresentation,
+                hours: selectedHours,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            }, { merge: true });
+            
+            // Clear temporary data
+            this.attendanceData = null;
+            
+            alert('Attendance saved successfully!');
+            
+            // Reload to show updated data
+            await this.loadTeamAttendance();
+        } catch (error) {
+            console.error('Error saving attendance:', error);
+            alert('Error saving attendance. Please try again.');
+        }
+    },
+    
+    async loadAttendanceSummary(teamId) {
+        if (!this.isAdmin) return;
+        
+        const summarySection = document.getElementById('attendance-summary-section');
+        const summaryContent = document.getElementById('attendance-summary-content');
+        
+        if (!summarySection || !summaryContent) return;
+        
+        try {
+            summaryContent.innerHTML = '<div class="loading-state">Loading attendance summary...</div>';
+            summarySection.style.display = 'block';
+            
+            // Load team data
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) return;
+            
+            const teamData = teamDoc.data();
+            const members = teamData.members || [];
+            const ktuids = members.map(m => m.ktuid || m).filter(Boolean);
+            
+            // Load all attendance records for this team
+            const attendanceQuery = query(
+                collection(window.firebaseDb, 'attendance'),
+                where('teamId', '==', teamId)
+            );
+            const attendanceSnapshot = await getDocs(attendanceQuery);
+            
+            // Process attendance data
+            const attendanceRecords = [];
+            attendanceSnapshot.forEach(doc => {
+                const data = doc.data();
+                attendanceRecords.push({
+                    date: data.date,
+                    students: data.students || {},
+                    noPresentation: data.noPresentation === true,
+                    hours: data.hours || []
+                });
+            });
+            
+            // Sort by date
+            attendanceRecords.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Calculate attendance for each student
+            const studentAttendance = {};
+            ktuids.forEach(ktuid => {
+                studentAttendance[ktuid] = {
+                    present: 0,
+                    absent: 0,
+                    totalDays: 0,
+                    noPresentationDays: 0
+                };
+            });
+            
+            attendanceRecords.forEach(record => {
+                if (record.noPresentation) {
+                    // Count as no presentation day for all students
+                    ktuids.forEach(ktuid => {
+                        studentAttendance[ktuid].noPresentationDays++;
+                    });
+                } else {
+                    // Count attendance for each student
+                    ktuids.forEach(ktuid => {
+                        studentAttendance[ktuid].totalDays++;
+                        const status = record.students[ktuid];
+                        if (status === 'present') {
+                            studentAttendance[ktuid].present++;
+                        } else if (status === 'absent') {
+                            studentAttendance[ktuid].absent++;
+                        }
+                    });
+                }
+            });
+            
+            // Get student names
+            const studentNames = {};
+            for (const ktuid of ktuids) {
+                const usersQuery = query(
+                    collection(window.firebaseDb, 'users'),
+                    where('username', '==', ktuid)
+                );
+                const usersSnapshot = await getDocs(usersQuery);
+                if (!usersSnapshot.empty) {
+                    const userData = usersSnapshot.docs[0].data();
+                    studentNames[ktuid] = userData.name || ktuid;
+                } else {
+                    studentNames[ktuid] = ktuid;
+                }
+            }
+            
+            // Render summary
+            let html = `
+                <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 6px;">
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+                        <i class="fas fa-info-circle"></i> Attendance percentage is calculated as: (Present Days / Total Days with Mini Project Hour) × 100
+                    </p>
+                    <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                        Days marked as "Not Mini Project Hour" are excluded from the calculation. Hours (1-6) indicate which hours attendance was marked for.
+                    </p>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
+                        <thead>
+                            <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                                <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Student</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">KTU ID</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Present</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Absent</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Total Days</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Not Mini Project Hour Days</th>
+                                <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Attendance %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ktuids.forEach((ktuid, index) => {
+                const stats = studentAttendance[ktuid];
+                const totalDaysWithPresentation = stats.totalDays;
+                const attendancePercentage = totalDaysWithPresentation > 0 
+                    ? Math.round((stats.present / totalDaysWithPresentation) * 100) 
+                    : 0;
+                
+                let percentageColor = '#10b981'; // Green
+                if (attendancePercentage < 75) {
+                    percentageColor = '#ef4444'; // Red
+                } else if (attendancePercentage < 85) {
+                    percentageColor = '#f59e0b'; // Orange
+                }
+                
+                html += `
+                    <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
+                        <td style="padding: 0.75rem; font-weight: 600; color: var(--text-primary);">${this.escapeHtml(studentNames[ktuid])}</td>
+                        <td style="padding: 0.75rem; text-align: center; color: var(--text-secondary);">${this.escapeHtml(ktuid)}</td>
+                        <td style="padding: 0.75rem; text-align: center; color: #10b981; font-weight: 600;">${stats.present}</td>
+                        <td style="padding: 0.75rem; text-align: center; color: #ef4444; font-weight: 600;">${stats.absent}</td>
+                        <td style="padding: 0.75rem; text-align: center; color: var(--text-primary);">${totalDaysWithPresentation}</td>
+                        <td style="padding: 0.75rem; text-align: center; color: var(--text-secondary);">${stats.noPresentationDays}</td>
+                        <td style="padding: 0.75rem; text-align: center;">
+                            <span style="padding: 0.35rem 0.75rem; background: ${percentageColor}20; color: ${percentageColor}; border-radius: 10px; font-weight: 600; font-size: 0.9rem;">
+                                ${attendancePercentage}%
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            summaryContent.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading attendance summary:', error);
+            summaryContent.innerHTML = '<p class="error-message">Error loading attendance summary. Please try again.</p>';
+        }
+    },
+    
     async generateFirstSprintScheduleContract(teamId) {
         if (!this.isAdmin) return;
         
@@ -33375,19 +33962,235 @@ const app = {
     },
     
     // Placeholder functions for second review - these need to be implemented similar to first review
-    async renderSecondReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true, moduleIndex = 0) {
-        // This is a simplified version - should mirror renderFirstReviewModuleCard
-        return `<div class="second-review-module-card" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-            <h4>${this.escapeHtml(module.name || 'Unnamed Module')}</h4>
-            <p>${scheduledBacklogs.length} product backlog(s)</p>
-        </div>`;
+    renderSecondReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true, moduleIndex = 0) {
+        // Color coding for modules - use gradient border
+        const hasDates = scheduleModule.startDate && scheduleModule.endDate;
+        const borderColor = hasDates ? '#3b82f6' : '#9ca3af';
+        const borderStyle = hasDates ? '2px solid' : '1px solid';
+        
+        return `
+            <div class="second-review-module-card" 
+                 data-module-id="${scheduleModule.moduleId}" 
+                 data-module-order="${scheduleModule.order !== undefined ? scheduleModule.order : moduleIndex}"
+                 draggable="${canEdit ? 'true' : 'false'}"
+                 style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: ${borderStyle} ${borderColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); ${canEdit ? 'cursor: move;' : ''}"
+                 ondragstart="${canEdit ? `app.handleModuleDragStart(event, '${scheduleModule.moduleId}')` : ''}"
+                 ondragover="${canEdit ? `app.handleModuleDragOver(event)` : ''}"
+                 ondrop="${canEdit ? `app.handleModuleDrop(event, '${scheduleModule.moduleId}')` : ''}"
+                 ondragend="${canEdit ? `app.handleModuleDragEnd(event)` : ''}">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    ${canEdit ? `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem;">
+                        <i class="fas fa-grip-vertical" style="color: #9ca3af; cursor: move; font-size: 1rem;" title="Drag to reorder module"></i>
+                    </div>
+                    ` : ''}
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 0.5rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-folder" style="color: #3b82f6;"></i> ${this.escapeHtml(module.name || 'Unnamed Module')}
+                        </h4>
+                        <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem;">
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-alt" style="color: #3b82f6;"></i> Module Start Date:
+                                </label>
+                                <input type="date" 
+                                       class="form-input" 
+                                       value="${scheduleModule.startDate || ''}" 
+                                       ${!canEdit ? 'disabled' : ''}
+                                       ${!canEdit ? '' : `onchange="app.updateSecondReviewModuleDate('${scheduleModule.moduleId}', 'startDate', this.value)"`}
+                                       style="width: 200px; border: 2px solid #3b82f640; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}" 
+                                       title="${!canEdit ? 'Editing is locked' : 'Update module start date. All child backlogs will be updated.'}">
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-check" style="color: #10b981;"></i> Module End Date:
+                                </label>
+                                <input type="date" 
+                                       class="form-input" 
+                                       value="${scheduleModule.endDate || ''}" 
+                                       ${!canEdit ? 'disabled' : ''}
+                                       ${!canEdit ? '' : `onchange="app.updateSecondReviewModuleDate('${scheduleModule.moduleId}', 'endDate', this.value)"`}
+                                       style="width: 200px; border: 2px solid #10b98140; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}" 
+                                       title="${!canEdit ? 'Editing is locked' : 'Update module end date. All child backlogs will be updated.'}">
+                            </div>
+                        </div>
+                    </div>
+                    ${canEdit ? `
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editSecondReviewModule('${scheduleModule.moduleId}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeSecondReviewModule('${scheduleModule.moduleId}')" title="Remove">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h5 style="margin: 0; color: var(--text-primary); font-size: 0.95rem;">
+                            Product Backlogs (${scheduledBacklogs.length})
+                        </h5>
+                        ${canEdit ? `
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.showAddSecondReviewBacklogModal('${scheduleModule.moduleId}')">
+                            <i class="fas fa-plus"></i> Add Backlog
+                        </button>
+                        ` : ''}
+                    </div>
+                    
+                    ${scheduledBacklogs.length === 0 ? '<p class="empty-state" style="font-size: 0.9rem;">No product backlogs in this module.</p>' : ''}
+                    
+                    <div class="second-review-backlogs-container second-review-sortable-container" 
+                         data-module-id="${scheduleModule.moduleId}"
+                         style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${scheduledBacklogs.map((backlog, backlogIndex) => {
+                            backlog._canEdit = canEdit;
+                            backlog._backlogIndex = backlogIndex;
+                            return backlog;
+                        }).map(backlog => {
+                            // Priority colors
+                            const priorityColors = {
+                                low: { bg: '#e5e7eb', text: '#4b5563', border: '#d1d5db' },
+                                medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                                high: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                                critical: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                            };
+                            
+                            // Difficulty colors
+                            const difficultyColors = {
+                                easy: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+                                medium: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+                                hard: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+                                'very-hard': { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' }
+                            };
+                            
+                            const priority = backlog.priority || 'medium';
+                            const difficulty = backlog.difficulty || 'medium';
+                            const priorityStyle = priorityColors[priority] || priorityColors.medium;
+                            const difficultyStyle = difficultyColors[difficulty] || difficultyColors.medium;
+                            
+                            // Date status colors
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            let dateStatus = 'future';
+                            let dateStatusColor = '#3b82f6';
+                            
+                            if (backlog.startDate) {
+                                const startDate = new Date(backlog.startDate);
+                                startDate.setHours(0, 0, 0, 0);
+                                if (startDate < today) {
+                                    dateStatus = 'past';
+                                    dateStatusColor = '#6b7280';
+                                } else if (startDate.getTime() === today.getTime()) {
+                                    dateStatus = 'current';
+                                    dateStatusColor = '#10b981';
+                                }
+                            }
+                            
+                            return `
+                                <div class="second-review-backlog-item second-review-backlog-card" 
+                                     data-backlog-id="${backlog.id}" 
+                                     data-module-id="${scheduleModule.moduleId}"
+                                     data-backlog-order="${backlog.order !== undefined ? backlog.order : backlog._backlogIndex}"
+                                     style="padding: 1rem; background: linear-gradient(135deg, #ffffff 0%, ${priorityStyle.bg}15 100%); border-radius: 6px; border-left: 3px solid ${priorityStyle.border}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                        ${backlog._canEdit ? `
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; margin-right: 0.5rem;">
+                                            <button type="button" 
+                                                    class="btn btn-sm" 
+                                                    onclick="app.moveSecondReviewBacklogUp('${backlog.id}', '${scheduleModule.moduleId}', ${backlog._backlogIndex})"
+                                                    style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                    title="Move up"
+                                                    ${backlog._backlogIndex === 0 ? 'disabled' : ''}>
+                                                <i class="fas fa-chevron-up"></i>
+                                            </button>
+                                            <button type="button" 
+                                                    class="btn btn-sm" 
+                                                    onclick="app.moveSecondReviewBacklogDown('${backlog.id}', '${scheduleModule.moduleId}', ${backlog._backlogIndex}, ${scheduledBacklogs.length - 1})"
+                                                    style="padding: 0.25rem 0.4rem; font-size: 0.7rem; line-height: 1; min-width: auto;"
+                                                    title="Move down"
+                                                    ${backlog._backlogIndex === scheduledBacklogs.length - 1 ? 'disabled' : ''}>
+                                                <i class="fas fa-chevron-down"></i>
+                                            </button>
+                                        </div>
+                                        ` : ''}
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                    <input type="checkbox" 
+                                                           class="student-backlog-complete-checkbox" 
+                                                           data-backlog-id="${backlog.id}"
+                                                           ${backlog.isCompleted ? 'checked' : ''}
+                                                           onchange="app.saveStudentCompletedTasks()"
+                                                           style="width: 20px; height: 20px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    </div>
+                                                </label>
+                                                <span style="padding: 0.25rem 0.5rem; background: ${priorityStyle.bg}; color: ${priorityStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${priorityStyle.border};">
+                                                    <i class="fas fa-flag"></i> ${priority.charAt(0).toUpperCase() + priority.slice(1)}
+                                                </span>
+                                                <span style="padding: 0.25rem 0.5rem; background: ${difficultyStyle.bg}; color: ${difficultyStyle.text}; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid ${difficultyStyle.border};">
+                                                    <i class="fas fa-signal"></i> ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('-', ' ')}
+                                                </span>
+                                            </div>
+                                            ${backlog.storyText ? `
+                                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">
+                                                    ${this.escapeHtml(backlog.storyText)}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        ${backlog._canEdit !== false ? `
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editSecondReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeSecondReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Remove">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                        <div style="flex: 1;">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                <i class="fas fa-calendar-check" style="color: ${dateStatusColor};"></i> Start Date:
+                                            </label>
+                                            <input type="date" 
+                                                   class="form-input" 
+                                                   value="${backlog.startDate || ''}" 
+                                                   ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateSecondReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'startDate', this.value)"`}
+                                                   style="width: 100%; border: 2px solid ${dateStatusColor}40; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                        </div>
+                                        <div style="flex: 1;">
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                <i class="fas fa-calendar-times" style="color: #ef4444;"></i> End Date:
+                                            </label>
+                                            <input type="date" 
+                                                   class="form-input" 
+                                                   value="${backlog.endDate || ''}" 
+                                                   ${backlog._canEdit === false ? 'readonly disabled' : `onchange="app.updateSecondReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'endDate', this.value)"`}
+                                                   style="width: 100%; border: 2px solid #ef444440; border-radius: 6px; padding: 0.5rem; ${backlog._canEdit === false ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : ''}">
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
     },
     
     async renderSecondReviewProgressSection(teamId, imageLinks = [], readOnly = false) {
-        // Simplified version - should mirror renderFirstReviewProgressSection
         const secondReviewTab = document.getElementById('second-review-tab');
-        if (!secondReviewTab) return;
+        if (!secondReviewTab) {
+            console.warn('second-review-tab not found');
+            return;
+        }
         
+        // Check if progress section already exists, if so remove it to re-render
         let progressSection = document.getElementById('second-review-progress-section');
         if (progressSection) {
             progressSection.remove();
@@ -33395,20 +34198,183 @@ const app = {
         
         progressSection = document.createElement('div');
         progressSection.id = 'second-review-progress-section';
+        
+        // Find the project-planning-section container (most reliable location)
+        const planningSection = secondReviewTab.querySelector('.project-planning-section');
+        if (planningSection) {
+            // Try multiple insertion strategies
+            const ganttChartContainer = secondReviewTab.querySelector('#second-review-gantt-chart')?.parentElement;
+            const submitBtn = document.getElementById('submit-second-review-btn');
+            const submitContainer = submitBtn ? submitBtn.closest('div[style*="margin-top: 2rem"]') : null;
+            const modulesContainer = document.getElementById('second-review-modules-list');
+            const standaloneContainer = document.getElementById('second-review-standalone-backlogs');
+            
+            // Strategy 1: Insert before Gantt chart container
+            if (ganttChartContainer && ganttChartContainer.parentNode) {
+                ganttChartContainer.parentNode.insertBefore(progressSection, ganttChartContainer);
+            } 
+            // Strategy 2: Insert before submit button container
+            else if (submitContainer && submitContainer.parentNode) {
+                submitContainer.parentNode.insertBefore(progressSection, submitContainer);
+            } 
+            // Strategy 3: Insert after standalone backlogs container
+            else if (standaloneContainer && standaloneContainer.parentNode) {
+                const standaloneParent = standaloneContainer.parentNode;
+                if (standaloneContainer.nextSibling) {
+                    standaloneParent.insertBefore(progressSection, standaloneContainer.nextSibling);
+                } else {
+                    standaloneParent.appendChild(progressSection);
+                }
+            }
+            // Strategy 4: Insert after modules container
+            else if (modulesContainer && modulesContainer.parentNode) {
+                const modulesParent = modulesContainer.parentNode;
+                if (modulesContainer.nextSibling) {
+                    modulesParent.insertBefore(progressSection, modulesContainer.nextSibling);
+                } else {
+                    modulesParent.appendChild(progressSection);
+                }
+            }
+            // Strategy 5: Append to planning section
+            else {
+                planningSection.appendChild(progressSection);
+            }
+        } else {
+            // Fallback: append to second-review-tab
+            secondReviewTab.appendChild(progressSection);
+        }
+        
         progressSection.innerHTML = `
-            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
-                <h3 style="margin: 0 0 1rem 0; color: #065f46;">
-                    <i class="fas fa-images"></i> Project Progress Images
+            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">
+                <h3 style="margin: 0 0 1rem 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-images" style="color: #10b981;"></i> Project Progress Images
                 </h3>
-                <div id="second-review-image-links-list">
-                    ${imageLinks.length === 0 ? '<p>No image links added yet.</p>' : imageLinks.map(link => `<p>${this.escapeHtml(link)}</p>`).join('')}
+                <p style="margin-bottom: 1rem; color: #065f46; font-size: 0.9rem;">
+                    Upload links to images showing your project progress. These will be visible to your guide and admin.
+                </p>
+                
+                ${!readOnly ? `
+                <div style="margin-bottom: 1rem;">
+                    <label for="second-review-image-link-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                        Image URL:
+                    </label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="url" 
+                               id="second-review-image-link-input" 
+                               class="form-input" 
+                               placeholder="https://example.com/image.png"
+                               style="flex: 1; padding: 0.75rem; border: 2px solid #10b98140; border-radius: 6px;">
+                        <button type="button" 
+                                class="btn btn-success" 
+                                onclick="app.addSecondReviewImageLink()"
+                                style="padding: 0.75rem 1.5rem;">
+                            <i class="fas fa-plus"></i> Add
+                        </button>
+                    </div>
+                </div>
+                ` : ''}
+                
+                <div id="second-review-image-links-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    ${imageLinks.length === 0 ? '<p style="color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">No image links added yet.</p>' : ''}
+                    ${imageLinks.map((link, index) => `
+                        <div style="padding: 1rem; background: white; border-radius: 6px; border: 1px solid #d1fae5; display: flex; align-items: center; gap: 1rem;">
+                            <div style="flex: 1; min-width: 0;">
+                                <a href="${this.escapeHtml(link)}" target="_blank" rel="noopener noreferrer" 
+                                   style="color: #10b981; text-decoration: none; word-break: break-all; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    <span>${this.escapeHtml(link)}</span>
+                                </a>
+                            </div>
+                            ${!readOnly ? `
+                            <button type="button" 
+                                    class="btn btn-danger btn-sm" 
+                                    onclick="app.removeSecondReviewImageLink(${index})"
+                                    style="padding: 0.5rem 1rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;
+    },
+    
+    async addSecondReviewImageLink() {
+        const input = document.getElementById('second-review-image-link-input');
+        if (!input || !input.value.trim()) {
+            alert('Please enter an image URL');
+            return;
+        }
         
-        const planningSection = secondReviewTab.querySelector('.project-planning-section');
-        if (planningSection) {
-            planningSection.appendChild(progressSection);
+        const url = input.value.trim();
+        // Basic URL validation
+        try {
+            new URL(url);
+        } catch (e) {
+            alert('Please enter a valid URL');
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load existing image links
+            const progressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id));
+            const existingData = progressDoc.exists() ? progressDoc.data() : {};
+            const imageLinks = existingData.imageLinks || [];
+            
+            // Add new link
+            imageLinks.push(url);
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id), {
+                imageLinks: imageLinks,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            input.value = '';
+            await this.renderSecondReviewProgressSection(team.id, imageLinks);
+        } catch (error) {
+            console.error('Error adding image link:', error);
+            alert('Error adding image link. Please try again.');
+        }
+    },
+    
+    async removeSecondReviewImageLink(index) {
+        if (!confirm('Are you sure you want to remove this image link?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            // Load existing image links
+            const progressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id));
+            const existingData = progressDoc.exists() ? progressDoc.data() : {};
+            const imageLinks = existingData.imageLinks || [];
+            
+            // Remove link at index
+            imageLinks.splice(index, 1);
+            
+            // Save to Firestore
+            await setDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id), {
+                imageLinks: imageLinks,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            await this.renderSecondReviewProgressSection(team.id, imageLinks);
+        } catch (error) {
+            console.error('Error removing image link:', error);
+            alert('Error removing image link. Please try again.');
         }
     },
     
@@ -33423,17 +34389,332 @@ const app = {
                 return;
             }
             
+            // Load schedule data
             const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
             if (!scheduleDoc.exists()) {
                 ganttContainer.innerHTML = '<p class="empty-state">No schedule data available.</p>';
                 return;
             }
             
-            // Simplified Gantt chart - should mirror renderFirstReviewGanttChart
-            ganttContainer.innerHTML = '<p class="empty-state">Gantt chart will be rendered here. Add modules and set dates to view.</p>';
+            const scheduleData = scheduleDoc.data();
+            
+            // Load all backlogs
+            const backlogQuery = query(
+                collection(window.firebaseDb, 'productBacklog'),
+                where('teamId', '==', team.id)
+            );
+            const backlogSnapshot = await getDocs(backlogQuery);
+            const allBacklogs = [];
+            backlogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'projectPlanning' });
+            });
+            
+            const secondReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'secondReviewBacklogs'),
+                where('teamId', '==', team.id)
+            );
+            const secondReviewBacklogSnapshot = await getDocs(secondReviewBacklogQuery);
+            secondReviewBacklogSnapshot.forEach(doc => {
+                allBacklogs.push({ id: doc.id, ...doc.data(), source: 'secondReview' });
+            });
+            
+            // Load modules
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(doc => {
+                allModules.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Load assignments
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogToModule = {};
+            assignmentsSnapshot.forEach(doc => {
+                const data = doc.data();
+                backlogToModule[data.backlogId] = data.moduleId;
+            });
+            
+            // Collect all items with dates for Gantt chart
+            const ganttItems = [];
+            
+            // Sort modules by order
+            const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+            
+            // Add modules (in sorted order)
+            sortedModules.forEach(scheduleModule => {
+                const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                if (module && scheduleModule.startDate && scheduleModule.endDate) {
+                    ganttItems.push({
+                        type: 'module',
+                        name: module.name || 'Unnamed Module',
+                        startDate: new Date(scheduleModule.startDate),
+                        endDate: new Date(scheduleModule.endDate),
+                        color: '#3b82f6',
+                        moduleId: scheduleModule.moduleId,
+                        order: scheduleModule.order !== undefined ? scheduleModule.order : 999999
+                    });
+                }
+            });
+            
+            // Add backlogs from modules - ONLY from schedule's productBacklogs (which are from secondReviewBacklogs)
+            sortedModules.forEach(scheduleModule => {
+                if (!scheduleModule.productBacklogs || scheduleModule.productBacklogs.length === 0) return;
+                
+                // Get backlog IDs from schedule
+                const scheduledBacklogIds = scheduleModule.productBacklogs.map(pb => String(pb.backlogId));
+                
+                // Only get backlogs from secondReviewBacklogs that are in the schedule
+                const moduleBacklogs = allBacklogs.filter(b => 
+                    b.source === 'secondReview' && 
+                    scheduledBacklogIds.includes(String(b.id))
+                );
+                
+                // Sort backlogs by order
+                const sortedBacklogs = moduleBacklogs.map(backlog => {
+                    const scheduleBacklog = scheduleModule.productBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedBacklogs.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
+                    const startDate = scheduleBacklog?.startDate || scheduleModule.startDate;
+                    const endDate = scheduleBacklog?.endDate || scheduleModule.endDate;
+                    
+                    if (startDate && endDate) {
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        // Only add if endDate >= startDate to prevent infinite loops
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: scheduleModule.moduleId,
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
+                            });
+                        }
+                    }
+                });
+            });
+            
+            // Add standalone backlogs - ONLY from secondReviewBacklogs
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                const standaloneBacklogIds = scheduleData.standaloneBacklogs.map(b => String(b.backlogId));
+                const standaloneBacklogs = allBacklogs.filter(b => 
+                    b.source === 'secondReview' && 
+                    standaloneBacklogIds.includes(String(b.id))
+                );
+                
+                // Sort standalone backlogs by order
+                const sortedStandaloneBacklogs = standaloneBacklogs.map(backlog => {
+                    const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                
+                sortedStandaloneBacklogs.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
+                    const startDate = scheduleBacklog?.startDate || '';
+                    const endDate = scheduleBacklog?.endDate || '';
+                    
+                    if (startDate && endDate) {
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        // Only add if endDate >= startDate to prevent infinite loops
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: null,
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
+                            });
+                        }
+                    }
+                });
+            }
+            
+            if (ganttItems.length === 0) {
+                ganttContainer.innerHTML = '<p class="empty-state">Add modules and set dates to view the Gantt chart.</p>';
+                return;
+            }
+            
+            // Filter out invalid date ranges before calculating min/max
+            const validGanttItems = ganttItems.filter(item => {
+                const isValid = item.startDate && item.endDate && item.endDate >= item.startDate;
+                if (!isValid) {
+                    console.warn(`Invalid date range in Gantt chart: startDate=${item.startDate}, endDate=${item.endDate} for item ${item.name}`);
+                }
+                return isValid;
+            });
+            
+            if (validGanttItems.length === 0) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Ranges Detected</p>
+                        <p style="color: #92400e;">Some items have end dates that are earlier than start dates. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Calculate date range from valid items only
+            const allDates = validGanttItems.flatMap(item => [item.startDate, item.endDate]);
+            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+            
+            // Validate date range to prevent infinite loops
+            if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime()) || maxDate < minDate) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                        <p style="color: #92400e;">Unable to render Gantt chart due to invalid date ranges. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Add padding to ensure all items are visible (more padding on the end)
+            minDate.setDate(minDate.getDate() - 7);
+            maxDate.setDate(maxDate.getDate() + 14); // Extra padding on the end to prevent cropping
+            
+            const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+            if (totalDays <= 0 || !isFinite(totalDays)) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600; margin-bottom: 0.5rem;">Invalid Date Range</p>
+                        <p style="color: #92400e;">Unable to calculate date range. Please contact an administrator to fix the dates.</p>
+                    </div>
+                `;
+                return;
+            }
+            const dayWidth = Math.max(30, 800 / totalDays); // Minimum 30px per day
+            
+            // Group by module - use valid items only
+            const moduleGroups = {};
+            const standaloneItems = [];
+            
+            validGanttItems.forEach(item => {
+                if (item.type === 'module') {
+                    if (!moduleGroups[item.moduleId]) {
+                        moduleGroups[item.moduleId] = {
+                            module: item,
+                            backlogs: []
+                        };
+                    }
+                } else if (item.moduleId) {
+                    if (!moduleGroups[item.moduleId]) {
+                        moduleGroups[item.moduleId] = { backlogs: [] };
+                    }
+                    moduleGroups[item.moduleId].backlogs.push(item);
+                } else {
+                    standaloneItems.push(item);
+                }
+            });
+            
+            // Sort backlogs within each module by order
+            Object.keys(moduleGroups).forEach(moduleId => {
+                if (moduleGroups[moduleId].backlogs) {
+                    moduleGroups[moduleId].backlogs.sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                }
+            });
+            
+            // Sort standalone items by order
+            standaloneItems.sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+            
+            // Convert moduleGroups to sorted array to preserve module order
+            const sortedModuleGroups = Object.values(moduleGroups).sort((a, b) => {
+                // Get module order (or 999999 if no module)
+                const orderA = a.module?.order !== undefined ? a.module.order : 999999;
+                const orderB = b.module?.order !== undefined ? b.module.order : 999999;
+                return orderA - orderB;
+            });
+            
+            // Render Gantt chart with proper width to show all dates
+            const chartWidth = Math.max(totalDays * dayWidth, 1200); // Ensure minimum width
+            let html = `
+                <div style="position: relative; min-width: ${chartWidth}px; width: ${chartWidth}px;">
+                    <!-- Timeline header -->
+                    <div style="position: sticky; top: 0; background: white; z-index: 10; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; padding-bottom: 0.5rem; width: ${chartWidth}px;">
+                        <div style="display: flex; align-items: center; height: 40px;">
+                            <div style="width: 200px; flex-shrink: 0; font-weight: 600; color: var(--text-primary);">Task</div>
+                            <div style="flex: 1; position: relative; height: 100%; min-width: ${chartWidth - 200}px;">
+                                ${this.renderGanttTimelineHeader(minDate, maxDate, dayWidth)}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Gantt bars -->
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; width: ${chartWidth}px;">
+            `;
+            
+            // Render modules and their backlogs (in sorted order)
+            sortedModuleGroups.forEach((group, groupIndex) => {
+                if (group.module) {
+                    html += this.renderGanttBar(group.module, minDate, dayWidth, 200, true);
+                }
+                group.backlogs.forEach(backlog => {
+                    html += this.renderGanttBar(backlog, minDate, dayWidth, 200, false);
+                });
+            });
+            
+            // Render standalone items (in sorted order)
+            standaloneItems.forEach(item => {
+                html += this.renderGanttBar(item, minDate, dayWidth, 200, false);
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            ganttContainer.innerHTML = html;
         } catch (error) {
             console.error('Error rendering second review Gantt chart:', error);
-            ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart.</p>';
+            ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart. Please try again.</p>';
         }
     },
     
@@ -33569,38 +34850,861 @@ const app = {
         }
     },
     
-    // Placeholder helper functions - these need full implementation
+    async removeSecondReviewModule(moduleId) {
+        if (!confirm('Are you sure you want to remove this module from second sprint schedule?')) {
+            return;
+        }
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit (not submitted, or submitted and verified, and not frozen)
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            if (isSubmitted && !isVerified) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (isFrozen) {
+                alert('The schedule is frozen. Modules cannot be removed. Please contact admin to unfreeze.');
+                return;
+            }
+            
+            scheduleData.modules = scheduleData.modules.filter(m => m.moduleId !== moduleId);
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error removing module:', error);
+            alert('Error removing module. Please try again.');
+        }
+    },
+    
+    async editSecondReviewModule(moduleId) {
+        // Module dates can be edited directly via the date inputs
+        // This function can be extended for more complex editing in the future
+        // For now, users can edit dates directly using the calendar inputs
+    },
+    
+    async updateSecondReviewModuleDate(moduleId, dateType, dateValue) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+            if (moduleIndex === -1) return;
+            
+            const module = scheduleData.modules[moduleIndex];
+            
+            // Validate date range before updating
+            if (dateType === 'startDate') {
+                if (module.endDate && dateValue && new Date(dateValue) > new Date(module.endDate)) {
+                    alert('Start date cannot be later than end date. Please fix the end date first or enter a valid start date.');
+                    await this.loadSecondReviewSchedule();
+                    return;
+                }
+                scheduleData.modules[moduleIndex].startDate = dateValue;
+            } else if (dateType === 'endDate') {
+                if (module.startDate && dateValue && new Date(dateValue) < new Date(module.startDate)) {
+                    alert('End date cannot be earlier than start date. Please fix the start date first or enter a valid end date.');
+                    await this.loadSecondReviewSchedule();
+                    return;
+                }
+                scheduleData.modules[moduleIndex].endDate = dateValue;
+            }
+            
+            // Update all child product backlogs to match module dates
+            if (module.productBacklogs && module.productBacklogs.length > 0) {
+                const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
+                const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
+                
+                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(backlog => {
+                    return {
+                        backlogId: backlog.backlogId,
+                        startDate: moduleStartDate || backlog.startDate || '',
+                        endDate: moduleEndDate || backlog.endDate || '',
+                        order: backlog.order !== undefined ? backlog.order : 999999
+                    };
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            
+            await this.loadSecondReviewSchedule();
+            await this.renderSecondReviewGanttChart();
+        } catch (error) {
+            console.error('Error updating module date:', error);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
     async updateSecondReviewBacklogDate(backlogId, moduleId, dateType, dateValue) {
-        // Should mirror updateFirstReviewBacklogDate
-        console.log('updateSecondReviewBacklogDate called', backlogId, moduleId, dateType, dateValue);
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            // Check if can edit
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (moduleId && moduleId !== 'standalone') {
+                // Update backlog in module
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                
+                if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                    scheduleData.modules[moduleIndex].productBacklogs = [];
+                }
+                
+                const backlogIndex = scheduleData.modules[moduleIndex].productBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) {
+                    scheduleData.modules[moduleIndex].productBacklogs.push({ 
+                        backlogId: String(backlogId), 
+                        startDate: dateType === 'startDate' ? dateValue : '', 
+                        endDate: dateType === 'endDate' ? dateValue : '',
+                        order: scheduleData.modules[moduleIndex].productBacklogs.length
+                    });
+                } else {
+                    const existingBacklog = scheduleData.modules[moduleIndex].productBacklogs[backlogIndex];
+                    const newStartDate = dateType === 'startDate' ? dateValue : (existingBacklog.startDate || '');
+                    const newEndDate = dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '');
+                    
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        await this.loadSecondReviewSchedule();
+                        return;
+                    }
+                    
+                    scheduleData.modules[moduleIndex].productBacklogs[backlogIndex] = {
+                        backlogId: String(existingBacklog.backlogId || backlogId),
+                        startDate: newStartDate,
+                        endDate: newEndDate,
+                        order: existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex
+                    };
+                }
+            } else {
+                // Update standalone backlog
+                if (!scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = [];
+                }
+                
+                const backlogIndex = scheduleData.standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) {
+                    const newStartDate = dateType === 'startDate' ? dateValue : '';
+                    const newEndDate = dateType === 'endDate' ? dateValue : '';
+                    
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        await this.loadSecondReviewSchedule();
+                        return;
+                    }
+                    
+                    scheduleData.standaloneBacklogs.push({ 
+                        backlogId: String(backlogId), 
+                        startDate: newStartDate, 
+                        endDate: newEndDate,
+                        order: scheduleData.standaloneBacklogs.length
+                    });
+                } else {
+                    const existingBacklog = scheduleData.standaloneBacklogs[backlogIndex];
+                    const newStartDate = dateType === 'startDate' ? dateValue : (existingBacklog.startDate || '');
+                    const newEndDate = dateType === 'endDate' ? dateValue : (existingBacklog.endDate || '');
+                    
+                    if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                        alert('Start date cannot be later than end date. Please fix the dates.');
+                        await this.loadSecondReviewSchedule();
+                        return;
+                    }
+                    
+                    scheduleData.standaloneBacklogs[backlogIndex] = {
+                        backlogId: String(existingBacklog.backlogId || backlogId),
+                        startDate: newStartDate,
+                        endDate: newEndDate,
+                        order: existingBacklog.order !== undefined ? existingBacklog.order : backlogIndex
+                    };
+                }
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error updating backlog date:', error);
+            alert('Error updating date. Please try again.');
+        }
     },
     
     async showAddSecondReviewBacklogModal(moduleId) {
-        // Should mirror showAddFirstReviewBacklogModal
-        alert('Add backlog modal - to be implemented');
+        try {
+            const team = await this.getUserTeam();
+            if (team) {
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+                if (scheduleDoc.exists()) {
+                    const scheduleData = scheduleDoc.data();
+                    const isSubmitted = scheduleData.submitted === true;
+                    const isVerified = scheduleData.verified === true;
+                    const isFrozen = scheduleData.frozen === true;
+                    
+                    if (isSubmitted && !isVerified) {
+                        alert('The schedule is locked for editing until admin verification.');
+                        return;
+                    }
+                    
+                    if (isFrozen) {
+                        alert('The schedule is frozen. Product backlogs cannot be added. Please contact admin to unfreeze.');
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error checking edit permission:', error);
+        }
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'add-second-review-backlog-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Add Product Backlog to Second Sprint</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-second-review-backlog-form" onsubmit="app.saveSecondReviewBacklog(event, '${moduleId || ''}')">
+                        <div class="form-group">
+                            <label for="second-review-backlog-task">Task/Description *</label>
+                            <input type="text" id="second-review-backlog-task" class="form-input" required placeholder="Enter task description">
+                        </div>
+                        <div class="form-group">
+                            <label for="second-review-backlog-start-date">Start Date</label>
+                            <input type="date" id="second-review-backlog-start-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="second-review-backlog-end-date">End Date</label>
+                            <input type="date" id="second-review-backlog-end-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="second-review-backlog-priority">Priority</label>
+                            <select id="second-review-backlog-priority" class="form-input">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="second-review-backlog-difficulty">Difficulty</label>
+                            <select id="second-review-backlog-difficulty" class="form-input">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                                <option value="very-hard">Very Hard</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="second-review-backlog-story">User Story</label>
+                            <textarea id="second-review-backlog-story" class="form-input" rows="3" placeholder="Enter user story (optional)"></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Add Backlog</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    },
+    
+    async saveSecondReviewBacklog(event, moduleId) {
+        event.preventDefault();
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const task = document.getElementById('second-review-backlog-task').value.trim();
+            const startDate = document.getElementById('second-review-backlog-start-date').value;
+            const endDate = document.getElementById('second-review-backlog-end-date').value;
+            const priority = document.getElementById('second-review-backlog-priority').value;
+            const difficulty = document.getElementById('second-review-backlog-difficulty').value;
+            const storyText = document.getElementById('second-review-backlog-story').value.trim();
+            
+            if (!task) {
+                alert('Please enter a task description.');
+                return;
+            }
+            
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be later than end date.');
+                return;
+            }
+            
+            const newBacklogRef = doc(collection(window.firebaseDb, 'secondReviewBacklogs'));
+            await setDoc(newBacklogRef, {
+                teamId: team.id,
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                storyText: storyText,
+                moduleId: moduleId || null,
+                createdAt: serverTimestamp()
+            });
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false
+            };
+            
+            if (moduleId) {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    scheduleData.modules[moduleIndex].productBacklogs.push({
+                        backlogId: newBacklogRef.id,
+                        startDate: startDate,
+                        endDate: endDate,
+                        order: scheduleData.modules[moduleIndex].productBacklogs.length
+                    });
+                }
+            } else {
+                if (!scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = [];
+                }
+                scheduleData.standaloneBacklogs.push({
+                    backlogId: newBacklogRef.id,
+                    startDate: startDate,
+                    endDate: endDate,
+                    order: scheduleData.standaloneBacklogs.length
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData, { merge: true });
+            
+            const modal = document.getElementById('add-second-review-backlog-modal');
+            if (modal) {
+                modal.remove();
+            }
+            
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error saving backlog:', error);
+            alert('Error saving backlog. Please try again.');
+        }
     },
     
     async editSecondReviewBacklog(backlogId, moduleId) {
-        // Should mirror editFirstReviewBacklog
-        alert('Edit backlog - to be implemented');
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'secondReviewBacklogs', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Backlog not found.');
+                return;
+            }
+            
+            const backlogData = backlogDoc.data();
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [] };
+            
+            let startDate = '';
+            let endDate = '';
+            
+            if (moduleId && moduleId !== 'standalone') {
+                const module = scheduleData.modules.find(m => m.moduleId === moduleId);
+                if (module && module.productBacklogs) {
+                    const scheduleBacklog = module.productBacklogs.find(pb => String(pb.backlogId) === String(backlogId));
+                    if (scheduleBacklog) {
+                        startDate = scheduleBacklog.startDate || '';
+                        endDate = scheduleBacklog.endDate || '';
+                    }
+                }
+            } else {
+                const standaloneBacklog = scheduleData.standaloneBacklogs?.find(pb => String(pb.backlogId) === String(backlogId));
+                if (standaloneBacklog) {
+                    startDate = standaloneBacklog.startDate || '';
+                    endDate = standaloneBacklog.endDate || '';
+                }
+            }
+            
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'edit-second-review-backlog-modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Edit Product Backlog</h2>
+                        <button class="btn-icon" onclick="this.closest('.modal').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="edit-second-review-backlog-form" onsubmit="app.updateSecondReviewBacklogDetails(event, '${backlogId}', '${moduleId || ''}')">
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-task">Task/Description *</label>
+                                <input type="text" id="edit-second-review-backlog-task" class="form-input" required value="${this.escapeHtml(backlogData.task || '')}">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-start-date">Start Date</label>
+                                <input type="date" id="edit-second-review-backlog-start-date" class="form-input" value="${startDate}">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-end-date">End Date</label>
+                                <input type="date" id="edit-second-review-backlog-end-date" class="form-input" value="${endDate}">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-priority">Priority</label>
+                                <select id="edit-second-review-backlog-priority" class="form-input">
+                                    <option value="low" ${backlogData.priority === 'low' ? 'selected' : ''}>Low</option>
+                                    <option value="medium" ${backlogData.priority === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="high" ${backlogData.priority === 'high' ? 'selected' : ''}>High</option>
+                                    <option value="critical" ${backlogData.priority === 'critical' ? 'selected' : ''}>Critical</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-difficulty">Difficulty</label>
+                                <select id="edit-second-review-backlog-difficulty" class="form-input">
+                                    <option value="easy" ${backlogData.difficulty === 'easy' ? 'selected' : ''}>Easy</option>
+                                    <option value="medium" ${backlogData.difficulty === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="hard" ${backlogData.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
+                                    <option value="very-hard" ${backlogData.difficulty === 'very-hard' ? 'selected' : ''}>Very Hard</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-second-review-backlog-story">User Story</label>
+                                <textarea id="edit-second-review-backlog-story" class="form-input" rows="3">${this.escapeHtml(backlogData.storyText || '')}</textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Update Backlog</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error editing backlog:', error);
+            alert('Error loading backlog details. Please try again.');
+        }
+    },
+    
+    async updateSecondReviewBacklogDetails(event, backlogId, moduleId) {
+        event.preventDefault();
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const task = document.getElementById('edit-second-review-backlog-task').value.trim();
+            const startDate = document.getElementById('edit-second-review-backlog-start-date').value;
+            const endDate = document.getElementById('edit-second-review-backlog-end-date').value;
+            const priority = document.getElementById('edit-second-review-backlog-priority').value;
+            const difficulty = document.getElementById('edit-second-review-backlog-difficulty').value;
+            const storyText = document.getElementById('edit-second-review-backlog-story').value.trim();
+            
+            if (!task) {
+                alert('Please enter a task description.');
+                return;
+            }
+            
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be later than end date.');
+                return;
+            }
+            
+            await updateDoc(doc(window.firebaseDb, 'secondReviewBacklogs', backlogId), {
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                storyText: storyText
+            });
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (scheduleDoc.exists()) {
+                const scheduleData = scheduleDoc.data();
+                
+                if (moduleId && moduleId !== 'standalone') {
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                    if (moduleIndex !== -1) {
+                        const backlogIndex = scheduleData.modules[moduleIndex].productBacklogs?.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                        if (backlogIndex !== undefined && backlogIndex !== -1) {
+                            scheduleData.modules[moduleIndex].productBacklogs[backlogIndex].startDate = startDate;
+                            scheduleData.modules[moduleIndex].productBacklogs[backlogIndex].endDate = endDate;
+                        }
+                    }
+                } else {
+                    const backlogIndex = scheduleData.standaloneBacklogs?.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                    if (backlogIndex !== undefined && backlogIndex !== -1) {
+                        scheduleData.standaloneBacklogs[backlogIndex].startDate = startDate;
+                        scheduleData.standaloneBacklogs[backlogIndex].endDate = endDate;
+                    }
+                }
+                
+                await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            }
+            
+            const modal = document.getElementById('edit-second-review-backlog-modal');
+            if (modal) {
+                modal.remove();
+            }
+            
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error updating backlog:', error);
+            alert('Error updating backlog. Please try again.');
+        }
     },
     
     async removeSecondReviewBacklog(backlogId, moduleId) {
-        // Should mirror removeFirstReviewBacklog
         if (!confirm('Are you sure you want to remove this product backlog?')) {
             return;
         }
-        console.log('removeSecondReviewBacklog called', backlogId, moduleId);
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            
+            if (moduleId && moduleId !== 'standalone') {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    scheduleData.modules[moduleIndex].productBacklogs = scheduleData.modules[moduleIndex].productBacklogs.filter(
+                        pb => String(pb.backlogId) !== String(backlogId)
+                    );
+                }
+            } else {
+                scheduleData.standaloneBacklogs = scheduleData.standaloneBacklogs.filter(
+                    pb => String(pb.backlogId) !== String(backlogId)
+                );
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error removing backlog:', error);
+            alert('Error removing backlog. Please try again.');
+        }
     },
     
     async moveSecondReviewBacklogUp(backlogId, moduleId, currentIndex) {
-        // Should mirror moveFirstReviewBacklogUp
-        console.log('moveSecondReviewBacklogUp called', backlogId, moduleId, currentIndex);
+        if (currentIndex === 0) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (moduleId && moduleId !== 'standalone') {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1 && scheduleData.modules[moduleIndex].productBacklogs) {
+                    const backlogs = scheduleData.modules[moduleIndex].productBacklogs;
+                    [backlogs[currentIndex], backlogs[currentIndex - 1]] = [backlogs[currentIndex - 1], backlogs[currentIndex]];
+                    backlogs.forEach((pb, idx) => {
+                        pb.order = idx;
+                    });
+                }
+            } else {
+                const backlogs = scheduleData.standaloneBacklogs || [];
+                [backlogs[currentIndex], backlogs[currentIndex - 1]] = [backlogs[currentIndex - 1], backlogs[currentIndex]];
+                backlogs.forEach((pb, idx) => {
+                    pb.order = idx;
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error moving backlog up:', error);
+            alert('Error moving backlog. Please try again.');
+        }
     },
     
     async moveSecondReviewBacklogDown(backlogId, moduleId, currentIndex, maxIndex) {
-        // Should mirror moveFirstReviewBacklogDown
-        console.log('moveSecondReviewBacklogDown called', backlogId, moduleId, currentIndex, maxIndex);
+        if (currentIndex >= maxIndex) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            
+            const scheduleData = scheduleDoc.data();
+            
+            if (moduleId && moduleId !== 'standalone') {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1 && scheduleData.modules[moduleIndex].productBacklogs) {
+                    const backlogs = scheduleData.modules[moduleIndex].productBacklogs;
+                    [backlogs[currentIndex], backlogs[currentIndex + 1]] = [backlogs[currentIndex + 1], backlogs[currentIndex]];
+                    backlogs.forEach((pb, idx) => {
+                        pb.order = idx;
+                    });
+                }
+            } else {
+                const backlogs = scheduleData.standaloneBacklogs || [];
+                [backlogs[currentIndex], backlogs[currentIndex + 1]] = [backlogs[currentIndex + 1], backlogs[currentIndex]];
+                backlogs.forEach((pb, idx) => {
+                    pb.order = idx;
+                });
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id), scheduleData);
+            await this.loadSecondReviewSchedule();
+        } catch (error) {
+            console.error('Error moving backlog down:', error);
+            alert('Error moving backlog. Please try again.');
+        }
+    },
+    
+    toggleAttendanceSummarySection() {
+        const container = document.getElementById('attendance-summary-container');
+        const chevron = document.getElementById('attendance-summary-chevron');
+        
+        if (container && chevron) {
+            const isVisible = container.style.display !== 'none';
+            container.style.display = isVisible ? 'none' : 'block';
+            chevron.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+    },
+    
+    async loadStudentAttendanceSummary(teamId, studentKtuid) {
+        const container = document.getElementById('student-attendance-summary');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading attendance summary...</div>';
+            
+            // Load all attendance records for this team
+            const attendanceQuery = query(
+                collection(window.firebaseDb, 'attendance'),
+                where('teamId', '==', teamId)
+            );
+            const attendanceSnapshot = await getDocs(attendanceQuery);
+            
+            // Process attendance data
+            const attendanceRecords = [];
+            attendanceSnapshot.forEach(doc => {
+                const data = doc.data();
+                attendanceRecords.push({
+                    date: data.date,
+                    students: data.students || {},
+                    noPresentation: data.noPresentation === true,
+                    hours: data.hours || []
+                });
+            });
+            
+            // Sort by date
+            attendanceRecords.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Calculate attendance for this student
+            let present = 0;
+            let absent = 0;
+            let totalDays = 0;
+            let noPresentationDays = 0;
+            
+            attendanceRecords.forEach(record => {
+                if (record.noPresentation) {
+                    noPresentationDays++;
+                } else {
+                    totalDays++;
+                    const status = record.students[studentKtuid];
+                    if (status === 'present') {
+                        present++;
+                    } else if (status === 'absent') {
+                        absent++;
+                    }
+                }
+            });
+            
+            // Calculate attendance percentage
+            const attendancePercentage = totalDays > 0 
+                ? Math.round((present / totalDays) * 100) 
+                : 0;
+            
+            let percentageColor = '#10b981'; // Green
+            if (attendancePercentage < 75) {
+                percentageColor = '#ef4444'; // Red
+            } else if (attendancePercentage < 85) {
+                percentageColor = '#f59e0b'; // Orange
+            }
+            
+            // Render summary
+            container.innerHTML = `
+                <div style="padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 1.5rem;">
+                    <h4 style="margin: 0 0 1rem 0; color: #065f46; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-chart-pie"></i> Your Attendance Summary
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                        <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2rem; font-weight: 700; color: ${percentageColor}; margin-bottom: 0.25rem;">${attendancePercentage}%</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">Attendance</div>
+                        </div>
+                        <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${present}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">Present</div>
+                        </div>
+                        <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2rem; font-weight: 700; color: #ef4444; margin-bottom: 0.25rem;">${absent}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">Absent</div>
+                        </div>
+                        <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${totalDays}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">Total Days</div>
+                        </div>
+                        <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem;">${noPresentationDays}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">Not Mini Project Hour</div>
+                        </div>
+                    </div>
+                    <div style="padding: 1rem; background: white; border-radius: 6px; margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <span style="font-size: 0.9rem; color: var(--text-primary); font-weight: 600;">Overall Progress</span>
+                            <span style="font-size: 0.9rem; color: var(--text-secondary);">${present} / ${totalDays} days</span>
+                        </div>
+                        <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                            <div style="height: 100%; background: linear-gradient(90deg, ${percentageColor} 0%, ${percentageColor}dd 100%); width: ${attendancePercentage}%; transition: width 0.3s ease; border-radius: 6px;"></div>
+                        </div>
+                        <p style="margin: 0.75rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                            <i class="fas fa-info-circle"></i> Attendance is calculated as: (Present Days / Total Days with Mini Project Hour) × 100
+                        </p>
+                        <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                            Days marked as "Not Mini Project Hour" are excluded from the calculation.
+                        </p>
+                    </div>
+                </div>
+                
+                ${attendanceRecords.length > 0 ? `
+                    <div style="margin-top: 1.5rem;">
+                        <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); font-size: 1rem; font-weight: 600;">
+                            <i class="fas fa-calendar-alt"></i> Attendance History
+                        </h4>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <thead>
+                                    <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                                        <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Date</th>
+                                        <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Hours</th>
+                                        <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${attendanceRecords.map((record, index) => {
+                                        let status = '';
+                                        let statusColor = '';
+                                        let hoursDisplay = '';
+                                        
+                                        if (record.noPresentation) {
+                                            status = 'Not Mini Project Hour';
+                                            statusColor = '#6b7280';
+                                            hoursDisplay = '-';
+                                        } else {
+                                            const studentStatus = record.students[studentKtuid];
+                                            if (studentStatus === 'present') {
+                                                status = 'Present';
+                                                statusColor = '#10b981';
+                                            } else if (studentStatus === 'absent') {
+                                                status = 'Absent';
+                                                statusColor = '#ef4444';
+                                            } else {
+                                                status = 'Not Marked';
+                                                statusColor = '#9ca3af';
+                                            }
+                                            
+                                            // Display hours
+                                            if (record.hours && record.hours.length > 0) {
+                                                hoursDisplay = `Hours ${record.hours.join(', ')}`;
+                                            } else {
+                                                hoursDisplay = 'Not specified';
+                                            }
+                                        }
+                                        
+                                        return `
+                                            <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
+                                                <td style="padding: 0.75rem; font-weight: 500; color: var(--text-primary);">
+                                                    ${new Date(record.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                                                </td>
+                                                <td style="padding: 0.75rem; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">
+                                                    ${hoursDisplay}
+                                                </td>
+                                                <td style="padding: 0.75rem; text-align: center;">
+                                                    <span style="padding: 0.35rem 0.75rem; background: ${statusColor}20; color: ${statusColor}; border-radius: 10px; font-size: 0.85rem; font-weight: 600;">
+                                                        ${status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : `
+                    <div style="padding: 2rem; text-align: center; background: #f9fafb; border-radius: 8px; border: 1px dashed #d1d5db;">
+                        <i class="fas fa-calendar-times" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                        <p style="margin: 0; color: var(--text-secondary);">No attendance records found yet.</p>
+                    </div>
+                `}
+            `;
+        } catch (error) {
+            console.error('Error loading student attendance summary:', error);
+            container.innerHTML = '<p class="error-message">Error loading attendance summary. Please try again.</p>';
+        }
     },
     
     async recalculateSecondReviewModuleDatesFromBacklogs(teamId, moduleId, scheduleData) {
