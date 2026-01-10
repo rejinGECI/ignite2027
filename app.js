@@ -6020,6 +6020,17 @@ const app = {
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             
+            // Load first review total marks for product backlog marks calculation
+            let firstReviewTotalMarks = 10; // Default
+            try {
+                firstReviewTotalMarks = await this.getFirstReviewTotalMarks();
+                if (firstReviewTotalMarks === 0) {
+                    firstReviewTotalMarks = 10; // Default to 10 if not set
+                }
+            } catch (error) {
+                console.error('Error loading first review total marks:', error);
+            }
+            
             // Get guide's email to match teams
             const guideEmail = this.currentUser.email;
             
@@ -6283,6 +6294,115 @@ const app = {
                         
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                         
+                        // Load product backlog evaluations for First Review stage
+                        const stage = stages[i];
+                        const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                        if (isFirstReviewStage) {
+                            try {
+                                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+                                if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                    // Load product backlogs and evaluator checked backlogs (similar to report generation)
+                                    const firstReviewBacklogQuery = query(
+                                        collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                        where('teamId', '==', team.id)
+                                    );
+                                    const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                                    const allBacklogs = [];
+                                    firstReviewBacklogSnapshot.forEach(doc => {
+                                        allBacklogs.push({ id: doc.id, ...doc.data() });
+                                    });
+                                    
+                                    const firstReviewScheduleData = scheduleDoc.data();
+                                    const firstReviewBacklogs = [];
+                                    
+                                    if (firstReviewScheduleData.modules) {
+                                        firstReviewScheduleData.modules.forEach(module => {
+                                            if (module.productBacklogs) {
+                                                module.productBacklogs.forEach(pb => {
+                                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                    if (backlog) {
+                                                        firstReviewBacklogs.push(backlog);
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    if (firstReviewScheduleData.standaloneBacklogs) {
+                                        firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                firstReviewBacklogs.push(backlog);
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Load evaluator entries and process product backlog evaluations
+                                    const evaluatorEntriesForPB = evaluatorEntries; // Already loaded above
+                                    const productBacklogEvaluations = {};
+                                    
+                                    // Initialize product backlog evaluations
+                                    firstReviewBacklogs.forEach(backlog => {
+                                        productBacklogEvaluations[String(backlog.id)] = {
+                                            backlog: backlog,
+                                            markedBy: [],
+                                            unmarkedBy: []
+                                        };
+                                    });
+                                    
+                                    // Get checked backlogs from evaluator entries
+                                    evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                        const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                        
+                                        // Check if evaluator has evaluated (has firstReviewCheckedBacklogs field that is an array)
+                                        if (evaluatorEntry.firstReviewCheckedBacklogs && Array.isArray(evaluatorEntry.firstReviewCheckedBacklogs)) {
+                                            const checkedBacklogs = evaluatorEntry.firstReviewCheckedBacklogs;
+                                            
+                                            firstReviewBacklogs.forEach(backlog => {
+                                                const backlogId = String(backlog.id);
+                                                
+                                                if (checkedBacklogs.includes(backlogId)) {
+                                                    productBacklogEvaluations[backlogId].markedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                } else {
+                                                    productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
+                                    
+                                    // Get checked backlogs from admin evaluation in main document
+                                    if (evalData.firstReviewCheckedBacklogs && Array.isArray(evalData.firstReviewCheckedBacklogs)) {
+                                        const adminCheckedBacklogs = evalData.firstReviewCheckedBacklogs;
+                                        firstReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            
+                                            if (adminCheckedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                                }
+                            } catch (error) {
+                                console.warn(`Error loading product backlogs for team ${team.id}:`, error);
+                            }
+                        }
+                        
                         if (evalDoc.exists() || evaluatorEntries.length > 0) {
                             evaluations[i] = evalData;
                         }
@@ -6434,7 +6554,16 @@ const app = {
                                 const evalData = team.evaluations[index];
                                 const teamParams = stage.teamMarkParams || [];
                                 const individualParams = stage.individualMarkParams || [];
-                                const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                                
+                                let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                // For First Review, if no team parameters are configured, use firstReviewTotalMarks from settings
+                                if (teamTotal === 0 && isFirstReviewStage) {
+                                    teamTotal = firstReviewTotalMarks;
+                                } else if (teamTotal === 0) {
+                                    teamTotal = 10; // Default to 10 for other stages
+                                }
+                                
                                 const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                 
                                 // Get marks
@@ -6450,11 +6579,104 @@ const app = {
                                     teamCommentsText.trim() !== '<br>';
                                 
                                 const hasIndividualEvals = evalData?.individualEvaluations && Object.keys(evalData.individualEvaluations).length > 0;
+                                const hasProductBacklogs = evalData?.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0;
                                 
-                                const isComplete = teamMarks > 0 || hasTeamComments || hasIndividualEvals;
+                                const isComplete = teamMarks > 0 || hasTeamComments || hasIndividualEvals || hasProductBacklogs;
                                 
                                 // Always show evaluation section if evaluation data exists
                                 const showEvaluationDetails = evalData !== undefined;
+                                
+                                // Prepare product backlog section for First Review stage
+                                let productBacklogSection = '';
+                                if (isFirstReviewStage && hasProductBacklogs) {
+                                    const markedBacklogs = [];
+                                    const pendingBacklogs = [];
+                                    
+                                    evalData.productBacklogEvaluations.forEach(pbEval => {
+                                        const markedBy = pbEval.markedBy || [];
+                                        
+                                        if (markedBy.length > 0) {
+                                            markedBacklogs.push(pbEval.backlog);
+                                        } else {
+                                            pendingBacklogs.push(pbEval.backlog);
+                                        }
+                                    });
+                                    
+                                    const totalBacklogs = evalData.productBacklogEvaluations.length;
+                                    const completedCount = markedBacklogs.length;
+                                    const pendingCount = pendingBacklogs.length;
+                                    const progressPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+                                    
+                                    // Calculate marks based on completed backlogs
+                                    const backlogMarks = firstReviewTotalMarks > 0 
+                                        ? Math.round((completedCount / totalBacklogs) * firstReviewTotalMarks * 100) / 100
+                                        : 0;
+                                    
+                                    productBacklogSection = `
+                                        <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                            <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
+                                                <i class="fas fa-list-check"></i> Product Backlogs
+                                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">
+                                                    (Evaluator: Prof. Rejin R)
+                                                </span>
+                                            </div>
+                                            
+                                            <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #d1fae5;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                    <div>
+                                                        <strong style="color: var(--text-primary); font-size: 0.8rem;">Progress:</strong>
+                                                        <span style="font-size: 0.9rem; font-weight: 600; color: #059669; margin-left: 0.25rem;">${progressPercentage}%</span>
+                                                        <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.25rem;">
+                                                            (${completedCount} / ${totalBacklogs})
+                                                        </span>
+                                                    </div>
+                                                    ${firstReviewTotalMarks > 0 ? `
+                                                        <div style="text-align: right;">
+                                                            <strong style="color: var(--text-primary); font-size: 0.8rem;">Marks:</strong>
+                                                            <span style="font-size: 0.9rem; font-weight: 600; color: #059669; margin-left: 0.25rem;">${backlogMarks.toFixed(2)}</span>
+                                                            <span style="font-size: 0.75rem; color: var(--text-secondary);">/ ${firstReviewTotalMarks}</span>
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                                <div style="margin-top: 0.5rem;">
+                                                    <div style="width: 100%; height: 10px; background: #d1fae5; border-radius: 5px; overflow: hidden;">
+                                                        <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${progressPercentage}%; transition: width 0.3s ease; border-radius: 5px;"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            ${completedCount > 0 ? `
+                                                <div style="margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; background: #f0fdf4; border-radius: 4px; border-left: 2px solid #10b981;">
+                                                    <div style="font-weight: 600; color: #10b981; margin-bottom: 0.25rem; font-size: 0.75rem;">
+                                                        <i class="fas fa-check-circle"></i> Completed (${completedCount})
+                                                    </div>
+                                                    <ul style="margin: 0; padding-left: 16px; font-size: 0.7rem; color: #374151;">
+                                                        ${markedBacklogs.map(backlog => `
+                                                            <li style="margin-bottom: 0.15rem;">
+                                                                ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                            </li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                            
+                                            ${pendingCount > 0 ? `
+                                                <div style="padding: 0.4rem 0.6rem; background: #fffbeb; border-radius: 4px; border-left: 2px solid #f59e0b;">
+                                                    <div style="font-weight: 600; color: #f59e0b; margin-bottom: 0.25rem; font-size: 0.75rem;">
+                                                        <i class="fas fa-clock"></i> Pending (${pendingCount})
+                                                    </div>
+                                                    <ul style="margin: 0; padding-left: 16px; font-size: 0.7rem; color: #374151;">
+                                                        ${pendingBacklogs.map(backlog => `
+                                                            <li style="margin-bottom: 0.15rem;">
+                                                                ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                            </li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }
                                 
                                 return `
                                     <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--bg-color); border-radius: 6px; border-left: 3px solid ${isComplete ? 'var(--success-color)' : 'var(--warning-color)'};">
@@ -6479,6 +6701,8 @@ const app = {
                                             ` : ''}
                                                 </div>
                                             ` : ''}
+                                            
+                                            ${productBacklogSection}
                                             ${(evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) || hasTeamComments || (teamCommentsText && teamCommentsText.trim().length > 10) ? `
                                                 <div style="font-size: 0.8rem; color: var(--text-primary); margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid var(--border-color);">
                                                     <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary); font-size: 0.85rem;">
