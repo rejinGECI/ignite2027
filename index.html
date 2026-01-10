@@ -821,6 +821,22 @@ Bob Johnson,GHI789</pre>
                             </div>
                         </div>
                     </div>
+                    
+                    <div class="admin-card">
+                        <h3><i class="fas fa-edit"></i> Problem Statement Editing</h3>
+                        <p>Control whether students can edit their approved problem statements</p>
+                        <div class="settings-item">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="allow-approved-problem-statement-edit" onchange="app.toggleApprovedProblemStatementEditing()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="settings-label">
+                                <strong>Allow Editing of Approved Problem Statements</strong>
+                                <p>When enabled, students can edit the details of their approved problem statements</p>
+                            </div>
+                        </div>
+                        <div id="approved-problem-statement-edit-status" class="csv-status" style="margin-top: 1rem;"></div>
+                    </div>
                 </div>
             </div>
             

@@ -3708,6 +3708,9 @@ const app = {
         
         // Load first review total marks
         await this.loadFirstReviewTotalMarks();
+        
+        // Load approved problem statement editing setting
+        await this.loadApprovedProblemStatementEditingSetting();
     },
     
     async loadFirstReviewTotalMarks() {
@@ -4572,6 +4575,23 @@ const app = {
         }
     },
     
+    async loadApprovedProblemStatementEditingSetting() {
+        if (!this.isAdmin) return;
+        
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
+            const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
+            const allowEditing = settingsData.allowApprovedEdit !== false; // Default to true if not set
+            
+            const editCheckbox = document.getElementById('allow-approved-problem-statement-edit');
+            if (editCheckbox) {
+                editCheckbox.checked = allowEditing;
+            }
+        } catch (error) {
+            console.error('Error loading approved problem statement editing setting:', error);
+        }
+    },
+    
     async toggleProblemStatementPresentation() {
         if (!this.isAdmin) {
             alert('Only administrators can change this setting.');
@@ -4628,6 +4648,70 @@ const app = {
         } catch (error) {
             console.error('Error checking problem statement presentation status:', error);
             return false; // Default to false if error
+        }
+    },
+    
+    async isApprovedProblemStatementEditingAllowed() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
+            const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
+            // Default to true if not set (backward compatibility)
+            return settingsData.allowApprovedEdit !== false;
+        } catch (error) {
+            console.error('Error checking approved problem statement editing status:', error);
+            return true; // Default to true on error
+        }
+    },
+    
+    async toggleApprovedProblemStatementEditing() {
+        if (!this.isAdmin) {
+            alert('Only administrators can change this setting.');
+            return;
+        }
+        
+        const checkbox = document.getElementById('allow-approved-problem-statement-edit');
+        const statusDiv = document.getElementById('approved-problem-statement-edit-status');
+        
+        if (!checkbox) return;
+        
+        const allowEditing = checkbox.checked;
+        
+        try {
+            const settingsRef = doc(window.firebaseDb, 'settings', 'problemStatement');
+            const settingsDoc = await getDoc(settingsRef);
+            
+            const updateData = {
+                allowApprovedEdit: allowEditing,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            };
+            
+            if (settingsDoc.exists()) {
+                await updateDoc(settingsRef, updateData);
+            } else {
+                await setDoc(settingsRef, {
+                    presentationOver: false,
+                    allowApprovedEdit: allowEditing,
+                    createdAt: serverTimestamp(),
+                    createdBy: this.currentUser.uid,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: this.currentUser.uid
+                });
+            }
+            
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="csv-success" style="margin-top: 0.5rem;">
+                    <strong>Setting updated!</strong> Editing of approved problem statements is now ${allowEditing ? 'enabled' : 'disabled'}.
+                </div>`;
+                setTimeout(() => {
+                    if (statusDiv) statusDiv.innerHTML = '';
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error updating approved problem statement editing status:', error);
+            alert('Error updating setting. Please try again.');
+            // Revert checkbox
+            checkbox.checked = !allowEditing;
         }
     },
     
@@ -11255,7 +11339,17 @@ const app = {
                 </div>
                 
                 <!-- Team Evaluation -->
-                ${teamTotal > 0 || teamMarks !== null && teamMarks !== undefined ? `
+                ${(() => {
+                    // Always calculate teamTotal from teamParams to ensure it's correct
+                    const calculatedTeamTotal = teamParams.reduce((sum, p) => {
+                        const maxMarks = parseFloat(p.maxMarks) || 0;
+                        return sum + maxMarks;
+                    }, 0);
+                    // Use calculatedTeamTotal if > 0, otherwise use provided teamTotal (which should already be calculated)
+                    // Default to 10 if no team parameters are configured
+                    const finalTeamTotal = calculatedTeamTotal > 0 ? calculatedTeamTotal : (teamTotal || 10);
+                    
+                    return (finalTeamTotal > 0 || teamMarks !== null && teamMarks !== undefined) ? `
                 <div style="margin-bottom: ${skipHeader ? '20px' : '35px'}; padding: ${skipHeader ? '20px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
                     <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '15px' : '25px'}; color: #1f2937; border-left: 4px solid #059669; padding-left: 15px; letter-spacing: 0.5px;">Team Evaluation</h3>
                     ${teamParams.length > 0 ? `
@@ -11301,13 +11395,13 @@ const app = {
                                 <tr style="background: #f0fdf4; border-top: 2px solid #059669;">
                                     <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 0 8px;">Total</td>
                                     <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #059669; font-size: ${skipHeader ? '16px' : '18px'};">${teamMarks !== null && teamMarks !== undefined ? (typeof teamMarks === 'number' ? teamMarks.toFixed(2) : teamMarks) : '0.00'}</td>
-                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 8px 0;">${teamTotal}</td>
+                                    <td style="padding: ${skipHeader ? '12px 14px' : '16px 18px'}; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 700; color: #1f2937; font-size: ${skipHeader ? '15px' : '16px'}; border-radius: 0 0 8px 0;">${finalTeamTotal}</td>
                                 </tr>
                             </tbody>
                         </table>
                     ` : `
                         <div style="margin-bottom: ${skipHeader ? '15px' : '25px'}; padding: ${skipHeader ? '15px' : '20px'}; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #059669;">
-                            <strong style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '15px' : '17px'}; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${teamTotal}</strong>
+                            <strong style="font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '15px' : '17px'}; color: #1f2937;">Total Team Marks: <span style="color: #059669; font-size: ${skipHeader ? '18px' : '20px'}; font-weight: 700;">${teamMarks !== null && teamMarks !== undefined ? teamMarks : 0}</span> / ${finalTeamTotal || 10}</strong>
                         </div>
                     `}
                     ${(evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0) || (teamComments && teamComments.trim() !== '' && teamComments.trim() !== '<p><br></p>') ? `
@@ -11332,7 +11426,8 @@ const app = {
                         </div>
                     ` : ''}
                 </div>
-                ` : ''}
+                ` : '';
+                })()}
                 
                 <!-- Individual Evaluations -->
                 ${individualTotal > 0 || Object.keys(individualEvaluations).length > 0 ? `
@@ -11415,6 +11510,73 @@ const app = {
                     }).join('')}
                 </div>
                 ` : ''}
+                
+                <!-- Product Backlogs Evaluation (Sprint 1) -->
+                ${(() => {
+                    if (!evalData.productBacklogEvaluations || evalData.productBacklogEvaluations.length === 0) {
+                        return '';
+                    }
+                    
+                    // Separate completed and pending backlogs at team level
+                    const completedBacklogs = [];
+                    const pendingBacklogs = [];
+                    
+                    evalData.productBacklogEvaluations.forEach(pbEval => {
+                        const markedBy = pbEval.markedBy || [];
+                        
+                        // A backlog is "completed" if at least one evaluator marked/checked it
+                        // A backlog is "pending" if NO evaluator marked it (regardless of evaluator entries)
+                        if (markedBy.length > 0) {
+                            // At least one evaluator marked this backlog - it's completed
+                            completedBacklogs.push(pbEval.backlog);
+                        } else {
+                            // No evaluator marked this backlog - it's pending
+                            pendingBacklogs.push(pbEval.backlog);
+                        }
+                    });
+                    
+                    if (completedBacklogs.length === 0 && pendingBacklogs.length === 0) {
+                        return '';
+                    }
+                    
+                    return `
+                        <div style="margin-bottom: ${skipHeader ? '10px' : '35px'}; padding: ${skipHeader ? '10px' : '30px'}; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                            <h3 style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '14px' : '20px'}; font-weight: 700; margin-bottom: ${skipHeader ? '8px' : '20px'}; color: #1f2937; border-left: 4px solid #0ea5e9; padding-left: ${skipHeader ? '10px' : '12px'}; letter-spacing: 0.5px;">Product Backlogs Evaluation</h3>
+                            ${completedBacklogs.length > 0 ? `
+                                <div style="margin-bottom: ${skipHeader ? '12px' : '20px'};">
+                                    <div style="padding: ${skipHeader ? '8px 12px' : '10px 16px'}; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #10b981; margin-bottom: ${skipHeader ? '6px' : '10px'};">
+                                        <div style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; font-weight: 600; color: #10b981; margin-bottom: ${skipHeader ? '6px' : '10px'};">
+                                            <i class="fas fa-check-circle"></i> Completed Backlogs (${completedBacklogs.length})
+                                        </div>
+                                        <ul style="margin: 0; padding-left: ${skipHeader ? '20px' : '24px'}; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; color: #374151;">
+                                            ${completedBacklogs.map((backlog, index) => `
+                                                <li style="margin-bottom: ${index < completedBacklogs.length - 1 ? (skipHeader ? '4px' : '6px') : '0'};">
+                                                    ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${pendingBacklogs.length > 0 ? `
+                                <div style="margin-bottom: ${skipHeader ? '0' : '10px'};">
+                                    <div style="padding: ${skipHeader ? '8px 12px' : '10px 16px'}; background: #fffbeb; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                                        <div style="font-family: 'Montserrat', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; font-weight: 600; color: #f59e0b; margin-bottom: ${skipHeader ? '6px' : '10px'};">
+                                            <i class="fas fa-clock"></i> Pending Backlogs (${pendingBacklogs.length})
+                                        </div>
+                                        <ul style="margin: 0; padding-left: ${skipHeader ? '20px' : '24px'}; font-family: 'Lato', sans-serif; font-size: ${skipHeader ? '12px' : '14px'}; color: #374151;">
+                                            ${pendingBacklogs.map((backlog, index) => `
+                                                <li style="margin-bottom: ${index < pendingBacklogs.length - 1 ? (skipHeader ? '4px' : '6px') : '0'};">
+                                                    ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                })()}
                 
                 ${!skipHeader ? `
                 <!-- Footer -->
@@ -11788,7 +11950,8 @@ const app = {
                     teamMarks: entryData.teamMarks,
                     teamMarksData: entryData.teamMarksData,
                     teamComments: entryData.teamComments || entryData.comments,
-                    individualEvaluations: entryData.individualEvaluations || {}
+                    individualEvaluations: entryData.individualEvaluations || {},
+                    firstReviewCheckedBacklogs: entryData.firstReviewCheckedBacklogs
                 });
             });
             return entries;
@@ -11966,6 +12129,16 @@ const app = {
                             return sum + (isNaN(numValue) ? 0 : numValue);
                         }, 0);
                         evalData.teamMarks = calculatedTotal;
+                    } else if (evalData.teamMarks === null || evalData.teamMarks === undefined) {
+                        // If no teamMarksData but teamMarks exists, preserve it
+                        // Otherwise, set to 0 if no marks at all
+                        if (teamMarksList.length > 0) {
+                            // Use average of team marks if available
+                            const avgTeamMarks = teamMarksList.reduce((sum, m) => sum + m, 0) / teamMarksList.length;
+                            evalData.teamMarks = avgTeamMarks;
+                        } else {
+                            evalData.teamMarks = 0;
+                        }
                     }
                     
                     // Aggregate team comments from all evaluators
@@ -12138,6 +12311,183 @@ const app = {
                         };
                     });
                     
+                    // Load product backlogs and evaluator checked backlogs for sprint 1
+                    const isFirstSprintStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                    if (isFirstSprintStage) {
+                        try {
+                            // Load first review schedule
+                            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
+                            if (scheduleDoc.exists()) {
+                                const firstReviewScheduleData = scheduleDoc.data();
+                                const isFrozen = firstReviewScheduleData.frozen === true;
+                                
+                                if (isFrozen) {
+                                    // Load all product backlogs
+                                    const firstReviewBacklogQuery = query(
+                                        collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                        where('teamId', '==', team.id)
+                                    );
+                                    const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                                    const allBacklogs = [];
+                                    firstReviewBacklogSnapshot.forEach(doc => {
+                                        allBacklogs.push({ id: doc.id, ...doc.data() });
+                                    });
+                                    
+                                    // Load modules for names
+                                    const modulesQuery = query(
+                                        collection(window.firebaseDb, 'cardSortingModules'),
+                                        where('teamId', '==', team.id)
+                                    );
+                                    const modulesSnapshot = await getDocs(modulesQuery);
+                                    const allModules = [];
+                                    modulesSnapshot.forEach(doc => {
+                                        allModules.push({ id: doc.id, ...doc.data() });
+                                    });
+                                    
+                                    // Get backlogs from schedule
+                                    const firstReviewBacklogs = [];
+                                    if (firstReviewScheduleData.modules) {
+                                        firstReviewScheduleData.modules.forEach(module => {
+                                            if (module.productBacklogs) {
+                                                module.productBacklogs.forEach(pb => {
+                                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                    if (backlog) {
+                                                        firstReviewBacklogs.push({
+                                                            ...backlog,
+                                                            moduleId: module.moduleId,
+                                                            moduleName: allModules.find(m => m.id === module.moduleId)?.name || 'Unknown Module'
+                                                        });
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Get standalone backlogs
+                                    if (firstReviewScheduleData.standaloneBacklogs) {
+                                        firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                firstReviewBacklogs.push({
+                                                    ...backlog,
+                                                    moduleId: null,
+                                                    moduleName: 'Standalone'
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Process evaluator checked backlogs
+                                    const productBacklogEvaluations = {};
+                                    
+                                    // Initialize product backlog evaluations
+                                    firstReviewBacklogs.forEach(backlog => {
+                                        productBacklogEvaluations[String(backlog.id)] = {
+                                            backlog: backlog,
+                                            markedBy: [],
+                                            unmarkedBy: []
+                                        };
+                                    });
+                                    
+                                    // Check if admin is in evaluatorEntries to avoid double counting
+                                    let adminInEvaluatorEntries = false;
+                                    let adminEvaluatorEntry = null;
+                                    evaluatorEntries.forEach(evaluatorEntry => {
+                                        const userDoc = evaluatorEntry.evaluatorId || evaluatorEntry.id;
+                                        if (userDoc) {
+                                            // Check if this evaluator is admin by checking if their name is Admin or if we can verify
+                                            // For now, we'll check if firstReviewCheckedBacklogs exists in evaluator entry
+                                            if (evaluatorEntry.firstReviewCheckedBacklogs && Array.isArray(evaluatorEntry.firstReviewCheckedBacklogs)) {
+                                                // Check if evaluator name suggests it's admin
+                                                const evaluatorName = evaluatorEntry.evaluatorName || '';
+                                                if (evaluatorName.toLowerCase() === 'admin' || evaluatorName === 'Administrator') {
+                                                    adminInEvaluatorEntries = true;
+                                                    adminEvaluatorEntry = evaluatorEntry;
+                                                }
+                                            }
+                                        }
+                                    });
+                                    
+                                    // Get checked backlogs from evaluator entries first (including admin if they're an evaluator)
+                                    // For each evaluator entry, check if they marked each backlog
+                                    evaluatorEntries.forEach(evaluatorEntry => {
+                                        const evaluatorName = evaluatorEntry.evaluatorName || 'Unknown Evaluator';
+                                        const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                        // Only process if evaluator has actually evaluated (has firstReviewCheckedBacklogs field that is an array)
+                                        // If field doesn't exist or is not an array, evaluator hasn't evaluated yet, so skip
+                                        if (!evaluatorEntry.firstReviewCheckedBacklogs || !Array.isArray(evaluatorEntry.firstReviewCheckedBacklogs)) {
+                                            return; // Skip this evaluator - they haven't evaluated yet
+                                        }
+                                        // Get checked backlogs - it's guaranteed to be an array at this point
+                                        const checkedBacklogs = evaluatorEntry.firstReviewCheckedBacklogs;
+                                        
+                                        firstReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            
+                                            // Remove any existing entry for this evaluator first
+                                            productBacklogEvaluations[backlogId].markedBy = productBacklogEvaluations[backlogId].markedBy.filter(e => e.evaluatorId !== evaluatorId);
+                                            productBacklogEvaluations[backlogId].unmarkedBy = productBacklogEvaluations[backlogId].unmarkedBy.filter(e => e.evaluatorId !== evaluatorId);
+                                            
+                                            if (checkedBacklogs.includes(backlogId)) {
+                                                // Evaluator marked this backlog - add to completed
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: evaluatorName,
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            } else {
+                                                // Evaluator has evaluated but didn't mark this backlog - add to unmarkedBy
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: evaluatorName,
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            }
+                                        });
+                                    });
+                                    
+                                    // Get checked backlogs from admin evaluation in main document (only if admin not in evaluatorEntries)
+                                    if (!adminInEvaluatorEntries && evalData.firstReviewCheckedBacklogs && Array.isArray(evalData.firstReviewCheckedBacklogs)) {
+                                        const adminCheckedBacklogs = evalData.firstReviewCheckedBacklogs;
+                                        firstReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            // Remove any existing 'admin' entry to replace with main doc data
+                                            productBacklogEvaluations[backlogId].markedBy = productBacklogEvaluations[backlogId].markedBy.filter(e => e.evaluatorId !== 'admin');
+                                            productBacklogEvaluations[backlogId].unmarkedBy = productBacklogEvaluations[backlogId].unmarkedBy.filter(e => e.evaluatorId !== 'admin');
+                                            
+                                            // Admin has evaluated (has firstReviewCheckedBacklogs array), so add to appropriate list
+                                            if (adminCheckedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            } else {
+                                                // Admin has evaluated but didn't mark this backlog - add to pending
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    // If no evaluations found for any backlog, still include all backlogs
+                                    if (Object.keys(productBacklogEvaluations).length === 0) {
+                                        firstReviewBacklogs.forEach(backlog => {
+                                            productBacklogEvaluations[String(backlog.id)] = {
+                                                backlog: backlog,
+                                                markedBy: [],
+                                                unmarkedBy: []
+                                            };
+                                        });
+                                    }
+                                    
+                                    evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                                }
+                            }
+                        } catch (error) {
+                            console.warn(`Error loading product backlogs for team ${team.id}:`, error);
+                        }
+                    }
+                    
                     return { ...team, evaluation: evalData };
                 } catch (error) {
                     console.error(`Error loading evaluation for team ${team.id}:`, error);
@@ -12151,8 +12501,15 @@ const app = {
             // Get mark parameters
             const teamParams = stage.teamMarkParams || [];
             const individualParams = stage.individualMarkParams || [];
-            const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
-            const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+            // Calculate totals using parseFloat to handle string/number conversion
+            const teamTotal = teamParams.reduce((sum, p) => {
+                const maxMarks = parseFloat(p.maxMarks) || 0;
+                return sum + maxMarks;
+            }, 0);
+            const individualTotal = individualParams.reduce((sum, p) => {
+                const maxMarks = parseFloat(p.maxMarks) || 0;
+                return sum + maxMarks;
+            }, 0);
             
             // Generate based on format
             if (format === 'csv') {
@@ -12291,6 +12648,48 @@ const app = {
                 }
                 csvRows.push('');
             });
+            
+            // Product Backlogs Evaluation (Sprint 1)
+            const productBacklogEvaluations = evalData.productBacklogEvaluations || [];
+            if (productBacklogEvaluations.length > 0) {
+                csvRows.push('Product Backlogs Evaluation');
+                
+                // Separate completed and pending backlogs at team level
+                const completedBacklogs = [];
+                const pendingBacklogs = [];
+                
+                productBacklogEvaluations.forEach(pbEval => {
+                    const markedBy = pbEval.markedBy || [];
+                    
+                    // A backlog is "completed" if at least one evaluator marked/checked it
+                    // A backlog is "pending" if NO evaluator marked it
+                    if (markedBy.length > 0) {
+                        // At least one evaluator marked this backlog - it's completed
+                        completedBacklogs.push(pbEval.backlog);
+                    } else {
+                        // No evaluator marked this backlog - it's pending
+                        pendingBacklogs.push(pbEval.backlog);
+                    }
+                });
+                
+                if (completedBacklogs.length > 0) {
+                    csvRows.push(`Completed Backlogs (${completedBacklogs.length})`);
+                    completedBacklogs.forEach((backlog, index) => {
+                        const backlogDesc = (backlog.task || backlog.description || backlog.title || 'Product Backlog Item').replace(/,/g, ';').replace(/\n/g, ' ');
+                        csvRows.push(`${index + 1},${backlogDesc}`);
+                    });
+                    csvRows.push('');
+                }
+                
+                if (pendingBacklogs.length > 0) {
+                    csvRows.push(`Pending Backlogs (${pendingBacklogs.length})`);
+                    pendingBacklogs.forEach((backlog, index) => {
+                        const backlogDesc = (backlog.task || backlog.description || backlog.title || 'Product Backlog Item').replace(/,/g, ';').replace(/\n/g, ' ');
+                        csvRows.push(`${index + 1},${backlogDesc}`);
+                    });
+                    csvRows.push('');
+                }
+            }
             
             csvRows.push('---');
             csvRows.push('');
@@ -14953,6 +15352,9 @@ const app = {
             const problemStatementId = problemStatementsSnapshot.docs[0].id;
             section.style.display = 'block';
             
+            // Check if editing is allowed
+            const editingAllowed = await this.isApprovedProblemStatementEditingAllowed();
+            
             content.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                     <div style="flex: 1;">
@@ -14965,9 +15367,11 @@ const app = {
                             </span>
                         ` : ''}
                     </div>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.showEditProblemStatementModal('${problemStatementId}')" style="margin-left: 1rem;">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
+                    ${editingAllowed ? `
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.showEditProblemStatementModal('${problemStatementId}')" style="margin-left: 1rem;">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                    ` : ''}
                 </div>
                 <div style="padding: 1rem; background: var(--bg-color); border-radius: 6px; margin-bottom: 1rem;">
                     <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">
@@ -14998,6 +15402,13 @@ const app = {
     async showEditProblemStatementModal(problemStatementId) {
         const modal = document.getElementById('edit-problem-statement-modal');
         if (!modal) return;
+        
+        // Check if editing is allowed
+        const editingAllowed = await this.isApprovedProblemStatementEditingAllowed();
+        if (!editingAllowed) {
+            alert('Editing of approved problem statements has been disabled by the administrator.');
+            return;
+        }
         
         try {
             // Load the problem statement data
@@ -15040,6 +15451,14 @@ const app = {
     
     // Save edited problem statement
     async saveEditedProblemStatement() {
+        // Check if editing is allowed
+        const editingAllowed = await this.isApprovedProblemStatementEditingAllowed();
+        if (!editingAllowed) {
+            alert('Editing of approved problem statements has been disabled by the administrator.');
+            this.closeEditProblemStatementModal();
+            return;
+        }
+        
         const problemStatementId = document.getElementById('edit-problem-statement-id').value;
         const title = document.getElementById('edit-problem-title').value.trim();
         const problemStatement = document.getElementById('edit-problem-statement').value.trim();
