@@ -6294,9 +6294,10 @@ const app = {
                         
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                         
-                        // Load product backlog evaluations for First Review stage
+                        // Load product backlog evaluations for First Review and Second Review stages
                         const stage = stages[i];
                         const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                        const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
                         if (isFirstReviewStage) {
                             try {
                                 const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
@@ -6400,6 +6401,113 @@ const app = {
                                 }
                             } catch (error) {
                                 console.warn(`Error loading product backlogs for team ${team.id}:`, error);
+                            }
+                        }
+                        
+                        // Load product backlog evaluations for Second Review stage
+                        if (isSecondReviewStage) {
+                            try {
+                                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', team.id));
+                                if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                    // Load product backlogs and evaluator checked backlogs (similar to first sprint)
+                                    const secondReviewBacklogQuery = query(
+                                        collection(window.firebaseDb, 'secondReviewBacklogs'),
+                                        where('teamId', '==', team.id)
+                                    );
+                                    const secondReviewBacklogSnapshot = await getDocs(secondReviewBacklogQuery);
+                                    const allBacklogs = [];
+                                    secondReviewBacklogSnapshot.forEach(doc => {
+                                        allBacklogs.push({ id: doc.id, ...doc.data() });
+                                    });
+                                    
+                                    const secondReviewScheduleData = scheduleDoc.data();
+                                    const secondReviewBacklogs = [];
+                                    
+                                    if (secondReviewScheduleData.modules) {
+                                        secondReviewScheduleData.modules.forEach(module => {
+                                            if (module.productBacklogs) {
+                                                module.productBacklogs.forEach(pb => {
+                                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                    if (backlog) {
+                                                        secondReviewBacklogs.push(backlog);
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    if (secondReviewScheduleData.standaloneBacklogs) {
+                                        secondReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                secondReviewBacklogs.push(backlog);
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Load evaluator entries and process product backlog evaluations
+                                    const evaluatorEntriesForPB = evaluatorEntries; // Already loaded above
+                                    const productBacklogEvaluations = {};
+                                    
+                                    // Initialize product backlog evaluations
+                                    secondReviewBacklogs.forEach(backlog => {
+                                        productBacklogEvaluations[String(backlog.id)] = {
+                                            backlog: backlog,
+                                            markedBy: [],
+                                            unmarkedBy: []
+                                        };
+                                    });
+                                    
+                                    // Get checked backlogs from evaluator entries
+                                    evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                        const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                        
+                                        // Check if evaluator has evaluated (has secondReviewCheckedBacklogs field that is an array)
+                                        if (evaluatorEntry.secondReviewCheckedBacklogs && Array.isArray(evaluatorEntry.secondReviewCheckedBacklogs)) {
+                                            const checkedBacklogs = evaluatorEntry.secondReviewCheckedBacklogs;
+                                            
+                                            secondReviewBacklogs.forEach(backlog => {
+                                                const backlogId = String(backlog.id);
+                                                
+                                                if (checkedBacklogs.includes(backlogId)) {
+                                                    productBacklogEvaluations[backlogId].markedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                } else {
+                                                    productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
+                                    
+                                    // Get checked backlogs from admin evaluation in main document
+                                    if (evalData.secondReviewCheckedBacklogs && Array.isArray(evalData.secondReviewCheckedBacklogs)) {
+                                        const adminCheckedBacklogs = evalData.secondReviewCheckedBacklogs;
+                                        secondReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            
+                                            if (adminCheckedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                                }
+                            } catch (error) {
+                                console.warn(`Error loading second sprint product backlogs for team ${team.id}:`, error);
                             }
                         }
                         
@@ -6555,6 +6663,7 @@ const app = {
                                 const teamParams = stage.teamMarkParams || [];
                                 const individualParams = stage.individualMarkParams || [];
                                 const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                                const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
                                 
                                 let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                 // For First Review, if no team parameters are configured, use firstReviewTotalMarks from settings
@@ -6586,9 +6695,9 @@ const app = {
                                 // Always show evaluation section if evaluation data exists
                                 const showEvaluationDetails = evalData !== undefined;
                                 
-                                // Prepare product backlog section for First Review stage
+                                // Prepare product backlog section for First Review or Second Review stage
                                 let productBacklogSection = '';
-                                if (isFirstReviewStage && hasProductBacklogs) {
+                                if ((isFirstReviewStage || isSecondReviewStage) && hasProductBacklogs) {
                                     const markedBacklogs = [];
                                     const pendingBacklogs = [];
                                     
@@ -6608,14 +6717,24 @@ const app = {
                                     const progressPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
                                     
                                     // Calculate marks based on completed backlogs
-                                    const backlogMarks = firstReviewTotalMarks > 0 
-                                        ? Math.round((completedCount / totalBacklogs) * firstReviewTotalMarks * 100) / 100
+                                    // For second sprint, use team total if available, otherwise default
+                                    let totalMarksForBacklogs = 0;
+                                    if (isFirstReviewStage) {
+                                        totalMarksForBacklogs = firstReviewTotalMarks > 0 ? firstReviewTotalMarks : teamTotal;
+                                    } else if (isSecondReviewStage) {
+                                        totalMarksForBacklogs = teamTotal > 0 ? teamTotal : 10;
+                                    }
+                                    
+                                    const backlogMarks = totalMarksForBacklogs > 0 
+                                        ? Math.round((completedCount / totalBacklogs) * totalMarksForBacklogs * 100) / 100
                                         : 0;
+                                    
+                                    const sprintName = isFirstReviewStage ? 'First Sprint' : 'Second Sprint';
                                     
                                     productBacklogSection = `
                                         <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e5e7eb;">
                                             <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
-                                                <i class="fas fa-list-check"></i> Product Backlogs
+                                                <i class="fas fa-list-check"></i> ${sprintName} - Product Backlogs
                                                 <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; margin-left: 0.5rem;">
                                                     (Evaluator: Prof. Rejin R)
                                                 </span>
@@ -6630,11 +6749,11 @@ const app = {
                                                             (${completedCount} / ${totalBacklogs})
                                                         </span>
                                                     </div>
-                                                    ${firstReviewTotalMarks > 0 ? `
+                                                    ${totalMarksForBacklogs > 0 ? `
                                                         <div style="text-align: right;">
                                                             <strong style="color: var(--text-primary); font-size: 0.8rem;">Marks:</strong>
                                                             <span style="font-size: 0.9rem; font-weight: 600; color: #059669; margin-left: 0.25rem;">${backlogMarks.toFixed(2)}</span>
-                                                            <span style="font-size: 0.75rem; color: var(--text-secondary);">/ ${firstReviewTotalMarks}</span>
+                                                            <span style="font-size: 0.75rem; color: var(--text-secondary);">/ ${totalMarksForBacklogs}</span>
                                                         </div>
                                                     ` : ''}
                                                 </div>
@@ -12175,7 +12294,8 @@ const app = {
                     teamMarksData: entryData.teamMarksData,
                     teamComments: entryData.teamComments || entryData.comments,
                     individualEvaluations: entryData.individualEvaluations || {},
-                    firstReviewCheckedBacklogs: entryData.firstReviewCheckedBacklogs
+                    firstReviewCheckedBacklogs: entryData.firstReviewCheckedBacklogs,
+                    secondReviewCheckedBacklogs: entryData.secondReviewCheckedBacklogs
                 });
             });
             return entries;
@@ -13146,6 +13266,7 @@ const app = {
                 try {
                     const stage = stages[i];
                     const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                    const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
                     
                     // Load main evaluation document
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
@@ -13494,6 +13615,113 @@ const app = {
                         }
                     }
                     
+                    // Load product backlog evaluations for Second Review stage
+                    if (isSecondReviewStage) {
+                        try {
+                            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', studentTeam.id));
+                            if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                // Load product backlogs and evaluator checked backlogs (similar to first sprint)
+                                const secondReviewBacklogQuery = query(
+                                    collection(window.firebaseDb, 'secondReviewBacklogs'),
+                                    where('teamId', '==', studentTeam.id)
+                                );
+                                const secondReviewBacklogSnapshot = await getDocs(secondReviewBacklogQuery);
+                                const allBacklogs = [];
+                                secondReviewBacklogSnapshot.forEach(doc => {
+                                    allBacklogs.push({ id: doc.id, ...doc.data() });
+                                });
+                                
+                                const secondReviewScheduleData = scheduleDoc.data();
+                                const secondReviewBacklogs = [];
+                                
+                                if (secondReviewScheduleData.modules) {
+                                    secondReviewScheduleData.modules.forEach(module => {
+                                        if (module.productBacklogs) {
+                                            module.productBacklogs.forEach(pb => {
+                                                const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                if (backlog) {
+                                                    secondReviewBacklogs.push(backlog);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                if (secondReviewScheduleData.standaloneBacklogs) {
+                                    secondReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                        const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                        if (backlog) {
+                                            secondReviewBacklogs.push(backlog);
+                                        }
+                                    });
+                                }
+                                
+                                // Load evaluator entries and process product backlog evaluations
+                                const evaluatorEntriesForPB = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
+                                const productBacklogEvaluations = {};
+                                
+                                // Initialize product backlog evaluations
+                                secondReviewBacklogs.forEach(backlog => {
+                                    productBacklogEvaluations[String(backlog.id)] = {
+                                        backlog: backlog,
+                                        markedBy: [],
+                                        unmarkedBy: []
+                                    };
+                                });
+                                
+                                // Get checked backlogs from evaluator entries
+                                evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                    const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                    
+                                    // Check if evaluator has evaluated (has secondReviewCheckedBacklogs field that is an array)
+                                    if (evaluatorEntry.secondReviewCheckedBacklogs && Array.isArray(evaluatorEntry.secondReviewCheckedBacklogs)) {
+                                        const checkedBacklogs = evaluatorEntry.secondReviewCheckedBacklogs;
+                                        
+                                        secondReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            
+                                            if (checkedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                                
+                                // Get checked backlogs from admin evaluation in main document
+                                if (evalData.secondReviewCheckedBacklogs && Array.isArray(evalData.secondReviewCheckedBacklogs)) {
+                                    const adminCheckedBacklogs = evalData.secondReviewCheckedBacklogs;
+                                    secondReviewBacklogs.forEach(backlog => {
+                                        const backlogId = String(backlog.id);
+                                        
+                                        if (adminCheckedBacklogs.includes(backlogId)) {
+                                            productBacklogEvaluations[backlogId].markedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        } else {
+                                            productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                            }
+                        } catch (error) {
+                            console.warn(`Error loading second sprint product backlogs for team ${studentTeam.id}:`, error);
+                        }
+                    }
+                    
                     // Store evaluation data - always store it, even if empty, so we can check for completion status
                     // Check if evaluation has any meaningful content after aggregation
                     const hasTeamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined;
@@ -13749,9 +13977,11 @@ const app = {
                                         const teamMarksData = evalData.teamMarksData || {};
                                         const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                                         
-                                        // Prepare product backlog section for First Review stage
+                                        // Prepare product backlog section for First Review or Second Review stage
                                         let productBacklogSection = '';
-                                        if (isFirstReviewStage && evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0) {
+                                        const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+                                        
+                                        if ((isFirstReviewStage || isSecondReviewStage) && evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0) {
                                             // Filter backlogs - show completed if any evaluator marked them
                                             // Since rejin@gecidukki.ac.in is the only evaluator, all marked backlogs are from them
                                             const markedBacklogs = [];
@@ -13773,16 +14003,27 @@ const app = {
                                             const pendingCount = pendingBacklogs.length;
                                             const progressPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
                                             
-                                            // Calculate marks based on completed backlogs (from settings)
-                                            const backlogMarks = firstReviewTotalMarks > 0 
-                                                ? Math.round((completedCount / totalBacklogs) * firstReviewTotalMarks * 100) / 100
+                                            // Calculate marks based on completed backlogs
+                                            // For second sprint, we'll use the same total marks approach (could be from settings or default to team total)
+                                            let totalMarksForBacklogs = 0;
+                                            if (isFirstReviewStage) {
+                                                totalMarksForBacklogs = firstReviewTotalMarks > 0 ? firstReviewTotalMarks : teamTotal;
+                                            } else if (isSecondReviewStage) {
+                                                // For second sprint, use team total if available, otherwise default
+                                                totalMarksForBacklogs = teamTotal > 0 ? teamTotal : 10;
+                                            }
+                                            
+                                            const backlogMarks = totalMarksForBacklogs > 0 
+                                                ? Math.round((completedCount / totalBacklogs) * totalMarksForBacklogs * 100) / 100
                                                 : 0;
+                                            
+                                            const sprintName = isFirstReviewStage ? 'First Sprint' : 'Second Sprint';
                                             
                                             productBacklogSection = `
                                                 <div class="marks-section product-backlogs-section" style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
                                                     <div class="marks-header" style="margin-bottom: 1rem;">
                                                         <span class="marks-label" style="font-size: 1rem; font-weight: 600;">
-                                                            <i class="fas fa-list-check"></i> Product Backlogs
+                                                            <i class="fas fa-list-check"></i> ${sprintName} - Product Backlogs
                                                         </span>
                                                         <span style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 0.5rem;">
                                                             (Evaluator: Prof. Rejin R)
@@ -13798,11 +14039,11 @@ const app = {
                                                                     (${completedCount} / ${totalBacklogs})
                                                                 </span>
                                                             </div>
-                                                            ${firstReviewTotalMarks > 0 ? `
+                                                            ${totalMarksForBacklogs > 0 ? `
                                                                 <div style="text-align: right;">
                                                                     <strong style="color: var(--text-primary); font-size: 0.95rem;">Marks:</strong>
                                                                     <span style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">${backlogMarks.toFixed(2)}</span>
-                                                                    <span style="font-size: 0.9rem; color: var(--text-secondary);">/ ${firstReviewTotalMarks}</span>
+                                                                    <span style="font-size: 0.9rem; color: var(--text-secondary);">/ ${totalMarksForBacklogs}</span>
                                                                 </div>
                                                             ` : ''}
                                                         </div>
@@ -15846,9 +16087,9 @@ const app = {
                         ` : ''}
                     </div>
                     ${editingAllowed ? `
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.showEditProblemStatementModal('${problemStatementId}')" style="margin-left: 1rem;">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.showEditProblemStatementModal('${problemStatementId}')" style="margin-left: 1rem;">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
                     ` : ''}
                 </div>
                 <div style="padding: 1rem; background: var(--bg-color); border-radius: 6px; margin-bottom: 1rem;">
@@ -29275,18 +29516,38 @@ const app = {
             
             // Get all checked checkboxes
             const checkboxes = document.querySelectorAll('.student-backlog-complete-checkbox');
-            const completedBacklogIds = Array.from(checkboxes)
+            
+            // Separate checkboxes by sprint (first or second)
+            const firstReviewCheckboxes = [];
+            const secondReviewCheckboxes = [];
+            
+            checkboxes.forEach(cb => {
+                // Check which sprint by finding the closest backlog item container
+                const backlogItem = cb.closest('.first-review-backlog-item') || 
+                                   cb.closest('.second-review-backlog-item');
+                
+                if (backlogItem) {
+                    if (backlogItem.classList.contains('first-review-backlog-item')) {
+                        firstReviewCheckboxes.push(cb);
+                    } else if (backlogItem.classList.contains('second-review-backlog-item')) {
+                        secondReviewCheckboxes.push(cb);
+                    }
+                }
+            });
+            
+            // Save first sprint completed tasks
+            if (firstReviewCheckboxes.length > 0) {
+                const firstReviewCompletedIds = Array.from(firstReviewCheckboxes)
                 .filter(cb => cb.checked)
                 .map(cb => cb.dataset.backlogId);
             
-            // Save to Firestore
             await setDoc(doc(window.firebaseDb, 'firstReviewStudentProgress', team.id), {
-                completedBacklogIds: completedBacklogIds,
+                    completedBacklogIds: firstReviewCompletedIds,
                 updatedAt: serverTimestamp()
             }, { merge: true });
             
-            // Update visual appearance of completed tasks
-            checkboxes.forEach(cb => {
+                // Update visual appearance for first review
+                firstReviewCheckboxes.forEach(cb => {
                 const backlogItem = cb.closest('.first-review-backlog-item');
                 if (backlogItem) {
                     const taskDiv = backlogItem.querySelector('div[style*="font-weight: 600"]');
@@ -29301,6 +29562,36 @@ const app = {
                     }
                 }
             });
+            }
+            
+            // Save second sprint completed tasks
+            if (secondReviewCheckboxes.length > 0) {
+                const secondReviewCompletedIds = Array.from(secondReviewCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.dataset.backlogId);
+                
+                await setDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', team.id), {
+                    completedBacklogIds: secondReviewCompletedIds,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+                
+                // Update visual appearance for second review
+                secondReviewCheckboxes.forEach(cb => {
+                    const backlogItem = cb.closest('.second-review-backlog-item');
+                    if (backlogItem) {
+                        const taskDiv = backlogItem.querySelector('div[style*="font-weight: 600"]');
+                        if (taskDiv) {
+                            if (cb.checked) {
+                                taskDiv.style.textDecoration = 'line-through';
+                                taskDiv.style.opacity = '0.7';
+                            } else {
+                                taskDiv.style.textDecoration = 'none';
+                                taskDiv.style.opacity = '1';
+                            }
+                        }
+                    }
+                });
+            }
         } catch (error) {
             console.error('Error saving completed tasks:', error);
             alert('Error saving completed tasks. Please try again.');
@@ -34141,8 +34432,8 @@ const app = {
             
             console.log('Second Sprint Schedule Status:', { isSubmitted, isVerified, isFrozen, hasSchedule: scheduleDoc.exists() });
             
-            // If submitted but not verified, show message
-            if (isSubmitted && !isVerified) {
+            // If submitted but not verified, show message (unless frozen - frozen means we show modules)
+            if (isSubmitted && !isVerified && !isFrozen) {
                 modulesListContainer.innerHTML = `
                     <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);">
                         <div style="text-align: center; margin-bottom: 1.5rem;">
@@ -34243,7 +34534,16 @@ const app = {
                     console.error('Error rendering Gantt chart:', ganttError);
                 }
                 
-                return;
+                // If frozen, we still want to show modules with checkboxes (no edit buttons)
+                // So don't return early - continue to render modules below
+                if (!isFrozen) {
+                    return;
+                }
+                // If frozen, continue below to render modules
+                // Clear the verification message since we're going to show modules
+                if (modulesListContainer) {
+                    modulesListContainer.innerHTML = '<div class="loading-state">Loading second sprint schedule...</div>';
+                }
             }
             
             // Load modules from project planning
@@ -34422,8 +34722,12 @@ const app = {
             
             scheduleData._canEdit = canEdit;
             
-            // Render modules if not in verification state
-            if (!(isSubmitted && !isVerified)) {
+            // Render modules if not in verification state OR if frozen (frozen means verified, so show modules)
+            // When frozen, we still want to show modules with checkboxes but no edit buttons
+            // When frozen, always show modules regardless of submission/verification status
+            const shouldRenderModules = !(isSubmitted && !isVerified) || isFrozen;
+            
+            if (shouldRenderModules) {
                 if (scheduleData.modules.length === 0 && scheduleData.standaloneBacklogs.length === 0) {
                     modulesListContainer.innerHTML = `
                         <div style="padding: 3rem 2rem; text-align: center; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 12px; border: 2px dashed #3b82f6; margin: 2rem 0;">
