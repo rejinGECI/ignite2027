@@ -12917,9 +12917,12 @@ const app = {
             const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
             
             // Load all evaluations for this team (from main collection and evaluatorEntries)
-            const evaluations = {};
+            const evaluations = [];
             for (let i = 0; i < stages.length; i++) {
                 try {
+                    const stage = stages[i];
+                    const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                    
                     // Load main evaluation document
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
                     let evalData = evalDoc.exists() ? evalDoc.data() : {};
@@ -13156,8 +13159,135 @@ const app = {
                         evalData.aggregatedIndividualEvaluations = aggregatedIndividualEvaluations;
                     }
                     
-                    if (evalDoc.exists() || evaluatorEntries.length > 0) {
-                        evaluations[i] = evalData;
+                    // Load product backlog evaluations for First Review stage
+                    if (isFirstReviewStage) {
+                        try {
+                            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', studentTeam.id));
+                            if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                // Load product backlogs and evaluator checked backlogs (similar to report generation)
+                                const firstReviewBacklogQuery = query(
+                                    collection(window.firebaseDb, 'firstReviewBacklogs'),
+                                    where('teamId', '==', studentTeam.id)
+                                );
+                                const firstReviewBacklogSnapshot = await getDocs(firstReviewBacklogQuery);
+                                const allBacklogs = [];
+                                firstReviewBacklogSnapshot.forEach(doc => {
+                                    allBacklogs.push({ id: doc.id, ...doc.data() });
+                                });
+                                
+                                const firstReviewScheduleData = scheduleDoc.data();
+                                const firstReviewBacklogs = [];
+                                
+                                if (firstReviewScheduleData.modules) {
+                                    firstReviewScheduleData.modules.forEach(module => {
+                                        if (module.productBacklogs) {
+                                            module.productBacklogs.forEach(pb => {
+                                                const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                if (backlog) {
+                                                    firstReviewBacklogs.push(backlog);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                if (firstReviewScheduleData.standaloneBacklogs) {
+                                    firstReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                        const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                        if (backlog) {
+                                            firstReviewBacklogs.push(backlog);
+                                        }
+                                    });
+                                }
+                                
+                                // Load evaluator entries and process product backlog evaluations
+                                const evaluatorEntriesForPB = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
+                                const productBacklogEvaluations = {};
+                                
+                                // Initialize product backlog evaluations
+                                firstReviewBacklogs.forEach(backlog => {
+                                    productBacklogEvaluations[String(backlog.id)] = {
+                                        backlog: backlog,
+                                        markedBy: [],
+                                        unmarkedBy: []
+                                    };
+                                });
+                                
+                                // Get checked backlogs from evaluator entries
+                                evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                    const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                    
+                                    // Check if this evaluator is rejin@gecidukki.ac.in
+                                    // The evaluatorId might be the UID, so we need to check by email
+                                    // We'll filter for evaluators who have evaluated (has firstReviewCheckedBacklogs)
+                                    if (evaluatorEntry.firstReviewCheckedBacklogs && Array.isArray(evaluatorEntry.firstReviewCheckedBacklogs)) {
+                                        const checkedBacklogs = evaluatorEntry.firstReviewCheckedBacklogs;
+                                        
+                                        // Try to identify rejin@gecidukki.ac.in by checking evaluator name or we'll show all evaluators
+                                        // For now, we'll show if any evaluator marked backlogs
+                                        firstReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            
+                                            if (checkedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                                
+                                // Get checked backlogs from admin evaluation in main document
+                                if (evalData.firstReviewCheckedBacklogs && Array.isArray(evalData.firstReviewCheckedBacklogs)) {
+                                    const adminCheckedBacklogs = evalData.firstReviewCheckedBacklogs;
+                                    firstReviewBacklogs.forEach(backlog => {
+                                        const backlogId = String(backlog.id);
+                                        
+                                        if (adminCheckedBacklogs.includes(backlogId)) {
+                                            productBacklogEvaluations[backlogId].markedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        } else {
+                                            productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                            }
+                        } catch (error) {
+                            console.warn(`Error loading product backlogs for team ${studentTeam.id}:`, error);
+                        }
+                    }
+                    
+                    // Store evaluation data - always store it, even if empty, so we can check for completion status
+                    // Check if evaluation has any meaningful content after aggregation
+                    const hasTeamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined;
+                    const hasTeamMarksData = evalData.teamMarksData && Object.keys(evalData.teamMarksData).length > 0;
+                    const hasTeamComments = evalData.teamComments && evalData.teamComments.trim() !== '' && evalData.teamComments.trim() !== '<p><br></p>';
+                    const hasEvaluatorTeamComments = evalData.evaluatorTeamComments && evalData.evaluatorTeamComments.length > 0;
+                    const hasIndividualEvals = evalData.individualEvaluations && Object.keys(evalData.individualEvaluations).length > 0;
+                    const hasAggregatedIndividualEvals = evalData.aggregatedIndividualEvaluations && Object.keys(evalData.aggregatedIndividualEvaluations).length > 0;
+                    const hasProductBacklogs = evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0;
+                    
+                    // Mark as having data if any of these conditions are true
+                    const hasEvaluationData = hasTeamMarks || hasTeamMarksData || hasTeamComments || hasEvaluatorTeamComments || hasIndividualEvals || hasAggregatedIndividualEvals || hasProductBacklogs;
+                    
+                    // Always store evalData, but mark it as empty if no meaningful data
+                    if (!hasEvaluationData && !evalDoc.exists() && evaluatorEntries.length === 0) {
+                        evaluations[i] = null; // No evaluation data at all
+                    } else {
+                        evaluations[i] = evalData; // Has some evaluation data
                     }
                 } catch (error) {
                     console.error(`Error loading evaluation for stage ${i}:`, error);
@@ -13190,6 +13320,17 @@ const app = {
             
             // Load attendance summary for student
             await this.loadStudentAttendanceSummary(studentTeam.id, studentKtuid);
+            
+            // Load first review total marks for team total calculation
+            let firstReviewTotalMarks = 10; // Default
+            try {
+                firstReviewTotalMarks = await this.getFirstReviewTotalMarks();
+                if (firstReviewTotalMarks === 0) {
+                    firstReviewTotalMarks = 10; // Default to 10 if not set
+                }
+            } catch (error) {
+                console.error('Error loading first review total marks:', error);
+            }
             
             container.innerHTML = `
                 <div class="miniproject-card">
@@ -13306,7 +13447,17 @@ const app = {
                                     // Get mark parameters (even for pending evaluations)
                                     const teamParams = stage.teamMarkParams || [];
                                     const individualParams = stage.individualMarkParams || [];
-                                    const teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
+                                    
+                                    // For First Review, if no team parameters are configured, use firstReviewTotalMarks from settings
+                                    const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                                    if (teamTotal === 0 && isFirstReviewStage) {
+                                        teamTotal = firstReviewTotalMarks;
+                                    } else if (teamTotal === 0) {
+                                        // Default to 10 for other stages if no parameters configured
+                                        teamTotal = 10;
+                                    }
+                                    
                                     const individualTotal = individualParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                     
                                     if (!evalData) {
@@ -13374,6 +13525,107 @@ const app = {
                                         const teamMarksData = evalData.teamMarksData || {};
                                         const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                                         
+                                        // Prepare product backlog section for First Review stage
+                                        let productBacklogSection = '';
+                                        if (isFirstReviewStage && evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0) {
+                                            // Filter backlogs - show completed if any evaluator marked them
+                                            // Since rejin@gecidukki.ac.in is the only evaluator, all marked backlogs are from them
+                                            const markedBacklogs = [];
+                                            const pendingBacklogs = [];
+                                            
+                                            evalData.productBacklogEvaluations.forEach(pbEval => {
+                                                const markedBy = pbEval.markedBy || [];
+                                                
+                                                if (markedBy.length > 0) {
+                                                    // Any evaluator marked it (which is rejin@gecidukki.ac.in)
+                                                    markedBacklogs.push(pbEval.backlog);
+                                                } else {
+                                                    pendingBacklogs.push(pbEval.backlog);
+                                                }
+                                            });
+                                            
+                                            const totalBacklogs = evalData.productBacklogEvaluations.length;
+                                            const completedCount = markedBacklogs.length;
+                                            const pendingCount = pendingBacklogs.length;
+                                            const progressPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+                                            
+                                            // Calculate marks based on completed backlogs (from settings)
+                                            const backlogMarks = firstReviewTotalMarks > 0 
+                                                ? Math.round((completedCount / totalBacklogs) * firstReviewTotalMarks * 100) / 100
+                                                : 0;
+                                            
+                                            productBacklogSection = `
+                                                <div class="marks-section product-backlogs-section" style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
+                                                    <div class="marks-header" style="margin-bottom: 1rem;">
+                                                        <span class="marks-label" style="font-size: 1rem; font-weight: 600;">
+                                                            <i class="fas fa-list-check"></i> Product Backlogs
+                                                        </span>
+                                                        <span style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 0.5rem;">
+                                                            (Evaluator: Prof. Rejin R)
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                            <div>
+                                                                <strong style="color: var(--text-primary); font-size: 0.95rem;">Progress:</strong>
+                                                                <span style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">${progressPercentage}%</span>
+                                                                <span style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 0.5rem;">
+                                                                    (${completedCount} / ${totalBacklogs})
+                                                                </span>
+                                                            </div>
+                                                            ${firstReviewTotalMarks > 0 ? `
+                                                                <div style="text-align: right;">
+                                                                    <strong style="color: var(--text-primary); font-size: 0.95rem;">Marks:</strong>
+                                                                    <span style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">${backlogMarks.toFixed(2)}</span>
+                                                                    <span style="font-size: 0.9rem; color: var(--text-secondary);">/ ${firstReviewTotalMarks}</span>
+                                                                </div>
+                                                            ` : ''}
+                                                        </div>
+                                                        <div style="margin-top: 0.75rem;">
+                                                            <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                                                                <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${progressPercentage}%; transition: width 0.3s ease; border-radius: 6px;"></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    ${completedCount > 0 ? `
+                                                        <div style="margin-bottom: 1rem;">
+                                                            <div style="padding: 0.5rem 0.75rem; background: #f0fdf4; border-radius: 6px; border-left: 3px solid #10b981; margin-bottom: 0.75rem;">
+                                                                <div style="font-weight: 600; color: #10b981; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                    <i class="fas fa-check-circle"></i> Completed Backlogs (${completedCount})
+                                                                </div>
+                                                                <ul style="margin: 0; padding-left: 20px; font-size: 0.85rem; color: #374151;">
+                                                                    ${markedBacklogs.map(backlog => `
+                                                                        <li style="margin-bottom: 0.25rem;">
+                                                                            ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                                        </li>
+                                                                    `).join('')}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    ` : ''}
+                                                    
+                                                    ${pendingCount > 0 ? `
+                                                        <div style="margin-bottom: 1rem;">
+                                                            <div style="padding: 0.5rem 0.75rem; background: #fffbeb; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                                                                <div style="font-weight: 600; color: #f59e0b; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                                                                    <i class="fas fa-clock"></i> Pending Backlogs (${pendingCount})
+                                                                </div>
+                                                                <ul style="margin: 0; padding-left: 20px; font-size: 0.85rem; color: #374151;">
+                                                                    ${pendingBacklogs.map(backlog => `
+                                                                        <li style="margin-bottom: 0.25rem;">
+                                                                            ${this.escapeHtml(backlog.task || backlog.description || backlog.title || 'Product Backlog Item')}
+                                                                        </li>
+                                                                    `).join('')}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                            `;
+                                        }
+                                        
                                         // Calculate student marks from marksData (sum of parameter marks) if available
                                         // This ensures the total matches the sum of individual parameters
                                         let studentMarks = 0;
@@ -13440,6 +13692,8 @@ const app = {
                                                         ` : ''}
                                                     </div>
                                                 ` : ''}
+                                                
+                                                ${productBacklogSection}
                                                 
                                                 ${individualTotal > 0 || studentEval ? `
                                                     <div class="marks-section individual-marks ${studentEval?.isAbsent ? 'marks-absent' : ''}">
