@@ -24,6 +24,9 @@ export function createAdminMiniProjectModule(app) {
             
             // Load important dates
             await app.loadImportantDates();
+            
+            // Load approved problem statement editing setting
+            await app.loadApprovedProblemStatementEditingSetting();
         },
         
         async loadGuidesList() {

@@ -4581,7 +4581,8 @@ const app = {
         try {
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
             const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
-            const allowEditing = settingsData.allowApprovedEdit !== false; // Default to true if not set
+            // Default to true if not set (backward compatibility)
+            const allowEditing = settingsData.allowApprovedEdit !== false;
             
             const editCheckbox = document.getElementById('allow-approved-problem-statement-edit');
             if (editCheckbox) {
@@ -4655,11 +4656,18 @@ const app = {
         try {
             const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'problemStatement'));
             const settingsData = settingsDoc.exists() ? settingsDoc.data() : {};
-            // Default to true if not set (backward compatibility)
-            return settingsData.allowApprovedEdit !== false;
+            // Check if editing is allowed (defaults to true if not set for backward compatibility)
+            const isAllowed = settingsData.allowApprovedEdit !== false;
+            console.log('Approved problem statement editing check:', {
+                allowed: isAllowed,
+                allowApprovedEdit: settingsData.allowApprovedEdit,
+                settingsExists: settingsDoc.exists(),
+                fullSettings: settingsData
+            });
+            return isAllowed;
         } catch (error) {
             console.error('Error checking approved problem statement editing status:', error);
-            return true; // Default to true on error
+            return true; // Default to true on error (backward compatibility)
         }
     },
     
@@ -32605,9 +32613,382 @@ const app = {
     },
     
     // Placeholder functions for second sprint reports (can be expanded to match first sprint)
+    // Generate Second Sprint Schedule Agreement Report
     async generateSecondSprintScheduleReport() {
         if (!this.isAdmin) return;
-        alert('Second Sprint Schedule Report generation - to be implemented (mirror first sprint report functionality)');
+        
+        try {
+            // Load all teams
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            
+            const teams = [];
+            for (const teamDoc of teamsSnapshot.docs) {
+                const teamData = teamDoc.data();
+                if (teamData.deleted) continue;
+                
+                // Load second sprint schedule
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamDoc.id));
+                const hasSchedule = scheduleDoc.exists();
+                const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                
+                teams.push({
+                    id: teamDoc.id,
+                    name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                    guideName: teamData.guideName || 'No Guide',
+                    hasSchedule: hasSchedule,
+                    submitted: scheduleData?.submitted || false,
+                    verified: scheduleData?.verified || false,
+                    frozen: scheduleData?.frozen || false,
+                    submittedAt: scheduleData?.submittedAt || null,
+                    verifiedAt: scheduleData?.verifiedAt || null,
+                    frozenAt: scheduleData?.frozenAt || null,
+                    modulesCount: scheduleData?.modules?.length || 0,
+                    standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                    totalBacklogs: (scheduleData?.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData?.standaloneBacklogs?.length || 0)
+                });
+            }
+            
+            if (teams.length === 0) {
+                alert('No teams found to generate report.');
+                return;
+            }
+            
+            // Apply team order
+            const teamsForOrdering = teams.map(t => ({
+                id: t.id,
+                groupName: t.name
+            }));
+            const sortedTeamsForOrdering = await this.applyTeamOrder(teamsForOrdering);
+            const teamMap = new Map(teams.map(t => [t.id, t]));
+            const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+            
+            // Calculate statistics
+            const stats = {
+                total: sortedTeams.length,
+                hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                submitted: sortedTeams.filter(t => t.submitted).length,
+                verified: sortedTeams.filter(t => t.verified).length,
+                frozen: sortedTeams.filter(t => t.frozen).length
+            };
+            
+            const printWindow = window.open('', '_blank');
+            const currentDate = new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            let html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Second Sprint Schedule Agreement Report</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page {
+                                margin: 1.5cm;
+                                size: A4 landscape;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .no-print {
+                                display: none;
+                            }
+                            * {
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                        }
+                        * {
+                            margin: 0;
+                            padding: 0;
+                            box-sizing: border-box;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        body {
+                            font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            margin: 0;
+                            padding: 30px;
+                            color: #1e293b;
+                            background: #ffffff;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header {
+                            text-align: center;
+                            margin-bottom: 35px;
+                            padding: 25px;
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            background-color: #6366f1;
+                            border-radius: 12px;
+                            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+                            color: white;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        .header h1 {
+                            margin: 0 0 15px 0;
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 32px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 1.5px;
+                            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                        }
+                        .header .subtitle {
+                            font-size: 16px;
+                            font-weight: 400;
+                            opacity: 0.95;
+                            margin: 8px 0;
+                        }
+                        .header .stats {
+                            display: flex;
+                            justify-content: center;
+                            gap: 30px;
+                            margin-top: 20px;
+                            flex-wrap: wrap;
+                        }
+                        .header .stat-item {
+                            background: rgba(255, 255, 255, 0.2);
+                            padding: 10px 20px;
+                            border-radius: 8px;
+                            backdrop-filter: blur(10px);
+                        }
+                        .header .stat-label {
+                            font-size: 12px;
+                            opacity: 0.9;
+                            text-transform: uppercase;
+                            letter-spacing: 1px;
+                        }
+                        .header .stat-value {
+                            font-size: 24px;
+                            font-weight: 700;
+                            margin-top: 5px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: separate;
+                            border-spacing: 0;
+                            margin-top: 25px;
+                            font-size: 13px;
+                            background: white;
+                            border-radius: 10px;
+                            overflow: hidden;
+                            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        th {
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            background-color: #6366f1;
+                            color: white !important;
+                            padding: 16px 12px;
+                            text-align: left;
+                            font-weight: 700;
+                            font-family: 'Montserrat', sans-serif;
+                            font-size: 13px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            border: none;
+                            position: relative;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        th:not(:last-child)::after {
+                            content: '';
+                            position: absolute;
+                            right: 0;
+                            top: 20%;
+                            height: 60%;
+                            width: 1px;
+                            background: rgba(255, 255, 255, 0.3);
+                        }
+                        td {
+                            padding: 14px 12px;
+                            border-bottom: 1px solid #cbd5e1;
+                            vertical-align: top;
+                            font-family: 'Lato', sans-serif;
+                        }
+                        tr:last-child td {
+                            border-bottom: none;
+                        }
+                        tr:nth-child(even) {
+                            background: #eff6ff;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        tr:hover {
+                            background: #dbeafe;
+                            transition: background 0.2s;
+                        }
+                        .badge {
+                            display: inline-block;
+                            padding: 6px 12px;
+                            border-radius: 6px;
+                            font-size: 11px;
+                            font-weight: 600;
+                            font-family: 'Montserrat', sans-serif;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            margin-bottom: 5px;
+                        }
+                        .badge-yes {
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            background-color: #10b981;
+                            color: white !important;
+                            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+                        }
+                        .badge-no {
+                            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+                            background-color: #6b7280;
+                            color: white !important;
+                        }
+                        .badge-submitted {
+                            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                            background-color: #3b82f6;
+                            color: white !important;
+                        }
+                        .badge-verified {
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            background-color: #10b981;
+                            color: white !important;
+                        }
+                        .badge-frozen {
+                            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                            background-color: #f59e0b;
+                            color: white !important;
+                        }
+                        .badge-active {
+                            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+                            background-color: #6b7280;
+                            color: white !important;
+                        }
+                        .team-name {
+                            font-weight: 700;
+                            font-family: 'Montserrat', sans-serif;
+                            color: #6366f1;
+                            font-size: 14px;
+                        }
+                        .guide-name {
+                            color: #1e40af;
+                            font-weight: 500;
+                        }
+                        .footer {
+                            margin-top: 40px;
+                            text-align: center;
+                            font-size: 12px;
+                            color: #1e40af;
+                            border-top: 2px solid #cbd5e1;
+                            padding-top: 20px;
+                            font-family: 'Lato', sans-serif;
+                        }
+                        .footer .logo-text {
+                            font-family: 'Montserrat', sans-serif;
+                            font-weight: 700;
+                            font-size: 16px;
+                            color: #6366f1;
+                            margin-bottom: 5px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>Second Sprint Schedule Agreement Report</h1>
+                        <p class="subtitle">IGNITE Mini Project Management System</p>
+                        <div class="stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Generated On</div>
+                                <div class="stat-value" style="font-size: 14px; font-weight: 600;">${currentDate}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Total Teams</div>
+                                <div class="stat-value">${stats.total}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Has Schedule</div>
+                                <div class="stat-value">${stats.hasSchedule}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Submitted</div>
+                                <div class="stat-value">${stats.submitted}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Verified</div>
+                                <div class="stat-value">${stats.verified}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Frozen</div>
+                                <div class="stat-value">${stats.frozen}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Team Name</th>
+                                <th>Guide</th>
+                                <th>Schedule</th>
+                                <th>Status</th>
+                                <th>Freeze Status</th>
+                                <th>Modules</th>
+                                <th>Total Backlogs</th>
+                                <th>Submitted Date</th>
+                                <th>Verified Date</th>
+                                <th>Frozen Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedTeams.map((team, index) => {
+                                const submittedDate = team.submittedAt ? new Date(team.submittedAt.seconds ? team.submittedAt.seconds * 1000 : team.submittedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                const verifiedDate = team.verifiedAt ? new Date(team.verifiedAt.seconds ? team.verifiedAt.seconds * 1000 : team.verifiedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                const frozenDate = team.frozenAt ? new Date(team.frozenAt.seconds ? team.frozenAt.seconds * 1000 : team.frozenAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                                
+                                return `
+                                    <tr>
+                                        <td class="team-name">${this.escapeHtml(team.name)}</td>
+                                        <td class="guide-name">${this.escapeHtml(team.guideName)}</td>
+                                        <td><span class="badge ${team.hasSchedule ? 'badge-yes' : 'badge-no'}">${team.hasSchedule ? 'Yes' : 'No'}</span></td>
+                                        <td>
+                                            ${team.verified ? '<span class="badge badge-verified">Verified</span>' : 
+                                              team.submitted ? '<span class="badge badge-submitted">Submitted</span>' : 
+                                              '<span class="badge badge-no">Not Submitted</span>'}
+                                        </td>
+                                        <td><span class="badge ${team.frozen ? 'badge-frozen' : 'badge-active'}">${team.frozen ? 'Frozen' : 'Active'}</span></td>
+                                        <td style="text-align: center;">${team.modulesCount}</td>
+                                        <td style="text-align: center;">${team.totalBacklogs}</td>
+                                        <td>${submittedDate}</td>
+                                        <td>${verifiedDate}</td>
+                                        <td>${frozenDate}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    
+                    <div class="footer">
+                        <div class="logo-text">IGNITE</div>
+                        <p>Mini Project Management System - Second Sprint Schedule Agreement Report</p>
+                        <p>Generated on ${currentDate}</p>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.print();
+        } catch (error) {
+            console.error('Error generating second sprint schedule report:', error);
+            alert('Error generating report. Please try again.');
+        }
     },
     
     async generateSecondSprintProgressReport() {
