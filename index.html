@@ -823,6 +823,23 @@ Bob Johnson,GHI789</pre>
                     </div>
                     
                     <div class="admin-card">
+                        <h3><i class="fas fa-check-circle"></i> Second Sprint Evaluation Settings</h3>
+                        <p>Configure marks for second sprint evaluation based on completed product backlogs</p>
+                        <div class="settings-item">
+                            <div class="form-group">
+                                <label for="second-review-total-marks" style="display: block; margin-bottom: 8px; font-weight: 600;">Total Marks for Second Sprint</label>
+                                <input type="number" id="second-review-total-marks" class="form-input" min="0" step="0.5" 
+                                       placeholder="Enter total marks (e.g., 50)" 
+                                       onchange="app.saveSecondReviewTotalMarks()"
+                                       style="max-width: 300px;">
+                                <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                    Total marks that can be awarded for second sprint evaluation. Marks will be calculated based on percentage of completed product backlogs.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="admin-card">
                         <h3><i class="fas fa-edit"></i> Problem Statement Editing</h3>
                         <p>Control whether students can edit their approved problem statements</p>
                         <div class="settings-item">
