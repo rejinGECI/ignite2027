@@ -33249,10 +33249,7 @@ const app = {
         }
     },
     
-    async generateSecondSprintProgressReport() {
-        if (!this.isAdmin) return;
-        alert('Second Sprint Progress Report generation - to be implemented (mirror first sprint progress report functionality)');
-    },
+    // generateSecondSprintProgressReport is provided by adminMiniProjectModule (merged via Object.assign)
     
     // ========== ATTENDANCE MANAGEMENT FUNCTIONS ==========
     

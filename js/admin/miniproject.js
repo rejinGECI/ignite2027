@@ -1285,6 +1285,495 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
+        async generateSecondSprintProgressReport() {
+            if (!app.isAdmin) return;
+            
+            try {
+                // Load all teams with progress data
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const teamDoc of teamsSnapshot.docs) {
+                    const teamData = teamDoc.data();
+                    if (teamData.deleted) continue;
+                    
+                    // Load second review schedule
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamDoc.id));
+                    const hasSchedule = scheduleDoc.exists();
+                    const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                    
+                    // Calculate total backlogs
+                    let totalBacklogs = 0;
+                    if (scheduleData?.modules) {
+                        scheduleData.modules.forEach(module => {
+                            totalBacklogs += (module.productBacklogs?.length || 0);
+                        });
+                    }
+                    totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
+                    
+                    // Load student progress
+                    let completedBacklogIds = [];
+                    let imageLinks = [];
+                    let progressPercentage = 0;
+                    let completedTasks = 0;
+                    
+                    try {
+                        const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'secondReviewStudentProgress', teamDoc.id));
+                        if (studentProgressDoc.exists()) {
+                            const progressData = studentProgressDoc.data();
+                            completedBacklogIds = progressData.completedBacklogIds || [];
+                            imageLinks = progressData.imageLinks || [];
+                        }
+                        completedTasks = completedBacklogIds.length;
+                        if (totalBacklogs > 0) {
+                            progressPercentage = Math.round((completedTasks / totalBacklogs) * 100);
+                        }
+                    } catch (error) {
+                        console.warn(`Error loading progress for team ${teamDoc.id}:`, error);
+                    }
+                    
+                    teams.push({
+                        id: teamDoc.id,
+                        name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                        guideName: teamData.guideName || 'No Guide',
+                        topic: teamData.topic || 'Not assigned',
+                        hasSchedule: hasSchedule,
+                        submitted: scheduleData?.submitted || false,
+                        verified: scheduleData?.verified || false,
+                        frozen: scheduleData?.frozen || false,
+                        modulesCount: scheduleData?.modules?.length || 0,
+                        totalBacklogs: totalBacklogs,
+                        completedTasks: completedTasks,
+                        progressPercentage: progressPercentage,
+                        imageLinksCount: imageLinks.length
+                    });
+                }
+                
+                if (teams.length === 0) {
+                    alert('No teams found to generate report.');
+                    return;
+                }
+                
+                // Apply team order
+                const teamsForOrdering = teams.map(t => ({
+                    id: t.id,
+                    groupName: t.name
+                }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                // Calculate statistics
+                const teamsWithSchedule = sortedTeams.filter(t => t.hasSchedule);
+                const stats = {
+                    total: sortedTeams.length,
+                    hasSchedule: teamsWithSchedule.length,
+                    submitted: sortedTeams.filter(t => t.submitted).length,
+                    verified: sortedTeams.filter(t => t.verified).length,
+                    frozen: sortedTeams.filter(t => t.frozen).length,
+                    averageProgress: teamsWithSchedule.length > 0 
+                        ? Math.round(teamsWithSchedule.reduce((sum, t) => sum + t.progressPercentage, 0) / teamsWithSchedule.length)
+                        : 0,
+                    lowProgress: sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50).length,
+                    highProgress: sortedTeams.filter(t => t.hasSchedule && t.progressPercentage >= 75).length,
+                    totalCompletedTasks: teamsWithSchedule.reduce((sum, t) => sum + t.completedTasks, 0),
+                    totalTasks: teamsWithSchedule.reduce((sum, t) => sum + t.totalBacklogs, 0)
+                };
+                
+                const printWindow = window.open('', '_blank');
+                const currentDate = new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                let html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Second Sprint Progress Report</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+                        <style>
+                            @media print {
+                                @page {
+                                    margin: 1.5cm;
+                                    size: A4 landscape;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                                .no-print {
+                                    display: none;
+                                }
+                                * {
+                                    -webkit-print-color-adjust: exact;
+                                    print-color-adjust: exact;
+                                }
+                            }
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            body {
+                                font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                color: #1e293b;
+                                background: #ffffff;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header {
+                                text-align: center;
+                                margin-bottom: 35px;
+                                padding: 25px;
+                                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                                background-color: #10b981;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+                                color: white;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            .header h1 {
+                                margin: 0 0 15px 0;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 32px;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 1.5px;
+                                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                            }
+                            .header .subtitle {
+                                font-size: 16px;
+                                font-weight: 400;
+                                opacity: 0.95;
+                                margin: 8px 0;
+                            }
+                            .header .stats {
+                                display: flex;
+                                justify-content: center;
+                                gap: 30px;
+                                margin-top: 20px;
+                                flex-wrap: wrap;
+                            }
+                            .header .stat-item {
+                                background: rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 8px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .header .stat-label {
+                                font-size: 12px;
+                                opacity: 0.9;
+                                text-transform: uppercase;
+                                letter-spacing: 1px;
+                            }
+                            .header .stat-value {
+                                font-size: 24px;
+                                font-weight: 700;
+                                margin-top: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: separate;
+                                border-spacing: 0;
+                                margin-top: 25px;
+                                font-size: 12px;
+                                background: white;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th {
+                                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                                background-color: #10b981;
+                                color: white !important;
+                                padding: 14px 10px;
+                                text-align: left;
+                                font-weight: 700;
+                                font-family: 'Montserrat', sans-serif;
+                                font-size: 12px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                                border: none;
+                                position: relative;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                            }
+                            th:not(:last-child)::after {
+                                content: '';
+                                position: absolute;
+                                right: 0;
+                                top: 20%;
+                                height: 60%;
+                                width: 1px;
+                                background: rgba(255, 255, 255, 0.3);
+                            }
+                            td {
+                                padding: 12px 10px;
+                                border-bottom: 1px solid #cbd5e1;
+                                vertical-align: middle;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            tr:nth-child(even) {
+                                background: #f8fafc;
+                            }
+                            tr:hover {
+                                background: #f1f5f9;
+                            }
+                            .progress-bar-container {
+                                width: 100px;
+                                height: 20px;
+                                background: #e5e7eb;
+                                border-radius: 10px;
+                                overflow: hidden;
+                                position: relative;
+                                margin: 0 auto;
+                            }
+                            .progress-bar-fill {
+                                height: 100%;
+                                border-radius: 10px;
+                                transition: width 0.3s ease;
+                            }
+                            .progress-text {
+                                position: absolute;
+                                top: 50%;
+                                left: 50%;
+                                transform: translate(-50%, -50%);
+                                font-size: 10px;
+                                font-weight: 700;
+                                color: #1e293b;
+                                z-index: 1;
+                            }
+                            .status-badge {
+                                display: inline-block;
+                                padding: 4px 10px;
+                                border-radius: 12px;
+                                font-size: 11px;
+                                font-weight: 600;
+                                text-align: center;
+                            }
+                            .status-verified {
+                                background: #10b981;
+                                color: white;
+                            }
+                            .status-submitted {
+                                background: #3b82f6;
+                                color: white;
+                            }
+                            .status-pending {
+                                background: #6b7280;
+                                color: white;
+                            }
+                            .status-frozen {
+                                background: #f59e0b;
+                                color: white;
+                            }
+                            .status-active {
+                                background: #6b7280;
+                                color: white;
+                            }
+                            .text-center {
+                                text-align: center;
+                            }
+                            .text-right {
+                                text-align: right;
+                            }
+                            .no-print {
+                                display: none;
+                            }
+                            .footer {
+                                margin-top: 40px;
+                                text-align: center;
+                                font-size: 12px;
+                                color: #1e40af;
+                                border-top: 2px solid #cbd5e1;
+                                padding-top: 20px;
+                                font-family: 'Lato', sans-serif;
+                            }
+                            .footer .logo-text {
+                                font-family: 'Montserrat', sans-serif;
+                                font-weight: 700;
+                                font-size: 16px;
+                                color: #10b981;
+                                margin-bottom: 5px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1>Second Sprint Progress Report</h1>
+                            <div class="subtitle">Consolidated Progress Report for All Teams</div>
+                            <div class="subtitle">Generated on: ${currentDate}</div>
+                            <div class="stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Teams</div>
+                                    <div class="stat-value">${stats.total}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Has Schedule</div>
+                                    <div class="stat-value">${stats.hasSchedule}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Average Progress</div>
+                                    <div class="stat-value">${stats.averageProgress}%</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">High Progress (≥75%)</div>
+                                    <div class="stat-value">${stats.highProgress}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Low Progress (<50%)</div>
+                                    <div class="stat-value">${stats.lowProgress}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Completed</div>
+                                    <div class="stat-value">${stats.totalCompletedTasks}/${stats.totalTasks}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 12%;">Team Name</th>
+                                    <th style="width: 12%;">Guide</th>
+                                    <th style="width: 15%;">Topic</th>
+                                    <th style="width: 8%;" class="text-center">Status</th>
+                                    <th style="width: 8%;" class="text-center">Freeze</th>
+                                    <th style="width: 12%;" class="text-center">Progress</th>
+                                    <th style="width: 10%;" class="text-center">Completed</th>
+                                    <th style="width: 8%;" class="text-center">Modules</th>
+                                    <th style="width: 10%;" class="text-center">Total Tasks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                sortedTeams.forEach((team, index) => {
+                    const statusColor = team.verified ? 'status-verified' : (team.submitted ? 'status-submitted' : 'status-pending');
+                    const statusText = team.verified ? 'Verified' : (team.submitted ? 'Submitted' : 'Not Submitted');
+                    const freezeStatus = team.frozen ? 'status-frozen' : 'status-active';
+                    const freezeText = team.frozen ? 'Frozen' : 'Active';
+                    
+                    // Progress bar color
+                    let progressColor = '#10b981';
+                    if (team.progressPercentage < 25) {
+                        progressColor = '#ef4444';
+                    } else if (team.progressPercentage < 50) {
+                        progressColor = '#f59e0b';
+                    } else if (team.progressPercentage < 75) {
+                        progressColor = '#3b82f6';
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td class="text-center">${index + 1}</td>
+                            <td style="font-weight: 600;">${escapeHtml(team.name)}</td>
+                            <td>${escapeHtml(team.guideName)}</td>
+                            <td style="font-size: 11px;">${escapeHtml(team.topic)}</td>
+                            <td class="text-center">
+                                <span class="status-badge ${statusColor}">${statusText}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="status-badge ${freezeStatus}">${freezeText}</span>
+                            </td>
+                            <td class="text-center">
+                                ${team.hasSchedule ? `
+                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: ${team.progressPercentage}%; background: ${progressColor};"></div>
+                                            <div class="progress-text">${team.progressPercentage}%</div>
+                                        </div>
+                                        <div style="font-size: 10px; color: #64748b;">${team.completedTasks}/${team.totalBacklogs}</div>
+                                    </div>
+                                ` : '<span style="color: #94a3b8;">N/A</span>'}
+                            </td>
+                            <td class="text-center" style="font-weight: 600;">${team.hasSchedule ? team.completedTasks : '-'}</td>
+                            <td class="text-center">${team.modulesCount}</td>
+                            <td class="text-center">${team.hasSchedule ? team.totalBacklogs : '-'}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                            </tbody>
+                        </table>
+                        
+                        <div style="margin-top: 30px; padding: 20px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #10b981;">
+                            <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 18px; font-weight: 600;">
+                                <i class="fas fa-info-circle"></i> Report Summary
+                            </h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; font-size: 13px;">
+                                <div>
+                                    <strong>Total Teams:</strong> ${stats.total}
+                                </div>
+                                <div>
+                                    <strong>Teams with Schedule:</strong> ${stats.hasSchedule}
+                                </div>
+                                <div>
+                                    <strong>Submitted Schedules:</strong> ${stats.submitted}
+                                </div>
+                                <div>
+                                    <strong>Verified Schedules:</strong> ${stats.verified}
+                                </div>
+                                <div>
+                                    <strong>Frozen Schedules:</strong> ${stats.frozen}
+                                </div>
+                                <div>
+                                    <strong>Average Progress:</strong> ${stats.averageProgress}%
+                                </div>
+                                <div>
+                                    <strong>High Progress Teams (≥75%):</strong> ${stats.highProgress}
+                                </div>
+                                <div>
+                                    <strong>Low Progress Teams (<50%):</strong> ${stats.lowProgress}
+                                </div>
+                                <div>
+                                    <strong>Total Tasks Completed:</strong> ${stats.totalCompletedTasks} out of ${stats.totalTasks}
+                                </div>
+                                <div>
+                                    <strong>Overall Completion Rate:</strong> ${stats.totalTasks > 0 ? Math.round((stats.totalCompletedTasks / stats.totalTasks) * 100) : 0}%
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="footer">
+                            <div class="logo-text">IGNITE</div>
+                            <p>Mini Project Management System - Second Sprint Progress Report</p>
+                            <p>Generated on ${currentDate}</p>
+                        </div>
+                    </body>
+                    </html>
+                `;
+                
+                printWindow.document.write(html);
+                printWindow.document.close();
+                
+                // Wait for content to load before printing
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error generating progress report:', error);
+                alert('Error generating progress report. Please try again.');
+            }
+        },
+        
         async loadAdminFirstReviewSchedule(teamId) {
             if (!app.isAdmin) return;
             
