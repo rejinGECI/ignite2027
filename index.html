@@ -840,6 +840,23 @@ Bob Johnson,GHI789</pre>
                     </div>
                     
                     <div class="admin-card">
+                        <h3><i class="fas fa-check-circle"></i> Third Sprint Evaluation Settings</h3>
+                        <p>Configure marks for third sprint evaluation based on completed product backlogs</p>
+                        <div class="settings-item">
+                            <div class="form-group">
+                                <label for="third-review-total-marks" style="display: block; margin-bottom: 8px; font-weight: 600;">Total Marks for Third Sprint</label>
+                                <input type="number" id="third-review-total-marks" class="form-input" min="0" step="0.5" 
+                                       placeholder="Enter total marks (e.g., 50)" 
+                                       onchange="app.saveThirdReviewTotalMarks()"
+                                       style="max-width: 300px;">
+                                <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                                    Total marks that can be awarded for third sprint evaluation. Marks will be calculated based on percentage of completed product backlogs.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="admin-card">
                         <h3><i class="fas fa-edit"></i> Problem Statement Editing</h3>
                         <p>Control whether students can edit their approved problem statements</p>
                         <div class="settings-item">
@@ -886,6 +903,9 @@ Bob Johnson,GHI789</pre>
                     </button>
                     <button class="tab-btn" data-tab="second-review" onclick="app.switchAdminMiniProjectTab('second-review')">
                         <i class="fas fa-check-circle"></i> Second Sprint Verification
+                    </button>
+                    <button class="tab-btn" data-tab="third-review" onclick="app.switchAdminMiniProjectTab('third-review')">
+                        <i class="fas fa-check-circle"></i> Third Sprint Verification
                     </button>
                     <button class="tab-btn" data-tab="github-repos" onclick="app.switchAdminMiniProjectTab('github-repos')">
                         <i class="fab fa-github"></i> GitHub Repositories
@@ -1122,6 +1142,34 @@ Bob Johnson,GHI789</pre>
                             </div>
                             
                             <div id="admin-second-review-teams-list" class="admin-teams-list" style="display: none;">
+                                <div class="loading-state">Loading teams...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Third Sprint Verification Tab -->
+                    <div id="admin-miniproject-third-review-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-check-circle"></i> Third Sprint Schedule Agreement - Consolidated View</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Consolidated view of all teams' third sprint schedule agreements. Review status, freeze status, and generate reports.
+                            </p>
+                            
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-third-review-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.generateThirdSprintScheduleReport()">
+                                    <i class="fas fa-file-download"></i> Generate Schedule Report
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="app.generateThirdSprintProgressReport()">
+                                    <i class="fas fa-chart-line"></i> Generate Progress Report
+                                </button>
+                            </div>
+                            
+                            <div id="admin-third-review-consolidated-view" style="margin-bottom: 1.5rem;">
+                                <div class="loading-state">Loading consolidated view...</div>
+                            </div>
+                            
+                            <div id="admin-third-review-teams-list" class="admin-teams-list" style="display: none;">
                                 <div class="loading-state">Loading teams...</div>
                             </div>
                         </div>
@@ -1421,6 +1469,9 @@ Bob Johnson,GHI789</pre>
                     </button>
                     <button class="tab-btn" data-tab="second-review" onclick="app.switchMiniProjectTab('second-review')">
                         <i class="fas fa-clipboard-check"></i> Second Sprint
+                    </button>
+                    <button class="tab-btn" data-tab="third-review" onclick="app.switchMiniProjectTab('third-review')">
+                        <i class="fas fa-clipboard-check"></i> Third Sprint
                     </button>
                 </div>
                 
@@ -1797,6 +1848,106 @@ Bob Johnson,GHI789</pre>
                             <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
                                 <button type="button" class="btn btn-success" id="submit-second-review-btn" onclick="app.submitSecondReviewSchedule()" style="display: none;">
                                     <i class="fas fa-paper-plane"></i> Submit Second Sprint Schedule Agreement
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Third Sprint Tab -->
+                <div id="third-review-tab" class="admin-tab-content">
+                    <div class="project-planning-container">
+                        <div class="project-planning-section">
+                            <h3><i class="fas fa-clipboard-check"></i> Third Sprint Schedule</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Schedule your third sprint tasks by adding modules from project planning and setting start/end dates for product backlogs.
+                            </p>
+                            
+                            <div id="third-review-submission-status" style="margin-bottom: 1.5rem;"></div>
+                            
+                            <!-- Add Module from Project Planning -->
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);">
+                                <h4 style="margin: 0 0 1rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-plus-circle" style="color: #3b82f6;"></i> Add Module from Project Planning
+                                </h4>
+                                <div style="margin-bottom: 1rem;">
+                                    <label for="third-review-module-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Select Module:</label>
+                                    <select id="third-review-module-select" class="form-input" style="width: 100%; max-width: 500px;">
+                                        <option value="">-- Select a module --</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="app.addModuleToThirdReview()">
+                                    <i class="fas fa-plus"></i> Add Module
+                                </button>
+                            </div>
+                            
+                            <!-- Modules List -->
+                            <div id="third-review-modules-list" style="margin-bottom: 2rem;">
+                                <div class="loading-state">Loading third sprint schedule...</div>
+                            </div>
+                            
+                            <!-- Standalone Product Backlogs (not in modules) -->
+                            <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h4 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="fas fa-clipboard-list" style="color: #10b981;"></i> Standalone Product Backlogs
+                                    </h4>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.showAddThirdReviewBacklogModal(null)">
+                                        <i class="fas fa-plus"></i> Add Product Backlog
+                                    </button>
+                                </div>
+                                <div id="third-review-standalone-backlogs">
+                                    <p class="empty-state">No standalone product backlogs yet.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Gantt Chart -->
+                            <div style="margin-top: 2rem; padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fas fa-chart-gantt" style="color: #3b82f6;"></i> Timeline Gantt Chart
+                                </h4>
+                                <div id="third-review-gantt-chart" style="overflow-x: auto; min-height: 300px;">
+                                    <p class="empty-state">Add modules and set dates to view the Gantt chart.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Third Sprint PPT Section -->
+                            <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                                <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
+                                    <i class="fas fa-file-powerpoint"></i> Third Sprint PPT
+                                </h3>
+                                <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                    Add links to your Third Sprint PowerPoint presentation. You can use file hosting services like Google Drive, OneDrive, or any public file sharing link.
+                                </p>
+                                
+                                <div id="third-sprint-ppt-add-section" style="margin-bottom: 2rem;">
+                                    <label for="third-sprint-ppt-link-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                        PPT Link URL:
+                                    </label>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <input type="url" 
+                                               id="third-sprint-ppt-link-input" 
+                                               class="form-input" 
+                                               placeholder="https://drive.google.com/file/d/... or https://example.com/presentation.pptx"
+                                               style="flex: 1; padding: 0.75rem; border: 2px solid #f59e0b40; border-radius: 6px;">
+                                        <button type="button" 
+                                                class="btn btn-success" 
+                                                onclick="app.addThirdSprintPPTLink()"
+                                                style="padding: 0.75rem 1.5rem; background: #f59e0b; border: none;">
+                                            <i class="fas fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div id="third-sprint-ppt-list" class="architecture-diagrams-container">
+                                    <div class="loading-state">Loading PPT links...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Submit Button -->
+                            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                                <button type="button" class="btn btn-success" id="submit-third-review-btn" onclick="app.submitThirdReviewSchedule()" style="display: none;">
+                                    <i class="fas fa-paper-plane"></i> Submit Third Sprint Schedule Agreement
                                 </button>
                             </div>
                         </div>

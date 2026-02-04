@@ -796,6 +796,253 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
+        async loadAdminThirdReviewVerification() {
+            if (!app.isAdmin) return;
+            
+            const consolidatedView = document.getElementById('admin-third-review-consolidated-view');
+            const container = document.getElementById('admin-third-review-teams-list');
+            
+            if (!consolidatedView) return;
+            
+            consolidatedView.innerHTML = '<div class="loading-state">Loading consolidated view...</div>';
+            
+            try {
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                
+                const teams = [];
+                for (const teamDoc of teamsSnapshot.docs) {
+                    const teamData = teamDoc.data();
+                    if (teamData.deleted) continue;
+                    
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamDoc.id));
+                    const hasSchedule = scheduleDoc.exists();
+                    const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                    
+                    let totalBacklogs = 0;
+                    if (scheduleData?.modules) {
+                        scheduleData.modules.forEach(module => {
+                            totalBacklogs += (module.productBacklogs?.length || 0);
+                        });
+                    }
+                    totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
+                    
+                    let completedBacklogIds = [];
+                    let progressPercentage = 0;
+                    try {
+                        const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewStudentProgress', teamDoc.id));
+                        if (studentProgressDoc.exists()) {
+                            const progressData = studentProgressDoc.data();
+                            completedBacklogIds = progressData.completedBacklogIds || [];
+                        }
+                        if (totalBacklogs > 0) {
+                            progressPercentage = Math.round((completedBacklogIds.length / totalBacklogs) * 100);
+                        }
+                    } catch (error) {
+                        console.warn(`Error loading progress for team ${teamDoc.id}:`, error);
+                    }
+                    
+                    teams.push({
+                        id: teamDoc.id,
+                        name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                        guideId: teamData.guideId || '',
+                        guideName: teamData.guideName || 'No Guide',
+                        hasSchedule: hasSchedule,
+                        submitted: scheduleData?.submitted || false,
+                        verified: scheduleData?.verified || false,
+                        frozen: scheduleData?.frozen || false,
+                        submittedAt: scheduleData?.submittedAt || null,
+                        verifiedAt: scheduleData?.verifiedAt || null,
+                        frozenAt: scheduleData?.frozenAt || null,
+                        modulesCount: scheduleData?.modules?.length || 0,
+                        standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                        totalBacklogs: totalBacklogs,
+                        completedTasks: completedBacklogIds.length,
+                        progressPercentage: progressPercentage
+                    });
+                }
+                
+                if (teams.length === 0) {
+                    consolidatedView.innerHTML = '<p class="empty-state">No teams found.</p>';
+                    return;
+                }
+                
+                const teamsForOrdering = teams.map(t => ({ id: t.id, groupName: t.name }));
+                const sortedTeamsForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                
+                const stats = {
+                    total: sortedTeams.length,
+                    hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                    submitted: sortedTeams.filter(t => t.submitted).length,
+                    verified: sortedTeams.filter(t => t.verified).length,
+                    frozen: sortedTeams.filter(t => t.frozen).length,
+                    lowProgress: sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50).length
+                };
+                
+                const lowProgressTeams = sortedTeams.filter(t => t.hasSchedule && t.progressPercentage < 50)
+                    .sort((a, b) => a.progressPercentage - b.progressPercentage);
+                
+                consolidatedView.innerHTML = `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <h4 style="margin: 0 0 1rem 0; color: #1e40af; font-size: 1.1rem; font-weight: 600;">
+                            <i class="fas fa-chart-bar"></i> Statistics
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.total}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Total Teams</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.hasSchedule}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Has Schedule</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin-bottom: 0.25rem;">${stats.submitted}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Submitted</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981; margin-bottom: 0.25rem;">${stats.verified}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Verified</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin-bottom: 0.25rem;">${stats.frozen}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Frozen</div>
+                            </div>
+                            <div style="padding: 1rem; background: white; border-radius: 6px; text-align: center;">
+                                <div style="font-size: 2rem; font-weight: 700; color: ${stats.lowProgress > 0 ? '#ef4444' : '#10b981'}; margin-bottom: 0.25rem;">${stats.lowProgress}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Low Progress</div>
+                            </div>
+                        </div>
+                    </div>
+                    ${lowProgressTeams.length > 0 ? `
+                    <div style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 8px; border-left: 4px solid #ef4444;">
+                        <h4 style="margin: 0 0 1rem 0; color: #991b1b; font-size: 1.1rem; font-weight: 600;">
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Teams with Low Progress (< 50%)
+                        </h4>
+                        <p style="margin: 0 0 1rem 0; color: #7f1d1d; font-size: 0.9rem;">
+                            The following teams have completed less than 50% of their third sprint tasks.
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${lowProgressTeams.map(team => {
+                                const progressColor = team.progressPercentage < 25 ? '#ef4444' : (team.progressPercentage < 40 ? '#f59e0b' : '#3b82f6');
+                                return `
+                                    <div style="padding: 0.875rem; background: white; border-radius: 6px; border-left: 3px solid ${progressColor}; display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">${escapeHtml(team.name)}</div>
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary);">Guide: ${escapeHtml(team.guideName)}</div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                            <div style="min-width: 140px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.5rem;">
+                                                    <span style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">Progress:</span>
+                                                    <span style="font-weight: 600; color: ${progressColor}; font-size: 0.85rem; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                </div>
+                                                <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                    <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                </div>
+                                                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem; text-align: right;">
+                                                    ${team.completedTasks} / ${team.totalBacklogs} tasks
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminThirdReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; white-space: nowrap;">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; table-layout: auto;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Team Name</th>
+                                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.9rem;">Guide</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Schedule</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Status</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Freeze</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem; min-width: 110px;">Progress</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Modules</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Backlogs</th>
+                                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sortedTeams.map((team, index) => {
+                                    const statusColor = team.verified ? '#10b981' : (team.submitted ? '#3b82f6' : '#6b7280');
+                                    const statusText = team.verified ? 'Verified' : (team.submitted ? 'Submitted' : 'Not Submitted');
+                                    const freezeColor = team.frozen ? '#f59e0b' : '#6b7280';
+                                    const freezeText = team.frozen ? 'Frozen' : 'Active';
+                                    let progressColor = '#10b981';
+                                    if (team.progressPercentage < 25) progressColor = '#ef4444';
+                                    else if (team.progressPercentage < 50) progressColor = '#f59e0b';
+                                    else if (team.progressPercentage < 75) progressColor = '#3b82f6';
+                                    return `
+                                        <tr style="border-bottom: 1px solid #e5e7eb; ${index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;'}">
+                                            <td style="padding: 0.75rem; font-weight: 600; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">${escapeHtml(team.name)}</td>
+                                            <td style="padding: 0.75rem; color: var(--text-secondary); font-size: 0.85rem; vertical-align: middle;">${escapeHtml(team.guideName)}</td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${team.hasSchedule ? '#10b981' : '#6b7280'}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
+                                                    ${team.hasSchedule ? '<i class="fas fa-check"></i> Yes' : '<i class="fas fa-times"></i> No'}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${statusColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">${statusText}</span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <span style="padding: 0.35rem 0.65rem; background: ${freezeColor}; color: white; border-radius: 10px; font-size: 0.8rem; font-weight: 600;">
+                                                    <i class="fas ${team.frozen ? 'fa-lock' : 'fa-unlock'}"></i> ${freezeText}
+                                                </span>
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                ${team.hasSchedule ? `
+                                                    <div style="min-width: 100px; max-width: 130px; margin: 0 auto;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.25rem;">
+                                                            <span style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${team.progressPercentage}%</span>
+                                                            <span style="font-size: 0.65rem; color: var(--text-secondary); white-space: nowrap;">${team.completedTasks}/${team.totalBacklogs}</span>
+                                                        </div>
+                                                        <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                                                            <div style="height: 100%; background: linear-gradient(90deg, ${progressColor} 0%, ${progressColor}dd 100%); width: ${team.progressPercentage}%; transition: width 0.3s ease; border-radius: 4px;"></div>
+                                                        </div>
+                                                    </div>
+                                                ` : '<span style="color: var(--text-secondary); font-size: 0.75rem;">N/A</span>'}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">${team.modulesCount}</td>
+                                            <td style="padding: 0.75rem; text-align: center; color: var(--text-primary); font-size: 0.9rem; vertical-align: middle;">${team.totalBacklogs}</td>
+                                            <td style="padding: 0.75rem; text-align: center; vertical-align: middle;">
+                                                <button type="button" class="btn btn-primary btn-sm" onclick="app.loadAdminThirdReviewSchedule('${team.id}')" style="padding: 0.35rem 0.7rem; font-size: 0.8rem;">
+                                                    <i class="fas fa-eye"></i> View
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                const searchInput = document.getElementById('search-third-review-teams');
+                if (searchInput) {
+                    searchInput.oninput = (e) => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        const rows = consolidatedView.querySelectorAll('tbody tr');
+                        rows.forEach(row => {
+                            const teamName = row.textContent.toLowerCase();
+                            row.style.display = teamName.includes(searchTerm) ? '' : 'none';
+                        });
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading third sprint consolidated view:', error);
+                consolidatedView.innerHTML = '<p class="error-message">Error loading consolidated view. Please try again.</p>';
+            }
+        },
+        
         async generateFirstSprintProgressReport() {
             if (!app.isAdmin) return;
             
@@ -1774,6 +2021,74 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
+        async generateThirdSprintProgressReport() {
+            if (!app.isAdmin) return;
+            try {
+                const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+                const teamsSnapshot = await getDocs(teamsQuery);
+                const teams = [];
+                for (const teamDoc of teamsSnapshot.docs) {
+                    const teamData = teamDoc.data();
+                    if (teamData.deleted) continue;
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamDoc.id));
+                    const hasSchedule = scheduleDoc.exists();
+                    const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                    let totalBacklogs = 0;
+                    if (scheduleData?.modules) {
+                        scheduleData.modules.forEach(module => {
+                            totalBacklogs += (module.productBacklogs?.length || 0);
+                        });
+                    }
+                    totalBacklogs += (scheduleData?.standaloneBacklogs?.length || 0);
+                    let completedTasks = 0;
+                    let progressPercentage = 0;
+                    try {
+                        const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewStudentProgress', teamDoc.id));
+                        if (studentProgressDoc.exists()) {
+                            completedTasks = (studentProgressDoc.data().completedBacklogIds || []).length;
+                        }
+                        if (totalBacklogs > 0) {
+                            progressPercentage = Math.round((completedTasks / totalBacklogs) * 100);
+                        }
+                    } catch (e) {
+                        console.warn('Error loading progress for team ' + teamDoc.id, e);
+                    }
+                    teams.push({
+                        id: teamDoc.id,
+                        name: teamData.name || teamData.groupName || 'Team',
+                        guideName: teamData.guideName || 'No Guide',
+                        hasSchedule: hasSchedule,
+                        totalBacklogs: totalBacklogs,
+                        completedTasks: completedTasks,
+                        progressPercentage: progressPercentage
+                    });
+                }
+                if (teams.length === 0) {
+                    alert('No teams found.');
+                    return;
+                }
+                const teamsForOrdering = teams.map(t => ({ id: t.id, groupName: t.name }));
+                const sortedForOrdering = await app.applyTeamOrder(teamsForOrdering);
+                const teamMap = new Map(teams.map(t => [t.id, t]));
+                const sortedTeams = sortedForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+                const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                let html = '<!DOCTYPE html><html><head><title>Third Sprint Progress Report</title></head><body style="font-family: Lato, sans-serif; padding: 20px;">';
+                html += '<h1>Third Sprint Progress Report</h1><p>Generated: ' + currentDate + '</p>';
+                html += '<table border="1" cellpadding="8" style="border-collapse: collapse;"><tr><th>Team</th><th>Guide</th><th>Schedule</th><th>Progress</th><th>Tasks</th></tr>';
+                sortedTeams.forEach(t => {
+                    html += '<tr><td>' + escapeHtml(t.name) + '</td><td>' + escapeHtml(t.guideName) + '</td><td>' + (t.hasSchedule ? 'Yes' : 'No') + '</td><td>' + t.progressPercentage + '%</td><td>' + t.completedTasks + ' / ' + t.totalBacklogs + '</td></tr>';
+                });
+                html += '</table></body></html>';
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(html);
+                printWindow.document.close();
+                setTimeout(() => printWindow.focus(), 500);
+            } catch (error) {
+                console.error('Error generating third sprint progress report:', error);
+                alert('Error generating progress report. Please try again.');
+            }
+        },
+        
         async loadAdminFirstReviewSchedule(teamId) {
             if (!app.isAdmin) return;
             
@@ -2585,6 +2900,272 @@ export function createAdminMiniProjectModule(app) {
             } catch (error) {
                 console.error('Error rendering schedule content:', error);
                 container.innerHTML = '<p class="error-message">Error rendering schedule. Please try again.</p>';
+            }
+        },
+        
+        async loadAdminThirdReviewSchedule(teamId) {
+            if (!app.isAdmin) return;
+            const existingModal = document.getElementById('admin-third-review-modal');
+            if (existingModal) existingModal.remove();
+            const modal = document.createElement('div');
+            modal.id = 'admin-third-review-modal';
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            try {
+                const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+                if (!teamDoc.exists()) {
+                    alert('Team not found.');
+                    return;
+                }
+                const teamName = teamDoc.data().name || teamDoc.data().groupName || `Team ${teamId.substring(0, 8)}`;
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+                const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [], submitted: false, verified: false, frozen: false };
+                const modulesCount = scheduleData.modules?.length || 0;
+                const standaloneCount = scheduleData.standaloneBacklogs?.length || 0;
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                            <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-check-circle" style="color: #3b82f6; font-size: 1rem;"></i> Third Sprint Schedule - ${escapeHtml(teamName)}
+                            </h2>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('admin-third-review-modal').remove()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                <i class="fas fa-times" style="font-size: 0.85rem;"></i> Close
+                            </button>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem;">
+                                <span style="padding: 0.35rem 0.75rem; background: ${scheduleData.submitted ? (scheduleData.verified ? '#3b82f6' : '#10b981') : '#f59e0b'}; color: white; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                    Status: ${scheduleData.verified ? 'Verified' : (scheduleData.submitted ? 'Submitted' : 'Draft')}
+                                </span>
+                                ${scheduleData.submittedAt ? `
+                                    <span style="padding: 0.35rem 0.75rem; background: #f3f4f6; color: var(--text-primary); border-radius: 4px; font-size: 0.75rem;">
+                                        Submitted: ${scheduleData.submittedAt.toDate ? scheduleData.submittedAt.toDate().toLocaleString() : 'Unknown'}
+                                    </span>
+                                ` : ''}
+                                ${scheduleData.verifiedAt ? `
+                                    <span style="padding: 0.35rem 0.75rem; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.75rem;">
+                                        Verified: ${scheduleData.verifiedAt.toDate ? scheduleData.verifiedAt.toDate().toLocaleString() : 'Unknown'}
+                                        ${scheduleData.verifiedBy ? ` by ${escapeHtml(scheduleData.verifiedBy)}` : ''}
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div style="padding: 1rem; background: #f8fafc; border-radius: 8px; margin-bottom: 1rem;">
+                                <p style="margin: 0 0 0.35rem 0;"><strong>Frozen:</strong> ${scheduleData.frozen ? 'Yes' : 'No'}</p>
+                                <p style="margin: 0 0 0.35rem 0;"><strong>Modules:</strong> ${modulesCount}</p>
+                                <p style="margin: 0;"><strong>Standalone backlogs:</strong> ${standaloneCount}</p>
+                            </div>
+                            ${scheduleData.submitted && !scheduleData.verified ? `
+                            <div style="padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 0.75rem;">
+                                <div style="font-size: 0.8rem; font-weight: 600; color: #92400e; margin-bottom: 0.5rem;">
+                                    <i class="fas fa-info-circle"></i> Verification Required
+                                </div>
+                                <form onsubmit="app.verifyThirdReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div>
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Admin Comments:</label>
+                                        <textarea id="admin-verification-comments-third" class="form-input" rows="3" placeholder="Add comments for the team..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                        <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                            <i class="fas fa-check-circle" style="font-size: 0.7rem;"></i> Verify & Unlock
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            ` : scheduleData.verified ? `
+                            <div style="padding: 0.75rem; background: #dbeafe; border-radius: 6px; border-left: 3px solid #3b82f6; margin-bottom: 0.75rem;">
+                                ${scheduleData.adminComments ? `
+                                    <div style="font-size: 0.75rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                        <i class="fas fa-comment-alt"></i> Admin Comments:
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 0.75rem;">
+                                        ${escapeHtml(scheduleData.adminComments)}
+                                    </div>
+                                ` : ''}
+                                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; flex-wrap: wrap;">
+                                    ${scheduleData.frozen ? `
+                                        <span style="padding: 0.3rem 0.6rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                            <i class="fas fa-lock"></i> Frozen - Students cannot edit
+                                        </span>
+                                        <button type="button" class="btn btn-success btn-sm" onclick="app.unfreezeThirdReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+                                            <i class="fas fa-unlock" style="font-size: 0.7rem;"></i> Unfreeze
+                                        </button>
+                                    ` : `
+                                        <button type="button" class="btn btn-warning btn-sm" onclick="app.freezeThirdReviewSchedule('${teamId}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                            <i class="fas fa-lock" style="font-size: 0.7rem;"></i> Freeze Backlogs
+                                        </button>
+                                    `}
+                                </div>
+                                <form onsubmit="app.revertThirdReviewSchedule(event, '${teamId}')" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div>
+                                        <label style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.3rem;">Update Comments (optional):</label>
+                                        <textarea id="admin-revert-comments-third" class="form-input" rows="3" placeholder="Add comments for reverting back to student..." style="width: 100%; padding: 0.5rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;">${scheduleData.adminComments || ''}</textarea>
+                                    </div>
+                                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                        <button type="submit" class="btn btn-warning btn-sm" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f59e0b; color: white; border: none;">
+                                            <i class="fas fa-undo" style="font-size: 0.7rem;"></i> Revert to Student
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div id="admin-third-review-schedule-content">
+                            <!-- Modules and product backlogs loaded here -->
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                // Load modules, backlogs and student progress for schedule content (replicate first/second sprint)
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', teamId)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                const allModules = [];
+                modulesSnapshot.forEach(docSnap => {
+                    allModules.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                const thirdReviewBacklogQuery = query(
+                    collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                    where('teamId', '==', teamId)
+                );
+                const thirdReviewBacklogSnapshot = await getDocs(thirdReviewBacklogQuery);
+                const allBacklogs = [];
+                thirdReviewBacklogSnapshot.forEach(docSnap => {
+                    allBacklogs.push({ id: docSnap.id, ...docSnap.data(), source: 'thirdReview' });
+                });
+                let completedBacklogIds = [];
+                try {
+                    const studentProgressDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewStudentProgress', teamId));
+                    if (studentProgressDoc.exists()) {
+                        completedBacklogIds = studentProgressDoc.data().completedBacklogIds || [];
+                    }
+                } catch (e) {
+                    console.warn('Error loading third review student progress:', e);
+                }
+                await app.renderAdminThirdReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, completedBacklogIds);
+            } catch (error) {
+                console.error('Error loading third review schedule:', error);
+                modal.remove();
+                alert('Error loading schedule.');
+            }
+        },
+        
+        async renderAdminThirdReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, completedBacklogIds = []) {
+            const container = document.getElementById('admin-third-review-schedule-content');
+            if (!container) return;
+            try {
+                let html = '';
+                if (scheduleData.modules && scheduleData.modules.length > 0) {
+                    html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-folder" style="font-size: 0.9rem; color: #3b82f6;"></i> Modules</h3>';
+                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    sortedModules.forEach((scheduleModule) => {
+                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                        if (!module) return;
+                        const scheduledBacklogIds = new Set((scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId)));
+                        const moduleBacklogs = allBacklogs.filter(b => b.source === 'thirdReview' && scheduledBacklogIds.has(String(b.id)));
+                        const sortedBacklogs = [...moduleBacklogs].map(backlog => {
+                            const bs = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                            return { ...backlog, order: bs?.order !== undefined ? bs.order : 999999, scheduleBacklog: bs };
+                        }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                        html += `
+                            <div class="admin-module-card" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                                    <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600;"><i class="fas fa-folder" style="color: #3b82f6;"></i> ${escapeHtml(module.name || 'Unnamed Module')}</h4>
+                                </div>
+                                <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span>${scheduleModule.startDate ? 'Start: ' + scheduleModule.startDate : 'No start date'}</span>
+                                    <span>${scheduleModule.endDate ? 'End: ' + scheduleModule.endDate : 'No end date'}</span>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${sortedBacklogs.map(backlog => {
+                                        const bs = backlog.scheduleBacklog;
+                                        const startDate = bs?.startDate || '';
+                                        const endDate = bs?.endDate || '';
+                                        const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                                        const priority = backlog.priority || 'medium';
+                                        const difficulty = backlog.difficulty || 'medium';
+                                        const priorityColors = { low: '#6b7280', medium: '#3b82f6', high: '#f59e0b', critical: '#ef4444' };
+                                        const difficultyColors = { easy: '#10b981', medium: '#3b82f6', hard: '#f59e0b', 'very-hard': '#ef4444' };
+                                        const pc = priorityColors[priority] || '#3b82f6';
+                                        const dc = difficultyColors[difficulty] || '#3b82f6';
+                                        return `
+                                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                                ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                                <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                            </div>
+                                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem;">
+                                                <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
+                                                <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
+                                                ${startDate ? `<span>Start: ${startDate}</span>` : ''}
+                                                ${endDate ? `<span>End: ${endDate}</span>` : ''}
+                                            </div>
+                                        </div>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                    html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600;"><i class="fas fa-tasks" style="font-size: 0.9rem; color: #3b82f6;"></i> Standalone Product Backlogs</h3>';
+                    html += '<div style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: #fafbfc;">';
+                    const standaloneIds = new Set(scheduleData.standaloneBacklogs.map(b => String(b.backlogId)));
+                    const standaloneBacklogs = allBacklogs.filter(b => b.source === 'thirdReview' && standaloneIds.has(String(b.id)));
+                    const sortedStandalone = standaloneBacklogs.map(b => {
+                        const bs = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(b.id));
+                        return { ...b, order: bs?.order !== undefined ? bs.order : 999999, scheduleBacklog: bs };
+                    }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                    sortedStandalone.forEach(backlog => {
+                        const bs = backlog.scheduleBacklog;
+                        const startDate = bs?.startDate || '';
+                        const endDate = bs?.endDate || '';
+                        const isCompleted = completedBacklogIds.includes(String(backlog.id));
+                        const priority = backlog.priority || 'medium';
+                        const difficulty = backlog.difficulty || 'medium';
+                        const priorityColors = { low: '#6b7280', medium: '#3b82f6', high: '#f59e0b', critical: '#ef4444' };
+                        const difficultyColors = { easy: '#10b981', medium: '#3b82f6', hard: '#f59e0b', 'very-hard': '#ef4444' };
+                        const pc = priorityColors[priority] || '#3b82f6';
+                        const dc = difficultyColors[difficulty] || '#3b82f6';
+                        html += `
+                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                            </div>
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem;">
+                                <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
+                                <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
+                                ${startDate ? `<span>Start: ${startDate}</span>` : ''}
+                                ${endDate ? `<span>End: ${endDate}</span>` : ''}
+                            </div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                const totalBacklogs = (scheduleData.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData.standaloneBacklogs?.length || 0);
+                const completedCount = completedBacklogIds.length;
+                const completionPercentage = totalBacklogs > 0 ? Math.round((completedCount / totalBacklogs) * 100) : 0;
+                html += `
+                <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-left: 4px solid #10b981;">
+                    <h3 style="margin: 0 0 1rem 0; color: #065f46; font-size: 1rem;"><i class="fas fa-chart-line" style="color: #10b981;"></i> Student Progress</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong style="color: var(--text-primary); font-size: 0.9rem;">Completed Tasks:</strong>
+                        <span style="font-size: 1.1rem; font-weight: 600; color: #10b981;">${completedCount} / ${totalBacklogs} (${completionPercentage}%)</span>
+                    </div>
+                    <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                        <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: ${completionPercentage}%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>`;
+                container.innerHTML = html || '<p class="empty-state" style="font-size: 0.9rem;">No modules or backlogs in this schedule.</p>';
+            } catch (error) {
+                console.error('Error rendering third review schedule content:', error);
+                container.innerHTML = '<p class="error-message">Error loading schedule content.</p>';
             }
         },
         

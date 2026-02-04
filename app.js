@@ -3712,6 +3712,9 @@ const app = {
         // Load second review total marks
         await this.loadSecondReviewTotalMarks();
         
+        // Load third review total marks
+        await this.loadThirdReviewTotalMarks();
+        
         // Load approved problem statement editing setting
         await this.loadApprovedProblemStatementEditingSetting();
     },
@@ -3820,6 +3823,60 @@ const app = {
             return settingsDoc.exists() ? (settingsDoc.data().secondReviewTotalMarks || 0) : 0;
         } catch (error) {
             console.error('Error getting second review total marks:', error);
+            return 0;
+        }
+    },
+    
+    async loadThirdReviewTotalMarks() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const thirdReviewTotalMarks = settingsDoc.exists() ? (settingsDoc.data().thirdReviewTotalMarks || 0) : 0;
+            const input = document.getElementById('third-review-total-marks');
+            if (input) {
+                input.value = thirdReviewTotalMarks;
+            }
+        } catch (error) {
+            console.error('Error loading third review total marks:', error);
+        }
+    },
+    
+    async saveThirdReviewTotalMarks() {
+        if (!this.isAdmin) {
+            alert('Only administrators can change this setting.');
+            return;
+        }
+        
+        const input = document.getElementById('third-review-total-marks');
+        if (!input) return;
+        
+        const totalMarks = parseFloat(input.value) || 0;
+        
+        if (totalMarks < 0) {
+            alert('Total marks cannot be negative.');
+            input.value = 0;
+            return;
+        }
+        
+        try {
+            await setDoc(doc(window.firebaseDb, 'settings', 'miniproject'), {
+                thirdReviewTotalMarks: totalMarks,
+                updatedAt: serverTimestamp(),
+                updatedBy: this.currentUser.uid
+            }, { merge: true });
+            
+            alert('Third review total marks saved successfully!');
+        } catch (error) {
+            console.error('Error saving third review total marks:', error);
+            alert('Error saving third review total marks. Please try again.');
+        }
+    },
+    
+    async getThirdReviewTotalMarks() {
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            return settingsDoc.exists() ? (settingsDoc.data().thirdReviewTotalMarks || 0) : 0;
+        } catch (error) {
+            console.error('Error getting third review total marks:', error);
             return 0;
         }
     },
@@ -6107,6 +6164,17 @@ const app = {
                 console.error('Error loading second review total marks:', error);
             }
             
+            // Load third review total marks for product backlog marks calculation
+            let thirdReviewTotalMarks = 10; // Default
+            try {
+                thirdReviewTotalMarks = await this.getThirdReviewTotalMarks();
+                if (thirdReviewTotalMarks === 0) {
+                    thirdReviewTotalMarks = 10; // Default to 10 if not set
+                }
+            } catch (error) {
+                console.error('Error loading third review total marks:', error);
+            }
+            
             // Get guide's email to match teams
             const guideEmail = this.currentUser.email;
             
@@ -6374,6 +6442,7 @@ const app = {
                         const stage = stages[i];
                         const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
                         const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+                        const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
                         if (isFirstReviewStage) {
                             try {
                                 const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', team.id));
@@ -6587,6 +6656,103 @@ const app = {
                             }
                         }
                         
+                        // Load product backlog evaluations for Third Review stage
+                        if (isThirdReviewStage) {
+                            try {
+                                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+                                if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                    const thirdReviewBacklogQuery = query(
+                                        collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                                        where('teamId', '==', team.id)
+                                    );
+                                    const thirdReviewBacklogSnapshot = await getDocs(thirdReviewBacklogQuery);
+                                    const allBacklogs = [];
+                                    thirdReviewBacklogSnapshot.forEach(doc => {
+                                        allBacklogs.push({ id: doc.id, ...doc.data() });
+                                    });
+                                    
+                                    const thirdReviewScheduleData = scheduleDoc.data();
+                                    const thirdReviewBacklogs = [];
+                                    
+                                    if (thirdReviewScheduleData.modules) {
+                                        thirdReviewScheduleData.modules.forEach(module => {
+                                            if (module.productBacklogs) {
+                                                module.productBacklogs.forEach(pb => {
+                                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                    if (backlog) {
+                                                        thirdReviewBacklogs.push(backlog);
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    if (thirdReviewScheduleData.standaloneBacklogs) {
+                                        thirdReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                thirdReviewBacklogs.push(backlog);
+                                            }
+                                        });
+                                    }
+                                    
+                                    const evaluatorEntriesForPB = evaluatorEntries;
+                                    const productBacklogEvaluations = {};
+                                    
+                                    thirdReviewBacklogs.forEach(backlog => {
+                                        productBacklogEvaluations[String(backlog.id)] = {
+                                            backlog: backlog,
+                                            markedBy: [],
+                                            unmarkedBy: []
+                                        };
+                                    });
+                                    
+                                    evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                        const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                        if (evaluatorEntry.thirdReviewCheckedBacklogs && Array.isArray(evaluatorEntry.thirdReviewCheckedBacklogs)) {
+                                            const checkedBacklogs = evaluatorEntry.thirdReviewCheckedBacklogs;
+                                            thirdReviewBacklogs.forEach(backlog => {
+                                                const backlogId = String(backlog.id);
+                                                if (checkedBacklogs.includes(backlogId)) {
+                                                    productBacklogEvaluations[backlogId].markedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                } else {
+                                                    productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                        evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                        evaluatorId: evaluatorId
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
+                                    
+                                    if (evalData.thirdReviewCheckedBacklogs && Array.isArray(evalData.thirdReviewCheckedBacklogs)) {
+                                        const adminCheckedBacklogs = evalData.thirdReviewCheckedBacklogs;
+                                        thirdReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            if (adminCheckedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: 'Admin',
+                                                    evaluatorId: 'admin'
+                                                });
+                                            }
+                                        });
+                                    }
+                                    
+                                    evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                                }
+                            } catch (error) {
+                                console.warn(`Error loading third sprint product backlogs for team ${team.id}:`, error);
+                            }
+                        }
+                        
                         if (evalDoc.exists() || evaluatorEntries.length > 0) {
                             evaluations[i] = evalData;
                         }
@@ -6740,11 +6906,16 @@ const app = {
                                 const individualParams = stage.individualMarkParams || [];
                                 const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
                                 const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+                                const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
                                 
                                 let teamTotal = teamParams.reduce((sum, p) => sum + (p.maxMarks || 0), 0);
                                 // For First Review, if no team parameters are configured, use firstReviewTotalMarks from settings
                                 if (teamTotal === 0 && isFirstReviewStage) {
                                     teamTotal = firstReviewTotalMarks;
+                                } else if (teamTotal === 0 && isSecondReviewStage) {
+                                    teamTotal = secondReviewTotalMarks;
+                                } else if (teamTotal === 0 && isThirdReviewStage) {
+                                    teamTotal = thirdReviewTotalMarks;
                                 } else if (teamTotal === 0) {
                                     teamTotal = 10; // Default to 10 for other stages
                                 }
@@ -6771,9 +6942,9 @@ const app = {
                                 // Always show evaluation section if evaluation data exists
                                 const showEvaluationDetails = evalData !== undefined;
                                 
-                                // Prepare product backlog section for First Review or Second Review stage
+                                // Prepare product backlog section for First Review, Second Review, or Third Review stage
                                 let productBacklogSection = '';
-                                if ((isFirstReviewStage || isSecondReviewStage) && hasProductBacklogs) {
+                                if ((isFirstReviewStage || isSecondReviewStage || isThirdReviewStage) && hasProductBacklogs) {
                                     const markedBacklogs = [];
                                     const pendingBacklogs = [];
                                     
@@ -6798,13 +6969,15 @@ const app = {
                                         totalMarksForBacklogs = firstReviewTotalMarks > 0 ? firstReviewTotalMarks : teamTotal;
                                     } else if (isSecondReviewStage) {
                                         totalMarksForBacklogs = secondReviewTotalMarks > 0 ? secondReviewTotalMarks : teamTotal;
+                                    } else if (isThirdReviewStage) {
+                                        totalMarksForBacklogs = thirdReviewTotalMarks > 0 ? thirdReviewTotalMarks : teamTotal;
                                     }
                                     
                                     const backlogMarks = totalMarksForBacklogs > 0 
                                         ? Math.round((completedCount / totalBacklogs) * totalMarksForBacklogs * 100) / 100
                                         : 0;
                                     
-                                    const sprintName = isFirstReviewStage ? 'First Sprint' : 'Second Sprint';
+                                    const sprintName = isFirstReviewStage ? 'First Sprint' : (isSecondReviewStage ? 'Second Sprint' : 'Third Sprint');
                                     
                                     productBacklogSection = `
                                         <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e5e7eb;">
@@ -7056,6 +7229,10 @@ const app = {
         // Load second review verification when tab is switched
         if (tabName === 'second-review') {
             setTimeout(() => this.loadAdminSecondReviewVerification(), 100);
+        }
+        // Load third review verification when tab is switched
+        if (tabName === 'third-review') {
+            setTimeout(() => this.loadAdminThirdReviewVerification(), 100);
         }
         // Load GitHub repositories when tab is switched
         if (tabName === 'github-repos') {
@@ -8599,12 +8776,16 @@ const app = {
             // Check if this is First Sprint stage and if schedule is frozen
             const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
             const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+            const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
             let firstReviewScheduleData = null;
             let firstReviewBacklogs = [];
             let checkedBacklogIds = [];
             let secondReviewScheduleData = null;
             let secondReviewBacklogs = [];
             let secondReviewCheckedBacklogIds = [];
+            let thirdReviewScheduleData = null;
+            let thirdReviewBacklogs = [];
+            let thirdReviewCheckedBacklogIds = [];
             
             if (isFirstReviewStage) {
                 try {
@@ -8742,6 +8923,70 @@ const app = {
                 }
             }
             
+            if (isThirdReviewStage) {
+                try {
+                    const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+                    if (scheduleDoc.exists()) {
+                        thirdReviewScheduleData = scheduleDoc.data();
+                        const isFrozen = thirdReviewScheduleData.frozen === true;
+                        
+                        if (isFrozen) {
+                            const thirdReviewBacklogQuery = query(
+                                collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                                where('teamId', '==', teamId)
+                            );
+                            const thirdReviewBacklogSnapshot = await getDocs(thirdReviewBacklogQuery);
+                            const allBacklogs = [];
+                            thirdReviewBacklogSnapshot.forEach(doc => {
+                                allBacklogs.push({ id: doc.id, ...doc.data() });
+                            });
+                            
+                            const modulesQuery = query(
+                                collection(window.firebaseDb, 'cardSortingModules'),
+                                where('teamId', '==', teamId)
+                            );
+                            const modulesSnapshot = await getDocs(modulesQuery);
+                            const allModules = [];
+                            modulesSnapshot.forEach(doc => {
+                                allModules.push({ id: doc.id, ...doc.data() });
+                            });
+                            
+                            if (thirdReviewScheduleData.modules) {
+                                thirdReviewScheduleData.modules.forEach(module => {
+                                    if (module.productBacklogs) {
+                                        module.productBacklogs.forEach(pb => {
+                                            const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                            if (backlog) {
+                                                thirdReviewBacklogs.push({
+                                                    ...backlog,
+                                                    moduleId: module.moduleId,
+                                                    moduleName: allModules.find(m => m.id === module.moduleId)?.name || 'Unknown Module'
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+                            
+                            if (thirdReviewScheduleData.standaloneBacklogs) {
+                                thirdReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                    const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                    if (backlog) {
+                                        thirdReviewBacklogs.push({
+                                            ...backlog,
+                                            moduleId: null,
+                                            moduleName: 'Standalone'
+                                        });
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error loading third review schedule:', error);
+                }
+            }
+            
             // Load existing evaluation data from current evaluator's entry
             let evalData = {};
             let teamComments = '';
@@ -8758,11 +9003,13 @@ const app = {
                         teamComments: evaluatorData.teamComments || evaluatorData.comments || '',
                         individualEvaluations: evaluatorData.individualEvaluations || {},
                         firstReviewCheckedBacklogs: evaluatorData.firstReviewCheckedBacklogs || [],
-                        secondReviewCheckedBacklogs: evaluatorData.secondReviewCheckedBacklogs || []
+                        secondReviewCheckedBacklogs: evaluatorData.secondReviewCheckedBacklogs || [],
+                        thirdReviewCheckedBacklogs: evaluatorData.thirdReviewCheckedBacklogs || []
                     };
                     teamComments = evalData.teamComments;
                     checkedBacklogIds = evalData.firstReviewCheckedBacklogs || [];
                     secondReviewCheckedBacklogIds = evalData.secondReviewCheckedBacklogs || [];
+                    thirdReviewCheckedBacklogIds = evalData.thirdReviewCheckedBacklogs || [];
                 }
             } catch (error) {
                 console.warn('Error loading evaluator entry:', error);
@@ -9036,6 +9283,64 @@ const app = {
                         </div>
                     ` : ''}
                     
+                    ${isThirdReviewStage && thirdReviewScheduleData && thirdReviewScheduleData.frozen === true && thirdReviewBacklogs.length > 0 ? `
+                        <!-- Third Sprint Product Backlog Checklist -->
+                        <div class="evaluation-section" style="margin-top: 1.5rem; margin-bottom: 1.5rem; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1.5rem;">
+                            <h5 style="margin-bottom: 1rem; color: #059669; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i> Third Sprint - Product Backlog Completion
+                                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: auto;">
+                                    <i class="fas fa-lock"></i> Schedule Frozen
+                                </span>
+                            </h5>
+                            
+                            <div style="margin-bottom: 1rem; padding: 0.75rem; background: white; border-radius: 6px; border: 1px solid #d1fae5;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.95rem;">Progress:</strong>
+                                        <span id="third-review-progress-percentage" style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">0%</span>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <strong style="color: var(--text-primary); font-size: 0.95rem;">Marks:</strong>
+                                        <span id="third-review-marks-display" style="font-size: 1.1rem; font-weight: 600; color: #059669; margin-left: 0.5rem;">0</span>
+                                        <span id="third-review-total-marks-display" style="font-size: 0.9rem; color: var(--text-secondary);">/ 0</span>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 0.75rem;">
+                                    <div style="width: 100%; height: 12px; background: #d1fae5; border-radius: 6px; overflow: hidden;">
+                                        <div id="third-review-progress-bar" style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #059669 100%); width: 0%; transition: width 0.3s ease; border-radius: 6px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #d1fae5; border-radius: 6px; padding: 0.75rem; background: white;">
+                                ${thirdReviewBacklogs.map((backlog, index) => {
+                                    const isChecked = thirdReviewCheckedBacklogIds.includes(String(backlog.id));
+                                    return `
+                                        <div style="padding: 0.75rem; margin-bottom: ${index < thirdReviewBacklogs.length - 1 ? '0.5rem' : '0'}; border-bottom: ${index < thirdReviewBacklogs.length - 1 ? '1px solid #e5e7eb' : 'none'}; border-radius: 4px; background: ${isChecked ? '#f0fdf4' : '#fafafa'}; transition: background 0.2s;">
+                                            <label style="display: flex; align-items: start; gap: 0.75rem; cursor: pointer; user-select: none;">
+                                                <input type="checkbox" 
+                                                       class="third-review-backlog-checkbox" 
+                                                       data-backlog-id="${backlog.id}"
+                                                       ${isChecked ? 'checked' : ''}
+                                                       onchange="app.updateThirdReviewProgress()"
+                                                       style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer; flex-shrink: 0;">
+                                                <div style="flex: 1;">
+                                                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; font-size: 0.9rem;">
+                                                        ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                                    </div>
+                                                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                        <i class="fas fa-folder" style="margin-right: 0.25rem;"></i>${this.escapeHtml(backlog.moduleName || 'Unknown')}
+                                                        ${backlog.priority ? `<span style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: ${backlog.priority === 'high' || backlog.priority === 'critical' ? '#fee2e2' : backlog.priority === 'medium' ? '#dbeafe' : '#e5e7eb'}; border-radius: 12px; font-size: 0.75rem;">${this.escapeHtml(backlog.priority)}</span>` : ''}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
                     <!-- Your Evaluation -->
                     <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 2px solid var(--primary-color);">
                         <h5 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1.1rem; font-weight: 600;">
@@ -9238,6 +9543,11 @@ const app = {
             if (isSecondReviewStage && secondReviewScheduleData && secondReviewScheduleData.frozen === true && secondReviewBacklogs.length > 0) {
                 await this.updateSecondReviewProgress();
             }
+            
+            // Initialize third review progress if applicable
+            if (isThirdReviewStage && thirdReviewScheduleData && thirdReviewScheduleData.frozen === true && thirdReviewBacklogs.length > 0) {
+                await this.updateThirdReviewProgress();
+            }
         } catch (error) {
             console.error('Error loading guide evaluator evaluation form:', error);
             alert('Error loading evaluation form. Please try again.');
@@ -9300,6 +9610,35 @@ const app = {
         
         const marksDisplay = document.getElementById('second-review-marks-display');
         const totalMarksDisplay = document.getElementById('second-review-total-marks-display');
+        if (marksDisplay) {
+            marksDisplay.textContent = calculatedMarks.toFixed(2);
+        }
+        if (totalMarksDisplay) {
+            totalMarksDisplay.textContent = `/ ${totalMarks}`;
+        }
+    },
+    
+    async updateThirdReviewProgress() {
+        const checkboxes = document.querySelectorAll('.third-review-backlog-checkbox');
+        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        const totalCount = checkboxes.length;
+        const percentage = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
+        
+        const percentageEl = document.getElementById('third-review-progress-percentage');
+        if (percentageEl) {
+            percentageEl.textContent = `${percentage}%`;
+        }
+        
+        const progressBar = document.getElementById('third-review-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = `${percentage}%`;
+        }
+        
+        const totalMarks = await this.getThirdReviewTotalMarks();
+        const calculatedMarks = totalMarks > 0 ? Math.round((percentage / 100) * totalMarks * 100) / 100 : 0;
+        
+        const marksDisplay = document.getElementById('third-review-marks-display');
+        const totalMarksDisplay = document.getElementById('third-review-total-marks-display');
         if (marksDisplay) {
             marksDisplay.textContent = calculatedMarks.toFixed(2);
         }
@@ -9515,6 +9854,16 @@ const app = {
                     .map(cb => cb.dataset.backlogId);
             }
             
+            // Get third review checked backlogs if applicable
+            let thirdReviewCheckedBacklogs = [];
+            const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
+            if (isThirdReviewStage) {
+                const checkboxes = document.querySelectorAll('.third-review-backlog-checkbox');
+                thirdReviewCheckedBacklogs = Array.from(checkboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.dataset.backlogId);
+            }
+            
             // Get evaluator info
             const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
             const userData = userDoc.exists() ? userDoc.data() : {};
@@ -9542,6 +9891,7 @@ const app = {
                 marks: teamMarks !== null && teamMarks !== undefined ? teamMarks : null,
                 firstReviewCheckedBacklogs: firstReviewCheckedBacklogs,
                 secondReviewCheckedBacklogs: secondReviewCheckedBacklogs,
+                thirdReviewCheckedBacklogs: thirdReviewCheckedBacklogs,
                 timestamp: serverTimestamp(),
                 updatedAt: serverTimestamp()
             };
@@ -12550,7 +12900,8 @@ const app = {
                     teamComments: entryData.teamComments || entryData.comments,
                     individualEvaluations: entryData.individualEvaluations || {},
                     firstReviewCheckedBacklogs: entryData.firstReviewCheckedBacklogs,
-                    secondReviewCheckedBacklogs: entryData.secondReviewCheckedBacklogs
+                    secondReviewCheckedBacklogs: entryData.secondReviewCheckedBacklogs,
+                    thirdReviewCheckedBacklogs: entryData.thirdReviewCheckedBacklogs
                 });
             });
             return entries;
@@ -13522,6 +13873,7 @@ const app = {
                     const stage = stages[i];
                     const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
                     const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+                    const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
                     
                     // Load main evaluation document
                     const evalDoc = await getDoc(doc(window.firebaseDb, 'evaluations', `${studentTeam.id}_${i}`));
@@ -13977,6 +14329,103 @@ const app = {
                         }
                     }
                     
+                    // Load product backlog evaluations for Third Review stage
+                    if (isThirdReviewStage) {
+                        try {
+                            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', studentTeam.id));
+                            if (scheduleDoc.exists() && scheduleDoc.data().frozen === true) {
+                                const thirdReviewBacklogQuery = query(
+                                    collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                                    where('teamId', '==', studentTeam.id)
+                                );
+                                const thirdReviewBacklogSnapshot = await getDocs(thirdReviewBacklogQuery);
+                                const allBacklogs = [];
+                                thirdReviewBacklogSnapshot.forEach(doc => {
+                                    allBacklogs.push({ id: doc.id, ...doc.data() });
+                                });
+                                
+                                const thirdReviewScheduleData = scheduleDoc.data();
+                                const thirdReviewBacklogs = [];
+                                
+                                if (thirdReviewScheduleData.modules) {
+                                    thirdReviewScheduleData.modules.forEach(module => {
+                                        if (module.productBacklogs) {
+                                            module.productBacklogs.forEach(pb => {
+                                                const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                                if (backlog) {
+                                                    thirdReviewBacklogs.push(backlog);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                if (thirdReviewScheduleData.standaloneBacklogs) {
+                                    thirdReviewScheduleData.standaloneBacklogs.forEach(pb => {
+                                        const backlog = allBacklogs.find(b => String(b.id) === String(pb.backlogId));
+                                        if (backlog) {
+                                            thirdReviewBacklogs.push(backlog);
+                                        }
+                                    });
+                                }
+                                
+                                const evaluatorEntriesForPB = await this.loadEvaluatorEntriesForTeam(studentTeam.id, i);
+                                const productBacklogEvaluations = {};
+                                
+                                thirdReviewBacklogs.forEach(backlog => {
+                                    productBacklogEvaluations[String(backlog.id)] = {
+                                        backlog: backlog,
+                                        markedBy: [],
+                                        unmarkedBy: []
+                                    };
+                                });
+                                
+                                evaluatorEntriesForPB.forEach(evaluatorEntry => {
+                                    const evaluatorId = evaluatorEntry.evaluatorId || evaluatorEntry.id || 'unknown';
+                                    if (evaluatorEntry.thirdReviewCheckedBacklogs && Array.isArray(evaluatorEntry.thirdReviewCheckedBacklogs)) {
+                                        const checkedBacklogs = evaluatorEntry.thirdReviewCheckedBacklogs;
+                                        thirdReviewBacklogs.forEach(backlog => {
+                                            const backlogId = String(backlog.id);
+                                            if (checkedBacklogs.includes(backlogId)) {
+                                                productBacklogEvaluations[backlogId].markedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            } else {
+                                                productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                    evaluatorName: evaluatorEntry.evaluatorName || 'Unknown Evaluator',
+                                                    evaluatorId: evaluatorId
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                                
+                                if (evalData.thirdReviewCheckedBacklogs && Array.isArray(evalData.thirdReviewCheckedBacklogs)) {
+                                    const adminCheckedBacklogs = evalData.thirdReviewCheckedBacklogs;
+                                    thirdReviewBacklogs.forEach(backlog => {
+                                        const backlogId = String(backlog.id);
+                                        if (adminCheckedBacklogs.includes(backlogId)) {
+                                            productBacklogEvaluations[backlogId].markedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        } else {
+                                            productBacklogEvaluations[backlogId].unmarkedBy.push({
+                                                evaluatorName: 'Admin',
+                                                evaluatorId: 'admin'
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                evalData.productBacklogEvaluations = Object.values(productBacklogEvaluations);
+                            }
+                        } catch (error) {
+                            console.warn(`Error loading third sprint product backlogs for team ${studentTeam.id}:`, error);
+                        }
+                    }
+                    
                     // Store evaluation data - always store it, even if empty, so we can check for completion status
                     // Check if evaluation has any meaningful content after aggregation
                     const hasTeamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined;
@@ -14048,6 +14497,17 @@ const app = {
                 }
             } catch (error) {
                 console.error('Error loading second review total marks:', error);
+            }
+            
+            // Load third review total marks for team total calculation
+            let thirdReviewTotalMarks = 10; // Default
+            try {
+                thirdReviewTotalMarks = await this.getThirdReviewTotalMarks();
+                if (thirdReviewTotalMarks === 0) {
+                    thirdReviewTotalMarks = 10; // Default to 10 if not set
+                }
+            } catch (error) {
+                console.error('Error loading third review total marks:', error);
             }
             
             container.innerHTML = `
@@ -14169,8 +14629,14 @@ const app = {
                                     
                                     // For First Review, if no team parameters are configured, use firstReviewTotalMarks from settings
                                     const isFirstReviewStage = stage.name && (stage.name.toLowerCase().includes('first sprint') || stage.name.toLowerCase().includes('first review'));
+                                    const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
+                                    const isThirdReviewStage = stage.name && (stage.name.toLowerCase().includes('third sprint') || stage.name.toLowerCase().includes('third review'));
                                     if (teamTotal === 0 && isFirstReviewStage) {
                                         teamTotal = firstReviewTotalMarks;
+                                    } else if (teamTotal === 0 && isSecondReviewStage) {
+                                        teamTotal = secondReviewTotalMarks;
+                                    } else if (teamTotal === 0 && isThirdReviewStage) {
+                                        teamTotal = thirdReviewTotalMarks;
                                     } else if (teamTotal === 0) {
                                         // Default to 10 for other stages if no parameters configured
                                         teamTotal = 10;
@@ -14243,11 +14709,10 @@ const app = {
                                         const teamMarksData = evalData.teamMarksData || {};
                                         const teamMarks = evalData.teamMarks || (Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0));
                                         
-                                        // Prepare product backlog section for First Review or Second Review stage
+                                        // Prepare product backlog section for First Review, Second Review, or Third Review stage
                                         let productBacklogSection = '';
-                                        const isSecondReviewStage = stage.name && (stage.name.toLowerCase().includes('second sprint') || stage.name.toLowerCase().includes('second review'));
                                         
-                                        if ((isFirstReviewStage || isSecondReviewStage) && evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0) {
+                                        if ((isFirstReviewStage || isSecondReviewStage || isThirdReviewStage) && evalData.productBacklogEvaluations && evalData.productBacklogEvaluations.length > 0) {
                                             // Filter backlogs - show completed if any evaluator marked them
                                             // Since rejin@gecidukki.ac.in is the only evaluator, all marked backlogs are from them
                                             const markedBacklogs = [];
@@ -14275,15 +14740,16 @@ const app = {
                                             if (isFirstReviewStage) {
                                                 totalMarksForBacklogs = firstReviewTotalMarks > 0 ? firstReviewTotalMarks : teamTotal;
                                             } else if (isSecondReviewStage) {
-                                                // For second sprint, use secondReviewTotalMarks if available, otherwise team total
                                                 totalMarksForBacklogs = secondReviewTotalMarks > 0 ? secondReviewTotalMarks : teamTotal;
+                                            } else if (isThirdReviewStage) {
+                                                totalMarksForBacklogs = thirdReviewTotalMarks > 0 ? thirdReviewTotalMarks : teamTotal;
                                             }
                                             
                                             const backlogMarks = totalMarksForBacklogs > 0 
                                                 ? Math.round((completedCount / totalBacklogs) * totalMarksForBacklogs * 100) / 100
                                                 : 0;
                                             
-                                            const sprintName = isFirstReviewStage ? 'First Sprint' : 'Second Sprint';
+                                            const sprintName = isFirstReviewStage ? 'First Sprint' : (isSecondReviewStage ? 'Second Sprint' : 'Third Sprint');
                                             
                                             productBacklogSection = `
                                                 <div class="marks-section product-backlogs-section" style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
@@ -16514,7 +16980,7 @@ const app = {
     // Switch mini project tab
     async switchMiniProjectTab(tabName) {
         // Hide all tabs
-        document.querySelectorAll('#project-details-tab, #project-planning-tab, #first-review-tab, #second-review-tab').forEach(tab => {
+        document.querySelectorAll('#project-details-tab, #project-planning-tab, #first-review-tab, #second-review-tab, #third-review-tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
@@ -16543,6 +17009,8 @@ const app = {
             await this.loadFirstReviewSchedule();
         } else if (tabName === 'second-review') {
             await this.loadSecondReviewSchedule();
+        } else if (tabName === 'third-review') {
+            await this.loadThirdReviewSchedule();
         }
     },
     
@@ -32651,6 +33119,123 @@ const app = {
         }
     },
     
+    // ========== THIRD SPRINT VERIFICATION FUNCTIONS ==========
+    
+    async verifyThirdReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        const comments = document.getElementById('admin-verification-comments-third')?.value.trim() || '';
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId), {
+                verified: true,
+                verifiedAt: serverTimestamp(),
+                verifiedBy: adminName,
+                adminComments: comments
+            });
+            if (typeof this.loadAdminThirdReviewSchedule === 'function') {
+                await this.loadAdminThirdReviewSchedule(teamId);
+            }
+            alert('Third sprint schedule verified successfully! Students can now edit the schedule.');
+        } catch (error) {
+            console.error('Error verifying third review schedule:', error);
+            alert('Error verifying schedule. Please try again.');
+        }
+    },
+    
+    async revertThirdReviewSchedule(event, teamId) {
+        event.preventDefault();
+        if (!this.isAdmin) return;
+        const comments = document.getElementById('admin-revert-comments-third')?.value.trim() || '';
+        if (!confirm('Are you sure you want to revert this schedule back to the student for editing? The verification and submission status will be reset.')) {
+            return;
+        }
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            const adminName = this.currentUser?.displayName || this.currentUser?.email || 'Admin';
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId), {
+                submitted: false,
+                submittedAt: null,
+                verified: false,
+                verifiedAt: null,
+                verifiedBy: null,
+                adminComments: comments || null,
+                revertedAt: serverTimestamp(),
+                revertedBy: adminName
+            });
+            if (typeof this.loadAdminThirdReviewSchedule === 'function') {
+                await this.loadAdminThirdReviewSchedule(teamId);
+            }
+            alert('Schedule reverted successfully! Student can now edit the schedule again.');
+        } catch (error) {
+            console.error('Error reverting third review schedule:', error);
+            alert('Error reverting schedule. Please try again.');
+        }
+    },
+    
+    async freezeThirdReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        if (!confirm('Are you sure you want to freeze this schedule? Students will not be able to edit any product backlogs after freezing.')) {
+            return;
+        }
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId), {
+                frozen: true,
+                frozenAt: serverTimestamp(),
+                frozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            if (typeof this.loadAdminThirdReviewSchedule === 'function') {
+                await this.loadAdminThirdReviewSchedule(teamId);
+            }
+            alert('Third sprint schedule frozen successfully! Students can no longer edit product backlogs.');
+        } catch (error) {
+            console.error('Error freezing third review schedule:', error);
+            alert('Error freezing schedule. Please try again.');
+        }
+    },
+    
+    async unfreezeThirdReviewSchedule(teamId) {
+        if (!this.isAdmin) return;
+        if (!confirm('Are you sure you want to unfreeze this schedule? Students will be able to edit product backlogs again.')) {
+            return;
+        }
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                alert('Schedule not found.');
+                return;
+            }
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId), {
+                frozen: false,
+                frozenAt: null,
+                frozenBy: null,
+                unfrozenAt: serverTimestamp(),
+                unfrozenBy: this.currentUser?.displayName || this.currentUser?.email || 'Admin'
+            });
+            if (typeof this.loadAdminThirdReviewSchedule === 'function') {
+                await this.loadAdminThirdReviewSchedule(teamId);
+            }
+            alert('Third sprint schedule unfrozen successfully! Students can now edit product backlogs again.');
+        } catch (error) {
+            console.error('Error unfreezing third review schedule:', error);
+            alert('Error unfreezing schedule. Please try again.');
+        }
+    },
+    
     async renderAdminSecondReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, backlogToModule, completedBacklogIds = [], imageLinks = []) {
         const container = document.getElementById('admin-second-review-schedule-content');
         if (!container) return;
@@ -33249,7 +33834,71 @@ const app = {
         }
     },
     
+    async generateThirdSprintScheduleReport() {
+        if (!this.isAdmin) return;
+        try {
+            const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
+            const teamsSnapshot = await getDocs(teamsQuery);
+            const teams = [];
+            for (const teamDoc of teamsSnapshot.docs) {
+                const teamData = teamDoc.data();
+                if (teamData.deleted) continue;
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamDoc.id));
+                const hasSchedule = scheduleDoc.exists();
+                const scheduleData = hasSchedule ? scheduleDoc.data() : null;
+                teams.push({
+                    id: teamDoc.id,
+                    name: teamData.name || teamData.groupName || `Team ${teamDoc.id.substring(0, 8)}`,
+                    guideName: teamData.guideName || 'No Guide',
+                    hasSchedule: hasSchedule,
+                    submitted: scheduleData?.submitted || false,
+                    verified: scheduleData?.verified || false,
+                    frozen: scheduleData?.frozen || false,
+                    submittedAt: scheduleData?.submittedAt || null,
+                    verifiedAt: scheduleData?.verifiedAt || null,
+                    frozenAt: scheduleData?.frozenAt || null,
+                    modulesCount: scheduleData?.modules?.length || 0,
+                    standaloneBacklogsCount: scheduleData?.standaloneBacklogs?.length || 0,
+                    totalBacklogs: (scheduleData?.modules?.reduce((sum, m) => sum + (m.productBacklogs?.length || 0), 0) || 0) + (scheduleData?.standaloneBacklogs?.length || 0)
+                });
+            }
+            if (teams.length === 0) {
+                alert('No teams found to generate report.');
+                return;
+            }
+            const teamsForOrdering = teams.map(t => ({ id: t.id, groupName: t.name }));
+            const sortedTeamsForOrdering = await this.applyTeamOrder(teamsForOrdering);
+            const teamMap = new Map(teams.map(t => [t.id, t]));
+            const sortedTeams = sortedTeamsForOrdering.map(s => teamMap.get(s.id)).filter(Boolean);
+            const stats = {
+                total: sortedTeams.length,
+                hasSchedule: sortedTeams.filter(t => t.hasSchedule).length,
+                submitted: sortedTeams.filter(t => t.submitted).length,
+                verified: sortedTeams.filter(t => t.verified).length,
+                frozen: sortedTeams.filter(t => t.frozen).length
+            };
+            const printWindow = window.open('', '_blank');
+            const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            let html = `<!DOCTYPE html><html><head><title>Third Sprint Schedule Agreement Report</title></head><body style="font-family: Lato, sans-serif; padding: 20px;">`;
+            html += `<h1>Third Sprint Schedule Agreement Report</h1><p>Generated: ${currentDate}</p>`;
+            html += `<p>Total Teams: ${stats.total} | Has Schedule: ${stats.hasSchedule} | Submitted: ${stats.submitted} | Verified: ${stats.verified} | Frozen: ${stats.frozen}</p>`;
+            html += `<table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;"><tr><th>Team</th><th>Guide</th><th>Schedule</th><th>Status</th><th>Modules</th><th>Backlogs</th></tr>`;
+            sortedTeams.forEach(t => {
+                const status = t.verified ? 'Verified' : (t.submitted ? 'Submitted' : 'Draft');
+                html += `<tr><td>${this.escapeHtml(t.name)}</td><td>${this.escapeHtml(t.guideName)}</td><td>${t.hasSchedule ? 'Yes' : 'No'}</td><td>${status}</td><td>${t.modulesCount}</td><td>${t.totalBacklogs}</td></tr>`;
+            });
+            html += `</table></body></html>`;
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.print();
+        } catch (error) {
+            console.error('Error generating third sprint schedule report:', error);
+            alert('Error generating report. Please try again.');
+        }
+    },
+    
     // generateSecondSprintProgressReport is provided by adminMiniProjectModule (merged via Object.assign)
+    // generateThirdSprintProgressReport is provided by adminMiniProjectModule (merged via Object.assign)
     
     // ========== ATTENDANCE MANAGEMENT FUNCTIONS ==========
     
@@ -35006,6 +35655,936 @@ const app = {
         });
     },
     
+    // ========== THIRD SPRINT SCHEDULE FUNCTIONS ==========
+    // These functions mirror the first/second sprint functions but use thirdReviewSchedule and thirdReviewBacklogs collections
+    
+    async loadThirdReviewSchedule() {
+        const modulesListContainer = document.getElementById('third-review-modules-list');
+        const standaloneBacklogsContainer = document.getElementById('third-review-standalone-backlogs');
+        const statusContainer = document.getElementById('third-review-submission-status');
+        const submitBtn = document.getElementById('submit-third-review-btn');
+        const moduleSelect = document.getElementById('third-review-module-select');
+        const thirdReviewTab = document.getElementById('third-review-tab');
+        
+        if (!modulesListContainer) {
+            if (thirdReviewTab) {
+                thirdReviewTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><p class="error-message">Third Sprint tab container not found. Please refresh.</p></div>';
+            }
+            return;
+        }
+        
+        try {
+            modulesListContainer.innerHTML = '<div class="loading-state">Loading third sprint schedule...</div>';
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                modulesListContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false,
+                verified: false,
+                frozen: false
+            };
+            
+            const isSubmitted = scheduleData.submitted === true;
+            const isVerified = scheduleData.verified === true;
+            const isFrozen = scheduleData.frozen === true;
+            
+            // Load third review backlogs and student progress (for standalone list and completion checkboxes)
+            let allThirdBacklogs = [];
+            let completedBacklogIds = [];
+            try {
+                const thirdBacklogQuery = query(
+                    collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                    where('teamId', '==', team.id)
+                );
+                const thirdBacklogSnap = await getDocs(thirdBacklogQuery);
+                thirdBacklogSnap.forEach(docSnap => {
+                    allThirdBacklogs.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                const progressDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewStudentProgress', team.id));
+                if (progressDoc.exists()) {
+                    completedBacklogIds = progressDoc.data().completedBacklogIds || [];
+                }
+            } catch (e) {
+                console.warn('Error loading third review backlogs:', e);
+            }
+            
+            if (isSubmitted && !isVerified && !isFrozen) {
+                modulesListContainer.innerHTML = `
+                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b;">
+                        <h3 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1.3rem; font-weight: 600; text-align: center;">Admin Verification In Progress</h3>
+                        <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem; text-align: center;">
+                            Your third sprint schedule has been submitted and is currently under admin review.
+                        </p>
+                    </div>
+                `;
+                try {
+                    await this.renderThirdReviewGanttChart();
+                } catch (e) {
+                    console.warn('Third review Gantt chart:', e);
+                }
+            } else {
+                // Load modules from project planning (cardSortingModules) for dropdown and for displaying module cards
+                const modulesQuery = query(
+                    collection(window.firebaseDb, 'cardSortingModules'),
+                    where('teamId', '==', team.id)
+                );
+                const modulesSnapshot = await getDocs(modulesQuery);
+                const allModules = [];
+                modulesSnapshot.forEach(docSnap => {
+                    allModules.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+                if (moduleSelect) {
+                    const addedModuleIds = new Set((scheduleData.modules || []).map(m => m.moduleId));
+                    moduleSelect.innerHTML = '<option value="">-- Select a module --</option>';
+                    allModules.forEach(module => {
+                        if (!addedModuleIds.has(module.id)) {
+                            const option = document.createElement('option');
+                            option.value = module.id;
+                            option.textContent = module.name || ('Module ' + module.id);
+                            moduleSelect.appendChild(option);
+                        }
+                    });
+                    moduleSelect.disabled = !canEdit;
+                    moduleSelect.style.opacity = canEdit ? '1' : '0.6';
+                    moduleSelect.style.cursor = canEdit ? 'default' : 'not-allowed';
+                }
+                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToThirdReview()"]');
+                if (addModuleBtn) {
+                    addModuleBtn.disabled = !canEdit;
+                    addModuleBtn.style.opacity = canEdit ? '1' : '0.6';
+                    addModuleBtn.style.cursor = canEdit ? 'pointer' : 'not-allowed';
+                }
+                // Render module cards when there are modules (fix: display added modules instead of only count message)
+                if (scheduleData.modules && scheduleData.modules.length > 0) {
+                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                        const orderA = a.order !== undefined ? a.order : 999999;
+                        const orderB = b.order !== undefined ? b.order : 999999;
+                        return orderA - orderB;
+                    });
+                    const moduleCards = sortedModules.map((scheduleModule, moduleIndex) => {
+                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                        if (!module) return '';
+                        const scheduledBacklogIds = (scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId));
+                        const moduleBacklogs = allThirdBacklogs.filter(b => scheduledBacklogIds.includes(String(b.id)));
+                        const scheduledBacklogs = moduleBacklogs.map(backlog => {
+                            const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                            return {
+                                ...backlog,
+                                startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
+                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
+                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                                isCompleted: completedBacklogIds.includes(String(backlog.id))
+                            };
+                        }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                        return this.renderThirdReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit, moduleIndex);
+                    });
+                    modulesListContainer.innerHTML = moduleCards.join('');
+                } else {
+                    modulesListContainer.innerHTML = '<p class="empty-state">No third sprint schedule yet. Add modules from Project Planning above.</p>';
+                }
+            }
+            
+            if (statusContainer) {
+                if (isSubmitted && isVerified) {
+                    const frozenMessage = isFrozen ? `
+                        <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
+                            <div style="font-size: 0.8rem; font-weight: 600; color: #991b1b;">
+                                <i class="fas fa-lock"></i> Frozen - Product backlogs are finalized
+                            </div>
+                        </div>
+                    ` : '';
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #1e40af; margin-bottom: 0.5rem;">
+                                <i class="fas fa-check-circle" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Verified - You can edit the schedule${isFrozen ? ' (backlogs frozen)' : ''}</strong>
+                            </div>
+                            <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem;">
+                                <i class="fas fa-clock"></i> Submitted: ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                            <p style="margin: 0.25rem 0; color: #1e3a8a; font-size: 0.85rem;">
+                                <i class="fas fa-user-check"></i> Verified: ${scheduleData.verifiedAt?.toDate ? scheduleData.verifiedAt.toDate().toLocaleDateString() : 'N/A'}
+                                ${scheduleData.verifiedBy ? ` by ${this.escapeHtml(scheduleData.verifiedBy)}` : ''}
+                            </p>
+                            ${scheduleData.adminComments ? `
+                                <div style="margin-top: 0.75rem; padding: 0.75rem; background: #ffffff; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                                    <div style="font-size: 0.8rem; font-weight: 600; color: #1e40af; margin-bottom: 0.4rem;">
+                                        <i class="fas fa-comment-alt"></i> Admin Comments:
+                                    </div>
+                                    <div style="font-size: 0.85rem; color: var(--text-primary); line-height: 1.5;">
+                                        ${this.escapeHtml(scheduleData.adminComments)}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${frozenMessage}
+                        </div>
+                    `;
+                } else if (isSubmitted && !isVerified) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e; margin-bottom: 0.5rem;">
+                                <i class="fas fa-lock" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Submitted - Awaiting Admin Verification</strong>
+                            </div>
+                            <p style="margin: 0.25rem 0; color: #92400e; font-size: 0.85rem;">
+                                <i class="fas fa-clock"></i> Submitted on ${scheduleData.submittedAt?.toDate ? scheduleData.submittedAt.toDate().toLocaleDateString() : 'N/A'}
+                            </p>
+                            <p style="margin: 0.5rem 0 0 0; color: #92400e; font-size: 0.85rem;">
+                                <i class="fas fa-info-circle"></i> The schedule is locked until admin verifies and adds comments.
+                            </p>
+                        </div>
+                    `;
+                } else {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #92400e;">
+                                <i class="fas fa-edit" style="font-size: 1.1rem;"></i>
+                                <strong style="font-size: 0.95rem;">Draft - Schedule your third sprint tasks</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            if (submitBtn) {
+                const hasContent = (scheduleData.modules?.length || 0) > 0 || (scheduleData.standaloneBacklogs?.length || 0) > 0;
+                const canSubmit = hasContent && (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+                submitBtn.style.display = canSubmit ? 'inline-flex' : 'none';
+            }
+            
+            // Render standalone backlogs list (from thirdReviewBacklogs)
+            if (standaloneBacklogsContainer) {
+                const standaloneList = scheduleData.standaloneBacklogs || [];
+                const standaloneIds = standaloneList.map(b => String(b.backlogId));
+                const standaloneBacklogs = allThirdBacklogs.filter(b => standaloneIds.includes(String(b.id)));
+                const scheduledStandalone = standaloneBacklogs.map((backlog) => {
+                    const scheduleBacklog = standaloneList.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        startDate: scheduleBacklog?.startDate || '',
+                        endDate: scheduleBacklog?.endDate || '',
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        isCompleted: completedBacklogIds.includes(String(backlog.id))
+                    };
+                }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                const canEditStandalone = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+                if (scheduledStandalone.length === 0) {
+                    standaloneBacklogsContainer.innerHTML = '<p class="empty-state">No standalone product backlogs yet.</p>';
+                } else {
+                    const priorityColors = { low: '#6b7280', medium: '#3b82f6', high: '#f59e0b', critical: '#ef4444' };
+                    const difficultyColors = { easy: '#10b981', medium: '#3b82f6', hard: '#f59e0b', 'very-hard': '#ef4444' };
+                    standaloneBacklogsContainer.innerHTML = `
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${scheduledStandalone.map((backlog, index) => {
+                                const priority = backlog.priority || 'medium';
+                                const difficulty = backlog.difficulty || 'medium';
+                                const priorityColor = priorityColors[priority] || priorityColors.medium;
+                                const difficultyColor = difficultyColors[difficulty] || difficultyColors.medium;
+                                return `
+                                <div class="third-review-backlog-item" data-backlog-id="${backlog.id}" style="padding: 1rem; background: #fff; border-radius: 6px; border-left: 3px solid ${priorityColor}; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.75rem;">
+                                        <div style="flex: 1;">
+                                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.35rem; ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">
+                                                ${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}
+                                            </div>
+                                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                                <span style="padding: 0.2rem 0.5rem; background: ${priorityColor}20; color: ${priorityColor}; border-radius: 4px;">${(priority || 'medium').charAt(0).toUpperCase() + (priority || 'medium').slice(1)}</span>
+                                                <span style="padding: 0.2rem 0.5rem; background: ${difficultyColor}20; color: ${difficultyColor}; border-radius: 4px;">${(difficulty || 'medium').replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                                                ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
+                                                ${backlog.endDate ? `<span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
+                                            </div>
+                                            ${backlog.storyText ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">${this.escapeHtml(backlog.storyText)}</div>` : ''}
+                                        </div>
+                                        ${canEditStandalone ? `
+                                        <div style="display: flex; gap: 0.35rem;">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.editThirdReviewBacklog('${backlog.id}', null)" title="Edit"><i class="fas fa-edit"></i></button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeThirdReviewBacklog('${backlog.id}', null)" title="Remove"><i class="fas fa-trash"></i></button>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            }
+            
+            try {
+                await this.renderThirdReviewGanttChart();
+            } catch (ganttError) {
+                console.error('Error rendering third review Gantt chart:', ganttError);
+            }
+            await this.loadThirdSprintPPT();
+        } catch (error) {
+            console.error('Error loading third review schedule:', error);
+            if (modulesListContainer) {
+                modulesListContainer.innerHTML = '<p class="error-message">Error loading schedule. Please try again.</p>';
+            }
+        }
+    },
+    
+    async loadThirdSprintPPT() {
+        const listEl = document.getElementById('third-sprint-ppt-list');
+        if (!listEl) return;
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                listEl.innerHTML = '<p class="empty-state">Not assigned to a team.</p>';
+                return;
+            }
+            const progressDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewStudentProgress', team.id));
+            const links = progressDoc.exists() ? (progressDoc.data().pptLinks || []) : [];
+            listEl.innerHTML = links.length > 0 ? links.map((link, i) => `<div style="padding: 0.5rem;"><a href="${this.escapeHtml(link)}" target="_blank" rel="noopener">${this.escapeHtml(link)}</a></div>`).join('') : '<p class="empty-state">No PPT links yet.</p>';
+        } catch (e) {
+            listEl.innerHTML = '<p class="empty-state">Could not load PPT links.</p>';
+        }
+    },
+    
+    async addThirdSprintPPTLink() {
+        const input = document.getElementById('third-sprint-ppt-link-input');
+        if (!input || !input.value.trim()) return;
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const progressRef = doc(window.firebaseDb, 'thirdReviewStudentProgress', team.id);
+            const progressDoc = await getDoc(progressRef);
+            const data = progressDoc.exists() ? progressDoc.data() : {};
+            const pptLinks = data.pptLinks || [];
+            pptLinks.push(input.value.trim());
+            await setDoc(progressRef, { ...data, pptLinks, updatedAt: serverTimestamp() }, { merge: true });
+            input.value = '';
+            await this.loadThirdSprintPPT();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to add PPT link.');
+        }
+    },
+    
+    async addModuleToThirdReview() {
+        const moduleSelect = document.getElementById('third-review-module-select');
+        if (!moduleSelect || !moduleSelect.value) {
+            alert('Please select a module.');
+            return;
+        }
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleRef = doc(window.firebaseDb, 'thirdReviewSchedule', team.id);
+            const scheduleDoc = await getDoc(scheduleRef);
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [], submitted: false, verified: false, frozen: false };
+            if (scheduleData.frozen || scheduleData.submitted) {
+                alert('Schedule is locked.');
+                return;
+            }
+            const moduleId = moduleSelect.value;
+            const modules = scheduleData.modules || [];
+            if (modules.some(m => m.moduleId === moduleId)) {
+                alert('Module already added.');
+                return;
+            }
+            // Get product backlogs assigned to this module from project planning (replicate first/second sprint behavior)
+            const assignmentsQuery = query(
+                collection(window.firebaseDb, 'cardSortingAssignments'),
+                where('teamId', '==', team.id),
+                where('moduleId', '==', moduleId)
+            );
+            const assignmentsSnapshot = await getDocs(assignmentsQuery);
+            const backlogIds = [];
+            assignmentsSnapshot.forEach(d => {
+                backlogIds.push(d.data().backlogId);
+            });
+            // Copy backlogs to thirdReviewBacklogs so they display under the module
+            const productBacklogs = [];
+            for (const backlogId of backlogIds) {
+                const backlogDoc = await getDoc(doc(window.firebaseDb, 'productBacklog', backlogId));
+                if (backlogDoc.exists()) {
+                    const backlogData = backlogDoc.data();
+                    const existingCopy = await getDoc(doc(window.firebaseDb, 'thirdReviewBacklogs', backlogId));
+                    if (!existingCopy.exists()) {
+                        await setDoc(doc(window.firebaseDb, 'thirdReviewBacklogs', backlogId), {
+                            ...backlogData,
+                            teamId: team.id,
+                            moduleId: moduleId,
+                            sourceBacklogId: backlogId,
+                            task: backlogData.task || backlogData.description || '',
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    productBacklogs.push({
+                        backlogId: backlogId,
+                        startDate: '',
+                        endDate: '',
+                        order: productBacklogs.length
+                    });
+                }
+            }
+            modules.push({ moduleId: moduleId, productBacklogs: productBacklogs, order: modules.length });
+            await setDoc(scheduleRef, { ...scheduleData, modules, updatedAt: serverTimestamp() }, { merge: true });
+            await this.loadThirdReviewSchedule();
+        } catch (e) {
+            console.error(e);
+            alert('Error adding module.');
+        }
+    },
+    
+    async showAddThirdReviewBacklogModal(moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (team) {
+                const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+                if (scheduleDoc.exists()) {
+                    const scheduleData = scheduleDoc.data();
+                    const isSubmitted = scheduleData.submitted === true;
+                    const isVerified = scheduleData.verified === true;
+                    const isFrozen = scheduleData.frozen === true;
+                    if (isSubmitted && !isVerified) {
+                        alert('The schedule is locked for editing until admin verification.');
+                        return;
+                    }
+                    if (isFrozen) {
+                        alert('The schedule is frozen. Product backlogs cannot be added. Please contact admin to unfreeze.');
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error checking edit permission:', error);
+        }
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'add-third-review-backlog-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Add Product Backlog to Third Sprint</h2>
+                    <button class="btn-icon" onclick="this.closest('.modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-third-review-backlog-form" onsubmit="app.saveThirdReviewBacklog(event, '${moduleId || ''}')">
+                        <div class="form-group">
+                            <label for="third-review-backlog-task">Task/Description *</label>
+                            <input type="text" id="third-review-backlog-task" class="form-input" required placeholder="Enter task description">
+                        </div>
+                        <div class="form-group">
+                            <label for="third-review-backlog-start-date">Start Date</label>
+                            <input type="date" id="third-review-backlog-start-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="third-review-backlog-end-date">End Date</label>
+                            <input type="date" id="third-review-backlog-end-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="third-review-backlog-priority">Priority</label>
+                            <select id="third-review-backlog-priority" class="form-input">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="third-review-backlog-difficulty">Difficulty</label>
+                            <select id="third-review-backlog-difficulty" class="form-input">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                                <option value="very-hard">Very Hard</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="third-review-backlog-story">User Story</label>
+                            <textarea id="third-review-backlog-story" class="form-input" rows="3" placeholder="Enter user story (optional)"></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Add Backlog</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+    
+    async saveThirdReviewBacklog(event, moduleId) {
+        event.preventDefault();
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            const task = document.getElementById('third-review-backlog-task').value.trim();
+            const startDate = document.getElementById('third-review-backlog-start-date').value;
+            const endDate = document.getElementById('third-review-backlog-end-date').value;
+            const priority = document.getElementById('third-review-backlog-priority').value;
+            const difficulty = document.getElementById('third-review-backlog-difficulty').value;
+            const storyEl = document.getElementById('third-review-backlog-story');
+            const storyText = storyEl ? storyEl.value.trim() : '';
+            if (!task) {
+                alert('Please enter a task description.');
+                return;
+            }
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be later than end date.');
+                return;
+            }
+            const newBacklogRef = doc(collection(window.firebaseDb, 'thirdReviewBacklogs'));
+            await setDoc(newBacklogRef, {
+                teamId: team.id,
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                storyText: storyText || '',
+                moduleId: moduleId || null,
+                createdAt: serverTimestamp()
+            });
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : {
+                modules: [],
+                standaloneBacklogs: [],
+                submitted: false,
+                verified: false,
+                frozen: false
+            };
+            if (moduleId) {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1) {
+                    if (!scheduleData.modules[moduleIndex].productBacklogs) {
+                        scheduleData.modules[moduleIndex].productBacklogs = [];
+                    }
+                    scheduleData.modules[moduleIndex].productBacklogs.push({
+                        backlogId: newBacklogRef.id,
+                        startDate: startDate,
+                        endDate: endDate,
+                        order: scheduleData.modules[moduleIndex].productBacklogs.length
+                    });
+                }
+            } else {
+                if (!scheduleData.standaloneBacklogs) {
+                    scheduleData.standaloneBacklogs = [];
+                }
+                scheduleData.standaloneBacklogs.push({
+                    backlogId: newBacklogRef.id,
+                    startDate: startDate,
+                    endDate: endDate,
+                    order: scheduleData.standaloneBacklogs.length
+                });
+            }
+            await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData, { merge: true });
+            const modal = document.getElementById('add-third-review-backlog-modal');
+            if (modal) modal.remove();
+            await this.loadThirdReviewSchedule();
+        } catch (error) {
+            console.error('Error saving third review backlog:', error);
+            alert('Error saving backlog. Please try again.');
+        }
+    },
+    
+    async removeThirdReviewBacklog(backlogId, moduleId) {
+        if (!confirm('Are you sure you want to remove this product backlog?')) return;
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            const scheduleData = scheduleDoc.data();
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            if (scheduleData.frozen) {
+                alert('The schedule is frozen. Product backlogs cannot be removed.');
+                return;
+            }
+            if (moduleId && moduleId !== 'standalone') {
+                const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex !== -1 && scheduleData.modules[moduleIndex].productBacklogs) {
+                    scheduleData.modules[moduleIndex].productBacklogs = scheduleData.modules[moduleIndex].productBacklogs.filter(
+                        pb => String(pb.backlogId) !== String(backlogId)
+                    );
+                }
+            } else {
+                scheduleData.standaloneBacklogs = (scheduleData.standaloneBacklogs || []).filter(
+                    pb => String(pb.backlogId) !== String(backlogId)
+                );
+            }
+            await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData);
+            await this.loadThirdReviewSchedule();
+        } catch (error) {
+            console.error('Error removing third review backlog:', error);
+            alert('Error removing backlog. Please try again.');
+        }
+    },
+    
+    async removeThirdReviewModule(moduleId) {
+        if (!confirm('Are you sure you want to remove this module from third sprint schedule?')) return;
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleRef = doc(window.firebaseDb, 'thirdReviewSchedule', team.id);
+            const scheduleDoc = await getDoc(scheduleRef);
+            if (!scheduleDoc.exists()) return;
+            const scheduleData = scheduleDoc.data();
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            if (scheduleData.frozen) {
+                alert('The schedule is frozen. Modules cannot be removed.');
+                return;
+            }
+            const modules = (scheduleData.modules || []).filter(m => m.moduleId !== moduleId);
+            await setDoc(scheduleRef, { ...scheduleData, modules, updatedAt: serverTimestamp() }, { merge: true });
+            await this.loadThirdReviewSchedule();
+        } catch (e) {
+            console.error(e);
+            alert('Error removing module.');
+        }
+    },
+    
+    async updateThirdReviewModuleDate(moduleId, dateType, dateValue) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            const scheduleData = scheduleDoc.data();
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            if (scheduleData.frozen) {
+                alert('The schedule is frozen. Dates cannot be changed.');
+                return;
+            }
+            const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+            if (moduleIndex === -1) return;
+            const module = scheduleData.modules[moduleIndex];
+            if (dateType === 'startDate') {
+                if (module.endDate && dateValue && new Date(dateValue) > new Date(module.endDate)) {
+                    alert('Start date cannot be later than end date.');
+                    await this.loadThirdReviewSchedule();
+                    return;
+                }
+                scheduleData.modules[moduleIndex].startDate = dateValue;
+            } else if (dateType === 'endDate') {
+                if (module.startDate && dateValue && new Date(dateValue) < new Date(module.startDate)) {
+                    alert('End date cannot be earlier than start date.');
+                    await this.loadThirdReviewSchedule();
+                    return;
+                }
+                scheduleData.modules[moduleIndex].endDate = dateValue;
+            }
+            if (module.productBacklogs && module.productBacklogs.length > 0) {
+                const moduleStartDate = scheduleData.modules[moduleIndex].startDate || '';
+                const moduleEndDate = scheduleData.modules[moduleIndex].endDate || '';
+                scheduleData.modules[moduleIndex].productBacklogs = module.productBacklogs.map(pb => ({
+                    backlogId: pb.backlogId,
+                    startDate: moduleStartDate || pb.startDate || '',
+                    endDate: moduleEndDate || pb.endDate || '',
+                    order: pb.order !== undefined ? pb.order : 999999
+                }));
+            }
+            await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData);
+            await this.loadThirdReviewSchedule();
+            await this.renderThirdReviewGanttChart();
+        } catch (e) {
+            console.error(e);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    renderThirdReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit = true, moduleIndex = 0) {
+        const hasDates = scheduleModule.startDate && scheduleModule.endDate;
+        const borderColor = hasDates ? '#3b82f6' : '#9ca3af';
+        const borderStyle = hasDates ? '2px solid' : '1px solid';
+        const priorityColors = { low: '#6b7280', medium: '#3b82f6', high: '#f59e0b', critical: '#ef4444' };
+        const difficultyColors = { easy: '#10b981', medium: '#3b82f6', hard: '#f59e0b', 'very-hard': '#ef4444' };
+        return `
+            <div class="third-review-module-card" data-module-id="${scheduleModule.moduleId}" style="margin-bottom: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, var(--card-bg) 0%, #f8fafc 100%); border-radius: 8px; border-left: ${borderStyle} ${borderColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 0.5rem 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-folder" style="color: #3b82f6;"></i> ${this.escapeHtml(module.name || 'Unnamed Module')}
+                        </h4>
+                        <div style="display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem;">
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-alt" style="color: #3b82f6;"></i> Module Start Date:
+                                </label>
+                                <input type="date" class="form-input" value="${scheduleModule.startDate || ''}" ${!canEdit ? 'disabled' : ''}
+                                    ${!canEdit ? '' : `onchange="app.updateThirdReviewModuleDate('${scheduleModule.moduleId}', 'startDate', this.value)"`}
+                                    style="width: 200px; border: 2px solid #3b82f640; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}"
+                                    title="${!canEdit ? 'Editing is locked' : 'Update module start date.'}">
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                    <i class="fas fa-calendar-check" style="color: #10b981;"></i> Module End Date:
+                                </label>
+                                <input type="date" class="form-input" value="${scheduleModule.endDate || ''}" ${!canEdit ? 'disabled' : ''}
+                                    ${!canEdit ? '' : `onchange="app.updateThirdReviewModuleDate('${scheduleModule.moduleId}', 'endDate', this.value)"`}
+                                    style="width: 200px; border: 2px solid #10b98140; border-radius: 6px; padding: 0.5rem; ${!canEdit ? 'background: #f3f4f6; cursor: not-allowed; opacity: 0.6;' : 'background: white; cursor: pointer;'}"
+                                    title="${!canEdit ? 'Editing is locked' : 'Update module end date.'}">
+                            </div>
+                        </div>
+                    </div>
+                    ${canEdit ? `
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeThirdReviewModule('${scheduleModule.moduleId}')" title="Remove module">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h5 style="margin: 0; color: var(--text-primary); font-size: 0.95rem;">Product Backlogs (${scheduledBacklogs.length})</h5>
+                        ${canEdit ? `
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.showAddThirdReviewBacklogModal('${scheduleModule.moduleId}')">
+                            <i class="fas fa-plus"></i> Add Backlog
+                        </button>
+                        ` : ''}
+                    </div>
+                    ${scheduledBacklogs.length === 0 ? '<p class="empty-state" style="font-size: 0.9rem;">No product backlogs in this module.</p>' : ''}
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${scheduledBacklogs.map((backlog) => {
+                            const priority = backlog.priority || 'medium';
+                            const difficulty = backlog.difficulty || 'medium';
+                            const priorityColor = priorityColors[priority] || priorityColors.medium;
+                            const difficultyColor = difficultyColors[difficulty] || difficultyColors.medium;
+                            return `
+                            <div class="third-review-backlog-item" data-backlog-id="${backlog.id}" data-module-id="${scheduleModule.moduleId}" style="padding: 1rem; background: #fff; border-radius: 6px; border-left: 3px solid ${priorityColor}; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                                <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.75rem;">
+                                    <div style="flex: 1;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; margin-bottom: 0.35rem;">
+                                            <input type="checkbox" class="student-backlog-complete-checkbox" data-backlog-id="${backlog.id}" ${backlog.isCompleted ? 'checked' : ''} onchange="app.saveStudentCompletedTasks()" style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
+                                            <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                        </label>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                            <span style="padding: 0.2rem 0.5rem; background: ${priorityColor}20; color: ${priorityColor}; border-radius: 4px;">${(priority || 'medium').charAt(0).toUpperCase() + (priority || 'medium').slice(1)}</span>
+                                            <span style="padding: 0.2rem 0.5rem; background: ${difficultyColor}20; color: ${difficultyColor}; border-radius: 4px;">${(difficulty || 'medium').replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                                            ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
+                                            ${backlog.endDate ? `<span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
+                                        </div>
+                                        ${backlog.storyText ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">${this.escapeHtml(backlog.storyText)}</div>` : ''}
+                                    </div>
+                                    ${canEdit ? `
+                                    <div style="display: flex; gap: 0.35rem;">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.editThirdReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Edit"><i class="fas fa-edit"></i></button>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="app.removeThirdReviewBacklog('${backlog.id}', '${scheduleModule.moduleId}')" title="Remove"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+    
+    async editThirdReviewBacklog(backlogId, moduleId) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const backlogDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewBacklogs', backlogId));
+            if (!backlogDoc.exists()) {
+                alert('Backlog not found.');
+                return;
+            }
+            const backlogData = backlogDoc.data();
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            const scheduleData = scheduleDoc.exists() ? scheduleDoc.data() : { modules: [], standaloneBacklogs: [] };
+            let startDate = '';
+            let endDate = '';
+            if (moduleId && moduleId !== 'standalone') {
+                const module = scheduleData.modules.find(m => m.moduleId === moduleId);
+                if (module && module.productBacklogs) {
+                    const scheduleBacklog = module.productBacklogs.find(pb => String(pb.backlogId) === String(backlogId));
+                    if (scheduleBacklog) {
+                        startDate = scheduleBacklog.startDate || '';
+                        endDate = scheduleBacklog.endDate || '';
+                    }
+                }
+            } else {
+                const standaloneBacklog = scheduleData.standaloneBacklogs?.find(pb => String(pb.backlogId) === String(backlogId));
+                if (standaloneBacklog) {
+                    startDate = standaloneBacklog.startDate || '';
+                    endDate = standaloneBacklog.endDate || '';
+                }
+            }
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'edit-third-review-backlog-modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Edit Product Backlog</h2>
+                        <button class="btn-icon" onclick="this.closest('.modal').remove()"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <form onsubmit="app.saveEditThirdReviewBacklog(event, '${backlogId}', '${moduleId || ''}')">
+                            <div class="form-group">
+                                <label>Task/Description *</label>
+                                <input type="text" id="edit-third-review-backlog-task" class="form-input" required value="${this.escapeHtml(backlogData.task || backlogData.description || '')}">
+                            </div>
+                            <div class="form-group">
+                                <label>Start Date</label>
+                                <input type="date" id="edit-third-review-backlog-start-date" class="form-input" value="${startDate}">
+                            </div>
+                            <div class="form-group">
+                                <label>End Date</label>
+                                <input type="date" id="edit-third-review-backlog-end-date" class="form-input" value="${endDate}">
+                            </div>
+                            <div class="form-group">
+                                <label>Priority</label>
+                                <select id="edit-third-review-backlog-priority" class="form-input">
+                                    <option value="low" ${(backlogData.priority || '') === 'low' ? 'selected' : ''}>Low</option>
+                                    <option value="medium" ${(backlogData.priority || 'medium') === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="high" ${(backlogData.priority || '') === 'high' ? 'selected' : ''}>High</option>
+                                    <option value="critical" ${(backlogData.priority || '') === 'critical' ? 'selected' : ''}>Critical</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Difficulty</label>
+                                <select id="edit-third-review-backlog-difficulty" class="form-input">
+                                    <option value="easy" ${(backlogData.difficulty || '') === 'easy' ? 'selected' : ''}>Easy</option>
+                                    <option value="medium" ${(backlogData.difficulty || 'medium') === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="hard" ${(backlogData.difficulty || '') === 'hard' ? 'selected' : ''}>Hard</option>
+                                    <option value="very-hard" ${(backlogData.difficulty || '') === 'very-hard' ? 'selected' : ''}>Very Hard</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>User Story</label>
+                                <textarea id="edit-third-review-backlog-story" class="form-input" rows="3">${this.escapeHtml(backlogData.storyText || '')}</textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error opening edit third review backlog:', error);
+            alert('Error loading backlog. Please try again.');
+        }
+    },
+    
+    async saveEditThirdReviewBacklog(event, backlogId, moduleId) {
+        event.preventDefault();
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const task = document.getElementById('edit-third-review-backlog-task').value.trim();
+            const startDate = document.getElementById('edit-third-review-backlog-start-date').value;
+            const endDate = document.getElementById('edit-third-review-backlog-end-date').value;
+            const priority = document.getElementById('edit-third-review-backlog-priority').value;
+            const difficulty = document.getElementById('edit-third-review-backlog-difficulty').value;
+            const storyEl = document.getElementById('edit-third-review-backlog-story');
+            const storyText = storyEl ? storyEl.value.trim() : '';
+            if (!task) {
+                alert('Please enter a task description.');
+                return;
+            }
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be later than end date.');
+                return;
+            }
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewBacklogs', backlogId), {
+                task: task,
+                priority: priority,
+                difficulty: difficulty,
+                storyText: storyText || ''
+            });
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            if (scheduleDoc.exists()) {
+                const scheduleData = scheduleDoc.data();
+                if (moduleId && moduleId !== 'standalone') {
+                    const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
+                    if (moduleIndex !== -1 && scheduleData.modules[moduleIndex].productBacklogs) {
+                        const idx = scheduleData.modules[moduleIndex].productBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                        if (idx !== -1) {
+                            scheduleData.modules[moduleIndex].productBacklogs[idx].startDate = startDate;
+                            scheduleData.modules[moduleIndex].productBacklogs[idx].endDate = endDate;
+                        }
+                    }
+                } else {
+                    const standaloneBacklogs = scheduleData.standaloneBacklogs || [];
+                    const idx = standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                    if (idx !== -1) {
+                        scheduleData.standaloneBacklogs[idx].startDate = startDate;
+                        scheduleData.standaloneBacklogs[idx].endDate = endDate;
+                    }
+                }
+                await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData);
+            }
+            const modal = document.getElementById('edit-third-review-backlog-modal');
+            if (modal) modal.remove();
+            await this.loadThirdReviewSchedule();
+        } catch (error) {
+            console.error('Error updating third review backlog:', error);
+            alert('Error updating backlog. Please try again.');
+        }
+    },
+    
+    async submitThirdReviewSchedule() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleRef = doc(window.firebaseDb, 'thirdReviewSchedule', team.id);
+            const scheduleDoc = await getDoc(scheduleRef);
+            if (!scheduleDoc.exists()) {
+                alert('No schedule to submit.');
+                return;
+            }
+            const scheduleData = scheduleDoc.data();
+            const hasContent = (scheduleData.modules?.length || 0) > 0 || (scheduleData.standaloneBacklogs?.length || 0) > 0;
+            if (!hasContent) {
+                alert('Please add at least one module or product backlog before submitting.');
+                return;
+            }
+            if (scheduleData.submitted && !scheduleData.verified) {
+                alert('Schedule already submitted and is awaiting admin verification.');
+                return;
+            }
+            if (!confirm('Are you sure you want to submit the third sprint schedule agreement? This will mark it as submitted for review.')) {
+                return;
+            }
+            await updateDoc(scheduleRef, {
+                submitted: true,
+                submittedAt: serverTimestamp(),
+                verified: false,
+                verifiedAt: null,
+                adminComments: '',
+                verifiedBy: null,
+                updatedAt: serverTimestamp()
+            });
+            alert('Third sprint schedule submitted successfully. It is now locked for editing until admin verification.');
+            await this.loadThirdReviewSchedule();
+        } catch (e) {
+            console.error(e);
+            alert('Error submitting schedule.');
+        }
+    },
+    
     // ========== SECOND SPRINT SCHEDULE FUNCTIONS ==========
     // These functions mirror the first sprint functions but use secondReviewSchedule and secondReviewBacklogs collections
     
@@ -36551,6 +38130,211 @@ const app = {
             ganttContainer.innerHTML = html;
         } catch (error) {
             console.error('Error rendering second review Gantt chart:', error);
+            ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart. Please try again.</p>';
+        }
+    },
+    
+    async renderThirdReviewGanttChart() {
+        const ganttContainer = document.getElementById('third-review-gantt-chart');
+        if (!ganttContainer) return;
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                ganttContainer.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                return;
+            }
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) {
+                ganttContainer.innerHTML = '<p class="empty-state">No schedule data available.</p>';
+                return;
+            }
+            const scheduleData = scheduleDoc.data();
+            const thirdReviewBacklogQuery = query(
+                collection(window.firebaseDb, 'thirdReviewBacklogs'),
+                where('teamId', '==', team.id)
+            );
+            const thirdReviewBacklogSnapshot = await getDocs(thirdReviewBacklogQuery);
+            const allBacklogs = [];
+            thirdReviewBacklogSnapshot.forEach(docSnap => {
+                allBacklogs.push({ id: docSnap.id, ...docSnap.data(), source: 'thirdReview' });
+            });
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(docSnap => {
+                allModules.push({ id: docSnap.id, ...docSnap.data() });
+            });
+            const ganttItems = [];
+            const sortedModules = [...(scheduleData.modules || [])].sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+            sortedModules.forEach(scheduleModule => {
+                const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                if (module && scheduleModule.startDate && scheduleModule.endDate) {
+                    ganttItems.push({
+                        type: 'module',
+                        name: module.name || 'Unnamed Module',
+                        startDate: new Date(scheduleModule.startDate),
+                        endDate: new Date(scheduleModule.endDate),
+                        color: '#3b82f6',
+                        moduleId: scheduleModule.moduleId,
+                        order: scheduleModule.order !== undefined ? scheduleModule.order : 999999
+                    });
+                }
+            });
+            sortedModules.forEach(scheduleModule => {
+                if (!scheduleModule.productBacklogs || scheduleModule.productBacklogs.length === 0) return;
+                const scheduledBacklogIds = scheduleModule.productBacklogs.map(pb => String(pb.backlogId));
+                const moduleBacklogs = allBacklogs.filter(b =>
+                    b.source === 'thirdReview' && scheduledBacklogIds.includes(String(b.id))
+                );
+                const sortedBacklogs = moduleBacklogs.map(backlog => {
+                    const scheduleBacklog = scheduleModule.productBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                sortedBacklogs.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
+                    const startDate = scheduleBacklog?.startDate || scheduleModule.startDate;
+                    const endDate = scheduleBacklog?.endDate || scheduleModule.endDate;
+                    if (startDate && endDate) {
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: scheduleModule.moduleId,
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
+                            });
+                        }
+                    }
+                });
+            });
+            if (scheduleData.standaloneBacklogs && scheduleData.standaloneBacklogs.length > 0) {
+                const standaloneBacklogIds = scheduleData.standaloneBacklogs.map(b => String(b.backlogId));
+                const standaloneBacklogs = allBacklogs.filter(b =>
+                    b.source === 'thirdReview' && standaloneBacklogIds.includes(String(b.id))
+                );
+                const sortedStandalone = standaloneBacklogs.map(backlog => {
+                    const scheduleBacklog = scheduleData.standaloneBacklogs.find(pb => String(pb.backlogId) === String(backlog.id));
+                    return {
+                        ...backlog,
+                        order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                        scheduleBacklog: scheduleBacklog
+                    };
+                }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                sortedStandalone.forEach(backlog => {
+                    const scheduleBacklog = backlog.scheduleBacklog;
+                    const startDate = scheduleBacklog?.startDate || '';
+                    const endDate = scheduleBacklog?.endDate || '';
+                    if (startDate && endDate) {
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        if (end >= start) {
+                            ganttItems.push({
+                                type: 'backlog',
+                                name: backlog.task || backlog.description || 'Untitled Task',
+                                startDate: start,
+                                endDate: end,
+                                color: this.getPriorityColor(backlog.priority || 'medium'),
+                                moduleId: null,
+                                priority: backlog.priority || 'medium',
+                                order: backlog.order
+                            });
+                        }
+                    }
+                });
+            }
+            if (ganttItems.length === 0) {
+                ganttContainer.innerHTML = '<p class="empty-state">Add modules and set dates to view the Gantt chart.</p>';
+                return;
+            }
+            const validGanttItems = ganttItems.filter(item => {
+                const isValid = item.startDate && item.endDate && item.endDate >= item.startDate;
+                return isValid;
+            });
+            if (validGanttItems.length === 0) {
+                ganttContainer.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 2rem;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="color: #92400e; font-weight: 600;">Invalid date ranges. Fix module or backlog dates.</p>
+                    </div>
+                `;
+                return;
+            }
+            const allDates = validGanttItems.flatMap(item => [item.startDate, item.endDate]);
+            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+            if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime()) || maxDate < minDate) {
+                ganttContainer.innerHTML = '<p class="empty-state">Invalid date range for Gantt chart.</p>';
+                return;
+            }
+            minDate.setDate(minDate.getDate() - 7);
+            maxDate.setDate(maxDate.getDate() + 14);
+            const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+            if (totalDays <= 0 || !isFinite(totalDays)) {
+                ganttContainer.innerHTML = '<p class="empty-state">Unable to calculate date range.</p>';
+                return;
+            }
+            const dayWidth = Math.max(30, 800 / totalDays);
+            const moduleGroups = {};
+            const standaloneItems = [];
+            validGanttItems.forEach(item => {
+                if (item.type === 'module') {
+                    if (!moduleGroups[item.moduleId]) moduleGroups[item.moduleId] = { module: item, backlogs: [] };
+                } else if (item.moduleId) {
+                    if (!moduleGroups[item.moduleId]) moduleGroups[item.moduleId] = { backlogs: [] };
+                    moduleGroups[item.moduleId].backlogs.push(item);
+                } else {
+                    standaloneItems.push(item);
+                }
+            });
+            Object.keys(moduleGroups).forEach(moduleId => {
+                if (moduleGroups[moduleId].backlogs) {
+                    moduleGroups[moduleId].backlogs.sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                }
+            });
+            standaloneItems.sort((a, b) => (a.order || 999999) - (b.order || 999999));
+            const sortedModuleGroups = Object.values(moduleGroups).sort((a, b) => {
+                const orderA = a.module?.order !== undefined ? a.module.order : 999999;
+                const orderB = b.module?.order !== undefined ? b.module.order : 999999;
+                return orderA - orderB;
+            });
+            const chartWidth = Math.max(totalDays * dayWidth, 1200);
+            let html = `
+                <div style="position: relative; min-width: ${chartWidth}px; width: ${chartWidth}px;">
+                    <div style="position: sticky; top: 0; background: white; z-index: 10; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; padding-bottom: 0.5rem; width: ${chartWidth}px;">
+                        <div style="display: flex; align-items: center; height: 40px;">
+                            <div style="width: 200px; flex-shrink: 0; font-weight: 600; color: var(--text-primary);">Task</div>
+                            <div style="flex: 1; position: relative; height: 100%; min-width: ${chartWidth - 200}px;">
+                                ${this.renderGanttTimelineHeader(minDate, maxDate, dayWidth)}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; width: ${chartWidth}px;">
+            `;
+            sortedModuleGroups.forEach(group => {
+                if (group.module) html += this.renderGanttBar(group.module, minDate, dayWidth, 200, true);
+                group.backlogs.forEach(backlog => { html += this.renderGanttBar(backlog, minDate, dayWidth, 200, false); });
+            });
+            standaloneItems.forEach(item => { html += this.renderGanttBar(item, minDate, dayWidth, 200, false); });
+            html += `</div></div>`;
+            ganttContainer.innerHTML = html;
+        } catch (error) {
+            console.error('Error rendering third review Gantt chart:', error);
             ganttContainer.innerHTML = '<p class="error-message">Error rendering Gantt chart. Please try again.</p>';
         }
     },
