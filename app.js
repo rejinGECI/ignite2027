@@ -8848,6 +8848,8 @@ const app = {
                                     }
                                 });
                             }
+                            // Hide uncategorized: backlogs in modules that no longer exist (Unknown Module) so evaluator only sees valid/current items
+                            firstReviewBacklogs = firstReviewBacklogs.filter(b => (b.moduleName || '') !== 'Unknown Module');
                         }
                     }
                 } catch (error) {
@@ -9013,6 +9015,12 @@ const app = {
                 }
             } catch (error) {
                 console.warn('Error loading evaluator entry:', error);
+            }
+            
+            // For first review: only keep checked backlog IDs that are in the current schedule (removes uncategorized/deleted backlogs)
+            if (isFirstReviewStage && firstReviewBacklogs.length >= 0) {
+                const validFirstReviewIds = new Set(firstReviewBacklogs.map(b => String(b.id)));
+                checkedBacklogIds = (checkedBacklogIds || []).filter(id => validFirstReviewIds.has(String(id)));
             }
             
             // Load admin evaluation (from main evaluation document)
@@ -9913,6 +9921,105 @@ const app = {
             console.error('Error saving guide evaluator data:', error);
             alert('Error saving evaluation data. Please try again.');
         }
+    },
+    
+    /**
+     * Remove uncategorized/orphan first-review checked backlogs for a team (e.g. Team 10 after topic change).
+     * Keeps only backlog IDs that exist in the team's current firstReviewSchedule. Call from admin context.
+     * @param {string} teamId - Project group document ID
+     * @returns {Promise<{ updated: boolean, mainDoc: boolean, entriesUpdated: number }>}
+     */
+    async cleanFirstReviewCheckedBacklogsForTeam(teamId) {
+        if (!teamId) {
+            console.warn('cleanFirstReviewCheckedBacklogsForTeam: teamId required');
+            return { updated: false, mainDoc: false, entriesUpdated: 0 };
+        }
+        try {
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId));
+            if (!scheduleDoc.exists()) {
+                console.warn('cleanFirstReviewCheckedBacklogsForTeam: no firstReviewSchedule for team', teamId);
+                return { updated: false, mainDoc: false, entriesUpdated: 0 };
+            }
+            const schedule = scheduleDoc.data();
+            const validIds = new Set();
+            (schedule.modules || []).forEach(m => {
+                (m.productBacklogs || []).forEach(pb => validIds.add(String(pb.backlogId)));
+            });
+            (schedule.standaloneBacklogs || []).forEach(b => validIds.add(String(b.backlogId)));
+            if (validIds.size === 0) {
+                console.warn('cleanFirstReviewCheckedBacklogsForTeam: no backlogs in schedule for team', teamId);
+            }
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            const firstReviewStageIndex = stages.findIndex(s => (s.name || '').toLowerCase().includes('first sprint') || (s.name || '').toLowerCase().includes('first review'));
+            const stageIndex = firstReviewStageIndex >= 0 ? firstReviewStageIndex : 0;
+            const stageIndicesToTry = [stageIndex];
+            if (stageIndex === 0 && stages.length > 1) stageIndicesToTry.push(1);
+            else if (stageIndex === 1) stageIndicesToTry.push(0);
+            let mainDocUpdated = false;
+            let entriesUpdated = 0;
+            for (const si of stageIndicesToTry) {
+                const evalDocId = `${teamId}_${si}`;
+                const evalRef = doc(window.firebaseDb, 'evaluations', evalDocId);
+                const mainEvalDoc = await getDoc(evalRef);
+                const currentMain = mainEvalDoc.exists() ? (mainEvalDoc.data().firstReviewCheckedBacklogs || []) : [];
+                const filtered = Array.isArray(currentMain) ? currentMain.filter(id => validIds.has(String(id))) : [];
+                console.log('cleanFirstReviewCheckedBacklogsForTeam: evalDocId=', evalDocId, 'validIds=', validIds.size, 'filtered.length=', filtered.length);
+                await setDoc(evalRef, { firstReviewCheckedBacklogs: filtered }, { merge: true });
+                mainDocUpdated = true;
+                const evaluatorEntriesRef = collection(window.firebaseDb, 'evaluations', evalDocId, 'evaluatorEntries');
+                const entriesSnap = await getDocs(evaluatorEntriesRef);
+                for (const d of entriesSnap.docs) {
+                    const data = d.data();
+                    const cur = (data.firstReviewCheckedBacklogs || []);
+                    const entFiltered = Array.isArray(cur) ? cur.filter(id => validIds.has(String(id))) : [];
+                    await updateDoc(doc(window.firebaseDb, 'evaluations', evalDocId, 'evaluatorEntries', d.id), { firstReviewCheckedBacklogs: entFiltered });
+                    entriesUpdated++;
+                }
+            }
+            console.log('cleanFirstReviewCheckedBacklogsForTeam: done. mainDocUpdated=', mainDocUpdated, 'entriesUpdated=', entriesUpdated);
+            return { updated: true, mainDoc: mainDocUpdated, entriesUpdated, validBacklogCount: validIds.size, evalDocId: `${teamId}_${stageIndex}` };
+        } catch (error) {
+            console.error('cleanFirstReviewCheckedBacklogsForTeam:', error);
+            throw error;
+        }
+    },
+    
+    /**
+     * Find team by name (groupName or name) or by document ID, then run cleanFirstReviewCheckedBacklogsForTeam.
+     * Examples: app.cleanFirstReviewCheckedBacklogsForTeamByName('Team 10')  or  app.cleanFirstReviewCheckedBacklogsForTeamByName('10')
+     * If no match, logs all team ids and names so you can use: app.cleanFirstReviewCheckedBacklogsForTeam('EXACT_DOC_ID')
+     */
+    async cleanFirstReviewCheckedBacklogsForTeamByName(teamName) {
+        if (!teamName || typeof teamName !== 'string') {
+            console.warn('cleanFirstReviewCheckedBacklogsForTeamByName: teamName (string) required');
+            return null;
+        }
+        const teamsSnapshot = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+        const normalized = String(teamName).trim().toLowerCase();
+        const normalizedNoSpaces = normalized.replace(/\s+/g, '');
+        const nonDeleted = teamsSnapshot.docs.filter(d => d.data().deleted !== true);
+        const team = nonDeleted.find(d => {
+            const id = (d.id || '').toLowerCase();
+            const groupName = (d.data().groupName || '').trim().toLowerCase();
+            const name = (d.data().name || '').trim().toLowerCase();
+            const gNoSpaces = groupName.replace(/\s+/g, '');
+            const nNoSpaces = name.replace(/\s+/g, '');
+            return id === normalized || id.includes(normalized) || normalized.includes(id) ||
+                groupName === normalized || groupName.includes(normalized) || normalized.includes(groupName) ||
+                name === normalized || name.includes(normalized) || normalized.includes(name) ||
+                (normalizedNoSpaces && (gNoSpaces === normalizedNoSpaces || gNoSpaces.includes(normalizedNoSpaces) || normalizedNoSpaces.includes(gNoSpaces) ||
+                 nNoSpaces === normalizedNoSpaces || nNoSpaces.includes(normalizedNoSpaces) || normalizedNoSpaces.includes(nNoSpaces)));
+        });
+        if (!team) {
+            const list = nonDeleted.map(d => ({ id: d.id, groupName: d.data().groupName, name: d.data().name }));
+            console.warn('cleanFirstReviewCheckedBacklogsForTeamByName: no team found for', JSON.stringify(teamName), '. Total teams (non-deleted):', list.length);
+            console.warn('All teams (use app.cleanFirstReviewCheckedBacklogsForTeam("ID") with one of these ids):', list);
+            return null;
+        }
+        const result = await this.cleanFirstReviewCheckedBacklogsForTeam(team.id);
+        console.log('cleanFirstReviewCheckedBacklogsForTeamByName:', teamName, '-> teamId:', team.id, result);
+        return result;
     },
     
     // ========== EVALUATION DATA LOADING FUNCTIONS ==========
