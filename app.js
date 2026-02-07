@@ -35934,18 +35934,42 @@ const app = {
                                                 <input type="checkbox" class="student-backlog-complete-checkbox" data-backlog-id="${backlog.id}" ${backlog.isCompleted ? 'checked' : ''} onchange="app.saveStudentCompletedTasks()" style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
                                                 <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
                                             </label>
-                                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
                                                 <span style="padding: 0.2rem 0.5rem; background: ${priorityColor}20; color: ${priorityColor}; border-radius: 4px;">${(priority || 'medium').charAt(0).toUpperCase() + (priority || 'medium').slice(1)}</span>
                                                 <span style="padding: 0.2rem 0.5rem; background: ${difficultyColor}20; color: ${difficultyColor}; border-radius: 4px;">${(difficulty || 'medium').replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
-                                                ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
-                                                ${backlog.endDate ? `<span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
                                             </div>
+                                            ${canEditStandalone ? `
+                                            <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                                <div style="flex: 1;">
+                                                    <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                        <i class="fas fa-calendar-check" style="color: #3b82f6;"></i> Start Date:
+                                                    </label>
+                                                    <input type="date" class="form-input" value="${backlog.startDate || ''}"
+                                                        onchange="app.updateThirdReviewBacklogDate('${backlog.id}', 'standalone', 'startDate', this.value)"
+                                                        style="width: 100%; border: 2px solid #3b82f640; border-radius: 6px; padding: 0.5rem;">
+                                                </div>
+                                                <div style="flex: 1;">
+                                                    <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                        <i class="fas fa-calendar-times" style="color: #10b981;"></i> End Date:
+                                                    </label>
+                                                    <input type="date" class="form-input" value="${backlog.endDate || ''}"
+                                                        onchange="app.updateThirdReviewBacklogDate('${backlog.id}', 'standalone', 'endDate', this.value)"
+                                                        style="width: 100%; border: 2px solid #10b98140; border-radius: 6px; padding: 0.5rem;">
+                                                </div>
+                                            </div>
+                                            ` : `
+                                            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
+                                                ${backlog.endDate ? ` <span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
+                                                ${!backlog.startDate && !backlog.endDate ? 'No dates set' : ''}
+                                            </div>
+                                            `}
                                             ${backlog.storyText ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">${this.escapeHtml(backlog.storyText)}</div>` : ''}
                                         </div>
                                         ${canEditStandalone ? `
                                         <div style="display: flex; gap: 0.35rem;">
                                             <button type="button" class="btn btn-secondary btn-sm" onclick="app.editThirdReviewBacklog('${backlog.id}', null)" title="Edit"><i class="fas fa-edit"></i></button>
-                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeThirdReviewBacklog('${backlog.id}', null)" title="Remove"><i class="fas fa-trash"></i></button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeThirdReviewBacklog('${backlog.id}', 'standalone')" title="Remove"><i class="fas fa-trash"></i></button>
                                         </div>
                                         ` : ''}
                                     </div>
@@ -36294,7 +36318,13 @@ const app = {
         }
     },
     
-    // Move backlog up in order (replicated from first sprint - findIndex by backlogId, in-place swap, setDoc merge)
+    // Sort backlogs by order so array index = display index (fixes last/second-last reorder when stored order differs).
+    _thirdReviewSortByOrder(arr) {
+        if (!arr || !arr.length) return;
+        arr.sort((a, b) => (a.order !== undefined ? a.order : 999999) - (b.order !== undefined ? b.order : 999999));
+    },
+    
+    // Move backlog up in order – sort by order first so last/second-last swap works.
     async moveThirdReviewBacklogUp(backlogId, moduleId, currentIndex) {
         if (currentIndex === 0) return;
         try {
@@ -36303,33 +36333,35 @@ const app = {
             const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
             if (!scheduleDoc.exists()) return;
             const scheduleData = scheduleDoc.data();
-            if (scheduleData.frozen) {
-                alert('The schedule is frozen. Product backlogs cannot be reordered.');
+            if (scheduleData.submitted === true && !scheduleData.verified) {
+                alert('The schedule is locked for editing until admin verification.');
                 return;
             }
-            if (scheduleData.submitted && !scheduleData.verified) {
-                alert('The schedule is locked until admin verification.');
+            if (scheduleData.frozen === true) {
+                alert('The schedule is frozen. Product backlogs cannot be reordered. Please contact admin to unfreeze.');
                 return;
             }
             if (moduleId === 'standalone') {
                 if (!scheduleData.standaloneBacklogs || scheduleData.standaloneBacklogs.length < 2) return;
+                this._thirdReviewSortByOrder(scheduleData.standaloneBacklogs);
                 const backlogIndex = scheduleData.standaloneBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
                 if (backlogIndex === -1 || backlogIndex === 0) return;
                 const temp = scheduleData.standaloneBacklogs[backlogIndex];
                 scheduleData.standaloneBacklogs[backlogIndex] = scheduleData.standaloneBacklogs[backlogIndex - 1];
                 scheduleData.standaloneBacklogs[backlogIndex - 1] = temp;
-                scheduleData.standaloneBacklogs.forEach((b, index) => { b.order = index; });
+                scheduleData.standaloneBacklogs.forEach((backlog, index) => { backlog.order = index; });
             } else {
                 const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
                 if (moduleIndex === -1) return;
                 const module = scheduleData.modules[moduleIndex];
                 if (!module.productBacklogs || module.productBacklogs.length < 2) return;
+                this._thirdReviewSortByOrder(module.productBacklogs);
                 const backlogIndex = module.productBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
                 if (backlogIndex === -1 || backlogIndex === 0) return;
                 const temp = module.productBacklogs[backlogIndex];
                 module.productBacklogs[backlogIndex] = module.productBacklogs[backlogIndex - 1];
                 module.productBacklogs[backlogIndex - 1] = temp;
-                module.productBacklogs.forEach((b, index) => { b.order = index; });
+                module.productBacklogs.forEach((backlog, index) => { backlog.order = index; });
             }
             await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData, { merge: true });
             await this.loadThirdReviewSchedule();
@@ -36344,6 +36376,7 @@ const app = {
         }
     },
     
+    // Move backlog down in order – sort by order first so last/second-last swap works.
     async moveThirdReviewBacklogDown(backlogId, moduleId, currentIndex, maxIndex) {
         if (currentIndex >= maxIndex) return;
         try {
@@ -36352,33 +36385,35 @@ const app = {
             const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
             if (!scheduleDoc.exists()) return;
             const scheduleData = scheduleDoc.data();
-            if (scheduleData.frozen) {
-                alert('The schedule is frozen. Product backlogs cannot be reordered.');
+            if (scheduleData.submitted === true && !scheduleData.verified) {
+                alert('The schedule is locked for editing until admin verification.');
                 return;
             }
-            if (scheduleData.submitted && !scheduleData.verified) {
-                alert('The schedule is locked until admin verification.');
+            if (scheduleData.frozen === true) {
+                alert('The schedule is frozen. Product backlogs cannot be reordered. Please contact admin to unfreeze.');
                 return;
             }
             if (moduleId === 'standalone') {
                 if (!scheduleData.standaloneBacklogs || scheduleData.standaloneBacklogs.length < 2) return;
+                this._thirdReviewSortByOrder(scheduleData.standaloneBacklogs);
                 const backlogIndex = scheduleData.standaloneBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
                 if (backlogIndex === -1 || backlogIndex >= scheduleData.standaloneBacklogs.length - 1) return;
                 const temp = scheduleData.standaloneBacklogs[backlogIndex];
                 scheduleData.standaloneBacklogs[backlogIndex] = scheduleData.standaloneBacklogs[backlogIndex + 1];
                 scheduleData.standaloneBacklogs[backlogIndex + 1] = temp;
-                scheduleData.standaloneBacklogs.forEach((b, index) => { b.order = index; });
+                scheduleData.standaloneBacklogs.forEach((backlog, index) => { backlog.order = index; });
             } else {
                 const moduleIndex = scheduleData.modules.findIndex(m => m.moduleId === moduleId);
                 if (moduleIndex === -1) return;
                 const module = scheduleData.modules[moduleIndex];
                 if (!module.productBacklogs || module.productBacklogs.length < 2) return;
+                this._thirdReviewSortByOrder(module.productBacklogs);
                 const backlogIndex = module.productBacklogs.findIndex(b => String(b.backlogId) === String(backlogId));
                 if (backlogIndex === -1 || backlogIndex >= module.productBacklogs.length - 1) return;
                 const temp = module.productBacklogs[backlogIndex];
                 module.productBacklogs[backlogIndex] = module.productBacklogs[backlogIndex + 1];
                 module.productBacklogs[backlogIndex + 1] = temp;
-                module.productBacklogs.forEach((b, index) => { b.order = index; });
+                module.productBacklogs.forEach((backlog, index) => { backlog.order = index; });
             }
             await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData, { merge: true });
             await this.loadThirdReviewSchedule();
@@ -36439,6 +36474,71 @@ const app = {
             await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData);
             await this.loadThirdReviewSchedule();
             await this.renderThirdReviewGanttChart();
+        } catch (e) {
+            console.error(e);
+            alert('Error updating date. Please try again.');
+        }
+    },
+    
+    async updateThirdReviewBacklogDate(backlogId, moduleId, dateType, dateValue) {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
+            if (!scheduleDoc.exists()) return;
+            const scheduleData = scheduleDoc.data();
+            if (scheduleData.submitted === true && scheduleData.verified !== true) {
+                alert('The schedule is locked for editing until admin verification.');
+                return;
+            }
+            if (scheduleData.frozen) {
+                alert('The schedule is frozen. Dates cannot be changed.');
+                return;
+            }
+            if (moduleId && moduleId !== 'standalone') {
+                const moduleIndex = scheduleData.modules?.findIndex(m => m.moduleId === moduleId);
+                if (moduleIndex === -1) return;
+                const productBacklogs = scheduleData.modules[moduleIndex].productBacklogs || [];
+                const backlogIndex = productBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) return;
+                const existing = productBacklogs[backlogIndex];
+                const newStartDate = dateType === 'startDate' ? dateValue : (existing.startDate || '');
+                const newEndDate = dateType === 'endDate' ? dateValue : (existing.endDate || '');
+                if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                    alert('Start date cannot be later than end date.');
+                    await this.loadThirdReviewSchedule();
+                    return;
+                }
+                scheduleData.modules[moduleIndex].productBacklogs = productBacklogs.map((pb, idx) =>
+                    idx === backlogIndex
+                        ? { ...pb, backlogId: pb.backlogId, startDate: newStartDate, endDate: newEndDate, order: pb.order }
+                        : { ...pb, backlogId: pb.backlogId, startDate: pb.startDate || '', endDate: pb.endDate || '', order: pb.order }
+                );
+            } else {
+                const standaloneBacklogs = scheduleData.standaloneBacklogs || [];
+                const backlogIndex = standaloneBacklogs.findIndex(pb => String(pb.backlogId) === String(backlogId));
+                if (backlogIndex === -1) return;
+                const existing = standaloneBacklogs[backlogIndex];
+                const newStartDate = dateType === 'startDate' ? dateValue : (existing.startDate || '');
+                const newEndDate = dateType === 'endDate' ? dateValue : (existing.endDate || '');
+                if (newStartDate && newEndDate && new Date(newStartDate) > new Date(newEndDate)) {
+                    alert('Start date cannot be later than end date.');
+                    await this.loadThirdReviewSchedule();
+                    return;
+                }
+                scheduleData.standaloneBacklogs = standaloneBacklogs.map((pb, idx) =>
+                    idx === backlogIndex
+                        ? { ...pb, backlogId: pb.backlogId, startDate: newStartDate, endDate: newEndDate, order: pb.order }
+                        : { ...pb, backlogId: pb.backlogId, startDate: pb.startDate || '', endDate: pb.endDate || '', order: pb.order }
+                );
+            }
+            await setDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), scheduleData, { merge: true });
+            await this.loadThirdReviewSchedule();
+            try {
+                await this.renderThirdReviewGanttChart();
+            } catch (e) {
+                console.warn('Gantt refresh after backlog date update:', e);
+            }
         } catch (e) {
             console.error(e);
             alert('Error updating date. Please try again.');
@@ -36517,12 +36617,36 @@ const app = {
                                             <input type="checkbox" class="student-backlog-complete-checkbox" data-backlog-id="${backlog.id}" ${backlog.isCompleted ? 'checked' : ''} onchange="app.saveStudentCompletedTasks()" style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981; flex-shrink: 0;">
                                             <div style="font-weight: 600; color: var(--text-primary); ${backlog.isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${this.escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
                                         </label>
-                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
                                             <span style="padding: 0.2rem 0.5rem; background: ${priorityColor}20; color: ${priorityColor}; border-radius: 4px;">${(priority || 'medium').charAt(0).toUpperCase() + (priority || 'medium').slice(1)}</span>
                                             <span style="padding: 0.2rem 0.5rem; background: ${difficultyColor}20; color: ${difficultyColor}; border-radius: 4px;">${(difficulty || 'medium').replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
-                                            ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
-                                            ${backlog.endDate ? `<span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
                                         </div>
+                                        ${canEdit ? `
+                                        <div style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                                            <div style="flex: 1;">
+                                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                    <i class="fas fa-calendar-check" style="color: #3b82f6;"></i> Start Date:
+                                                </label>
+                                                <input type="date" class="form-input" value="${backlog.startDate || ''}"
+                                                    onchange="app.updateThirdReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'startDate', this.value)"
+                                                    style="width: 100%; border: 2px solid #3b82f640; border-radius: 6px; padding: 0.5rem;">
+                                            </div>
+                                            <div style="flex: 1;">
+                                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 600;">
+                                                    <i class="fas fa-calendar-times" style="color: #10b981;"></i> End Date:
+                                                </label>
+                                                <input type="date" class="form-input" value="${backlog.endDate || ''}"
+                                                    onchange="app.updateThirdReviewBacklogDate('${backlog.id}', '${scheduleModule.moduleId}', 'endDate', this.value)"
+                                                    style="width: 100%; border: 2px solid #10b98140; border-radius: 6px; padding: 0.5rem;">
+                                            </div>
+                                        </div>
+                                        ` : `
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                            ${backlog.startDate ? `<span><i class="fas fa-calendar-check"></i> ${backlog.startDate}</span>` : ''}
+                                            ${backlog.endDate ? ` <span><i class="fas fa-calendar-times"></i> ${backlog.endDate}</span>` : ''}
+                                            ${!backlog.startDate && !backlog.endDate ? 'No dates set' : ''}
+                                        </div>
+                                        `}
                                         ${backlog.storyText ? `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #e5e7eb;">${this.escapeHtml(backlog.storyText)}</div>` : ''}
                                     </div>
                                     ${canEdit ? `
