@@ -3051,13 +3051,16 @@ export function createAdminMiniProjectModule(app) {
             }
         },
         
+        // Renders schedule content in submission order (modules and backlogs sorted by order field from schedule).
         async renderAdminThirdReviewScheduleContent(teamId, scheduleData, allModules, allBacklogs, completedBacklogIds = []) {
             const container = document.getElementById('admin-third-review-schedule-content');
             if (!container) return;
+            const jsStr = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             try {
                 let html = '';
                 if (scheduleData.modules && scheduleData.modules.length > 0) {
                     html += '<h3 style="margin: 1rem 0 0.75rem 0; color: var(--text-primary); font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-folder" style="font-size: 0.9rem; color: #3b82f6;"></i> Modules</h3>';
+                    // Preserve order as at student submission
                     const sortedModules = [...scheduleData.modules].sort((a, b) => {
                         const orderA = a.order !== undefined ? a.order : 999999;
                         const orderB = b.order !== undefined ? b.order : 999999;
@@ -3077,9 +3080,9 @@ export function createAdminMiniProjectModule(app) {
                                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                                     <h4 style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 600;"><i class="fas fa-folder" style="color: #3b82f6;"></i> ${escapeHtml(module.name || 'Unnamed Module')}</h4>
                                 </div>
-                                <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
-                                    <span>${scheduleModule.startDate ? 'Start: ' + scheduleModule.startDate : 'No start date'}</span>
-                                    <span>${scheduleModule.endDate ? 'End: ' + scheduleModule.endDate : 'No end date'}</span>
+                                <div style="display: flex; gap: 1.5rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">
+                                    <span><i class="fas fa-calendar-alt"></i> Module dates: Start: ${scheduleModule.startDate || '—'}</span>
+                                    <span>End: ${scheduleModule.endDate || '—'}</span>
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                                     ${sortedBacklogs.map(backlog => {
@@ -3094,17 +3097,21 @@ export function createAdminMiniProjectModule(app) {
                                         const pc = priorityColors[priority] || '#3b82f6';
                                         const dc = difficultyColors[difficulty] || '#3b82f6';
                                         return `
-                                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
-                                                ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
-                                                <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+                                            <div style="flex: 1;">
+                                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                                    ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                                </div>
+                                                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem; margin-bottom: 0.35rem;">
+                                                    <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
+                                                    <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
+                                                </div>
+                                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                                    <i class="fas fa-calendar-check"></i> Start: ${startDate || '—'} &nbsp; <i class="fas fa-calendar-times"></i> End: ${endDate || '—'}
+                                                </div>
                                             </div>
-                                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem;">
-                                                <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
-                                                <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
-                                                ${startDate ? `<span>Start: ${startDate}</span>` : ''}
-                                                ${endDate ? `<span>End: ${endDate}</span>` : ''}
-                                            </div>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.adminEditThirdReviewBacklog('${jsStr(teamId)}', '${jsStr(backlog.id)}', '${jsStr(scheduleModule.moduleId)}')" title="Edit backlog" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; flex-shrink: 0;"><i class="fas fa-edit"></i> Edit</button>
                                         </div>`;
                                     }).join('')}
                                 </div>
@@ -3133,17 +3140,21 @@ export function createAdminMiniProjectModule(app) {
                         const pc = priorityColors[priority] || '#3b82f6';
                         const dc = difficultyColors[difficulty] || '#3b82f6';
                         html += `
-                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
-                                ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
-                                <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                        <div style="padding: 0.75rem; background: ${isCompleted ? '#f0fdf4' : '#fff'}; border-radius: 4px; border-left: 3px solid ${pc}; margin-bottom: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                    ${isCompleted ? '<i class="fas fa-check-circle" style="color: #10b981;"></i>' : ''}
+                                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; ${isCompleted ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(backlog.task || backlog.description || 'Untitled Task')}</div>
+                                </div>
+                                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem; margin-bottom: 0.35rem;">
+                                    <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
+                                    <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    <i class="fas fa-calendar-check"></i> Start: ${startDate || '—'} &nbsp; <i class="fas fa-calendar-times"></i> End: ${endDate || '—'}
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem;">
-                                <span style="padding: 0.2rem 0.4rem; background: ${pc}; color: white; border-radius: 8px;">${priority}</span>
-                                <span style="padding: 0.2rem 0.4rem; background: ${dc}; color: white; border-radius: 8px;">${difficulty}</span>
-                                ${startDate ? `<span>Start: ${startDate}</span>` : ''}
-                                ${endDate ? `<span>End: ${endDate}</span>` : ''}
-                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.adminEditThirdReviewBacklog('${jsStr(teamId)}', '${jsStr(backlog.id)}', 'standalone')" title="Edit backlog" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; flex-shrink: 0;"><i class="fas fa-edit"></i> Edit</button>
                         </div>`;
                     });
                     html += '</div>';
