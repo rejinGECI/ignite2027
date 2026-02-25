@@ -35853,81 +35853,65 @@ const app = {
                 console.warn('Error loading third review backlogs:', e);
             }
             
-            if (isSubmitted && !isVerified && !isFrozen) {
-                modulesListContainer.innerHTML = `
-                    <div style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border-left: 4px solid #f59e0b;">
-                        <h3 style="margin: 0 0 0.75rem 0; color: #92400e; font-size: 1.3rem; font-weight: 600; text-align: center;">Admin Verification In Progress</h3>
-                        <p style="margin: 0.5rem 0; color: #92400e; font-size: 1rem; text-align: center;">
-                            Your third sprint schedule has been submitted and is currently under admin review.
-                        </p>
-                    </div>
-                `;
-                try {
-                    await this.renderThirdReviewGanttChart();
-                } catch (e) {
-                    console.warn('Third review Gantt chart:', e);
-                }
-            } else {
-                // Load modules from project planning (cardSortingModules) for dropdown and for displaying module cards
-                const modulesQuery = query(
-                    collection(window.firebaseDb, 'cardSortingModules'),
-                    where('teamId', '==', team.id)
-                );
-                const modulesSnapshot = await getDocs(modulesQuery);
-                const allModules = [];
-                modulesSnapshot.forEach(docSnap => {
-                    allModules.push({ id: docSnap.id, ...docSnap.data() });
+            // Load modules from project planning (cardSortingModules) for dropdown and for displaying module cards
+            const modulesQuery = query(
+                collection(window.firebaseDb, 'cardSortingModules'),
+                where('teamId', '==', team.id)
+            );
+            const modulesSnapshot = await getDocs(modulesQuery);
+            const allModules = [];
+            modulesSnapshot.forEach(docSnap => {
+                allModules.push({ id: docSnap.id, ...docSnap.data() });
+            });
+            const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
+            if (moduleSelect) {
+                const addedModuleIds = new Set((scheduleData.modules || []).map(m => m.moduleId));
+                moduleSelect.innerHTML = '<option value="">-- Select a module --</option>';
+                allModules.forEach(module => {
+                    if (!addedModuleIds.has(module.id)) {
+                        const option = document.createElement('option');
+                        option.value = module.id;
+                        option.textContent = module.name || ('Module ' + module.id);
+                        moduleSelect.appendChild(option);
+                    }
                 });
-                const canEdit = (!isSubmitted || (isSubmitted && isVerified)) && !isFrozen;
-                if (moduleSelect) {
-                    const addedModuleIds = new Set((scheduleData.modules || []).map(m => m.moduleId));
-                    moduleSelect.innerHTML = '<option value="">-- Select a module --</option>';
-                    allModules.forEach(module => {
-                        if (!addedModuleIds.has(module.id)) {
-                            const option = document.createElement('option');
-                            option.value = module.id;
-                            option.textContent = module.name || ('Module ' + module.id);
-                            moduleSelect.appendChild(option);
-                        }
-                    });
-                    moduleSelect.disabled = !canEdit;
-                    moduleSelect.style.opacity = canEdit ? '1' : '0.6';
-                    moduleSelect.style.cursor = canEdit ? 'default' : 'not-allowed';
-                }
-                const addModuleBtn = document.querySelector('button[onclick="app.addModuleToThirdReview()"]');
-                if (addModuleBtn) {
-                    addModuleBtn.disabled = !canEdit;
-                    addModuleBtn.style.opacity = canEdit ? '1' : '0.6';
-                    addModuleBtn.style.cursor = canEdit ? 'pointer' : 'not-allowed';
-                }
-                // Render module cards when there are modules (fix: display added modules instead of only count message)
-                if (scheduleData.modules && scheduleData.modules.length > 0) {
-                    const sortedModules = [...scheduleData.modules].sort((a, b) => {
-                        const orderA = a.order !== undefined ? a.order : 999999;
-                        const orderB = b.order !== undefined ? b.order : 999999;
-                        return orderA - orderB;
-                    });
-                    const moduleCards = sortedModules.map((scheduleModule, moduleIndex) => {
-                        const module = allModules.find(m => m.id === scheduleModule.moduleId);
-                        if (!module) return '';
-                        const scheduledBacklogIds = (scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId));
-                        const moduleBacklogs = allThirdBacklogs.filter(b => scheduledBacklogIds.includes(String(b.id)));
-                        const scheduledBacklogs = moduleBacklogs.map(backlog => {
-                            const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
-                            return {
-                                ...backlog,
-                                startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
-                                endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
-                                order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
-                                isCompleted: completedBacklogIds.includes(String(backlog.id))
-                            };
-                        }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
-                        return this.renderThirdReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit, moduleIndex);
-                    });
-                    modulesListContainer.innerHTML = moduleCards.join('');
-                } else {
-                    modulesListContainer.innerHTML = '<p class="empty-state">No third sprint schedule yet. Add modules from Project Planning above.</p>';
-                }
+                moduleSelect.disabled = !canEdit;
+                moduleSelect.style.opacity = canEdit ? '1' : '0.6';
+                moduleSelect.style.cursor = canEdit ? 'default' : 'not-allowed';
+            }
+            const addModuleBtn = document.querySelector('button[onclick="app.addModuleToThirdReview()"]');
+            if (addModuleBtn) {
+                addModuleBtn.disabled = !canEdit;
+                addModuleBtn.style.opacity = canEdit ? '1' : '0.6';
+                addModuleBtn.style.cursor = canEdit ? 'pointer' : 'not-allowed';
+            }
+            // Render module cards when there are modules (fix: display added modules instead of only count message)
+            if (scheduleData.modules && scheduleData.modules.length > 0) {
+                const sortedModules = [...scheduleData.modules].sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : 999999;
+                    const orderB = b.order !== undefined ? b.order : 999999;
+                    return orderA - orderB;
+                });
+                const moduleCards = sortedModules.map((scheduleModule, moduleIndex) => {
+                    const module = allModules.find(m => m.id === scheduleModule.moduleId);
+                    if (!module) return '';
+                    const scheduledBacklogIds = (scheduleModule.productBacklogs || []).map(pb => String(pb.backlogId));
+                    const moduleBacklogs = allThirdBacklogs.filter(b => scheduledBacklogIds.includes(String(b.id)));
+                    const scheduledBacklogs = moduleBacklogs.map(backlog => {
+                        const scheduleBacklog = scheduleModule.productBacklogs?.find(pb => String(pb.backlogId) === String(backlog.id));
+                        return {
+                            ...backlog,
+                            startDate: scheduleBacklog?.startDate || scheduleModule.startDate || '',
+                            endDate: scheduleBacklog?.endDate || scheduleModule.endDate || '',
+                            order: scheduleBacklog?.order !== undefined ? scheduleBacklog.order : 999999,
+                            isCompleted: completedBacklogIds.includes(String(backlog.id))
+                        };
+                    }).sort((a, b) => (a.order || 999999) - (b.order || 999999));
+                    return this.renderThirdReviewModuleCard(scheduleModule, module, scheduledBacklogs, canEdit, moduleIndex);
+                });
+                modulesListContainer.innerHTML = moduleCards.join('');
+            } else {
+                modulesListContainer.innerHTML = '<p class="empty-state">No third sprint schedule yet. Add modules from Project Planning above.</p>';
             }
             
             if (statusContainer) {
@@ -37072,61 +37056,34 @@ const app = {
     async submitThirdReviewSchedule() {
         try {
             const team = await this.getUserTeam();
-            if (!team) return;
-            const scheduleRef = doc(window.firebaseDb, 'thirdReviewSchedule', team.id);
-            const scheduleDoc = await getDoc(scheduleRef);
+            if (!team) {
+                alert('You are not assigned to a team.');
+            }
+            
+            const scheduleDoc = await getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id));
             if (!scheduleDoc.exists()) {
                 alert('No schedule to submit.');
                 return;
             }
+            
             const scheduleData = scheduleDoc.data();
             const hasContent = (scheduleData.modules?.length || 0) > 0 || (scheduleData.standaloneBacklogs?.length || 0) > 0;
             if (!hasContent) {
                 alert('Please add at least one module or product backlog before submitting.');
                 return;
             }
+            
             if (scheduleData.submitted && !scheduleData.verified) {
                 alert('Schedule already submitted and is awaiting admin verification.');
                 return;
             }
-            // Validate dates before submit: every module, every product backlog (in modules), and every standalone must have start/end and start <= end
-            const dateErrors = [];
-            const modules = scheduleData.modules || [];
-            for (let i = 0; i < modules.length; i++) {
-                const m = modules[i];
-                const moduleNum = i + 1;
-                if (!m.startDate || !m.endDate) {
-                    dateErrors.push(`• Module ${moduleNum}: missing start or end date`);
-                } else if (new Date(m.startDate) > new Date(m.endDate)) {
-                    dateErrors.push(`• Module ${moduleNum}: start date must be on or before end date`);
-                }
-                const productBacklogs = m.productBacklogs || [];
-                for (let j = 0; j < productBacklogs.length; j++) {
-                    const pb = productBacklogs[j];
-                    if (!pb.startDate || !pb.endDate) {
-                        dateErrors.push(`• Module ${moduleNum}, product backlog ${j + 1}: missing start or end date`);
-                    } else if (new Date(pb.startDate) > new Date(pb.endDate)) {
-                        dateErrors.push(`• Module ${moduleNum}, product backlog ${j + 1}: start date must be on or before end date`);
-                    }
-                }
-            }
-            const standaloneBacklogs = scheduleData.standaloneBacklogs || [];
-            for (let i = 0; i < standaloneBacklogs.length; i++) {
-                const b = standaloneBacklogs[i];
-                if (!b.startDate || !b.endDate) {
-                    dateErrors.push(`• Standalone backlog ${i + 1}: missing start or end date`);
-                } else if (new Date(b.startDate) > new Date(b.endDate)) {
-                    dateErrors.push(`• Standalone backlog ${i + 1}: start date must be on or before end date`);
-                }
-            }
-            if (dateErrors.length > 0) {
-                alert('Please set start and end dates for all modules and product backlogs before submitting:\n\n' + dateErrors.join('\n'));
-                return;
-            }
+            
+            // No date validation – allow direct submit when content exists
             if (!confirm('Are you sure you want to submit the third sprint schedule agreement? This will mark it as submitted for review.')) {
                 return;
             }
-            await updateDoc(scheduleRef, {
+            
+            await updateDoc(doc(window.firebaseDb, 'thirdReviewSchedule', team.id), {
                 submitted: true,
                 submittedAt: serverTimestamp(),
                 verified: false,
@@ -37135,11 +37092,12 @@ const app = {
                 verifiedBy: null,
                 updatedAt: serverTimestamp()
             });
-            alert('Third sprint schedule submitted successfully. It is now locked for editing until admin verification.');
+            
             await this.loadThirdReviewSchedule();
-        } catch (e) {
-            console.error(e);
-            alert('Error submitting schedule.');
+            alert('Third sprint schedule submitted successfully. It is now locked for editing until admin verification.');
+        } catch (error) {
+            console.error('Error submitting third review schedule:', error);
+            alert('Error submitting schedule. Please try again.');
         }
     },
     
