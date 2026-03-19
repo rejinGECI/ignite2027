@@ -1451,9 +1451,14 @@ Bob Johnson,GHI789</pre>
             
             <!-- Student Mini Project Page -->
             <div id="miniproject" class="page">
-                <div class="page-header">
-                    <h1>Mini Project</h1>
-                    <p class="subtitle">View your project details, planning, and progress</p>
+                <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <h1>Mini Project</h1>
+                        <p class="subtitle">View your project details, planning, and progress</p>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="miniproject-download-word-btn" onclick="app.downloadMiniProjectAsWord()" style="display: none; flex-shrink: 0;">
+                        <i class="fas fa-file-word"></i> Download as Word
+                    </button>
                 </div>
                 
                 <!-- Tabs -->

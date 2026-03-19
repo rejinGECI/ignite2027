@@ -13955,11 +13955,13 @@ const app = {
             });
             
             if (!studentTeam) {
-                // Hide tabs if no team
+                // Hide tabs and download button if no team
                 const tabsContainer = document.getElementById('miniproject-tabs');
                 if (tabsContainer) {
                     tabsContainer.style.display = 'none';
                 }
+                const downloadBtn = document.getElementById('miniproject-download-word-btn');
+                if (downloadBtn) downloadBtn.style.display = 'none';
                 container.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-project-diagram" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
@@ -14564,11 +14566,13 @@ const app = {
             // Store team ID for problem statements
             this.currentStudentTeamId = studentTeam.id;
             
-            // Show tabs
+            // Show tabs and download button
             const tabsContainer = document.getElementById('miniproject-tabs');
             if (tabsContainer) {
                 tabsContainer.style.display = 'flex';
             }
+            const downloadBtn = document.getElementById('miniproject-download-word-btn');
+            if (downloadBtn) downloadBtn.style.display = 'inline-flex';
             
             // Load approved problem statement
             await this.loadApprovedProblemStatement(studentTeam.id);
@@ -16883,6 +16887,201 @@ const app = {
             setTimeout(() => {
                 this.switchMiniProjectTab('project-planning');
             }, 100);
+        }
+    },
+    
+    // Download Mini Project as Word document (users, user stories, product backlog, problem statement, sprint schedules)
+    async downloadMiniProjectAsWord() {
+        const team = await this.getUserTeam();
+        if (!team) {
+            alert('You are not assigned to a team.');
+            return;
+        }
+        const teamId = team.id;
+        const teamName = (team.groupName || team.topic || 'Mini Project').toString().replace(/[<>]/g, '');
+        try {
+            const [
+                usersSnap,
+                storiesSnap,
+                backlogSnap,
+                problemSnap,
+                firstSchedDoc,
+                firstBacklogsSnap,
+                secondSchedDoc,
+                secondBacklogsSnap,
+                thirdSchedDoc,
+                thirdBacklogsSnap,
+                modulesSnap
+            ] = await Promise.all([
+                getDocs(query(collection(window.firebaseDb, 'projectUsers'), where('teamId', '==', teamId))),
+                getDocs(query(collection(window.firebaseDb, 'userStories'), where('teamId', '==', teamId))),
+                getDocs(query(collection(window.firebaseDb, 'productBacklog'), where('teamId', '==', teamId))),
+                getDocs(query(collection(window.firebaseDb, 'problemStatements'), where('teamId', '==', teamId), where('approved', '==', true))),
+                getDoc(doc(window.firebaseDb, 'firstReviewSchedule', teamId)),
+                getDocs(query(collection(window.firebaseDb, 'firstReviewBacklogs'), where('teamId', '==', teamId))),
+                getDoc(doc(window.firebaseDb, 'secondReviewSchedule', teamId)),
+                getDocs(query(collection(window.firebaseDb, 'secondReviewBacklogs'), where('teamId', '==', teamId))),
+                getDoc(doc(window.firebaseDb, 'thirdReviewSchedule', teamId)),
+                getDocs(query(collection(window.firebaseDb, 'thirdReviewBacklogs'), where('teamId', '==', teamId))),
+                getDocs(query(collection(window.firebaseDb, 'cardSortingModules'), where('teamId', '==', teamId)))
+            ]);
+            const users = [];
+            usersSnap.forEach(d => users.push({ id: d.id, ...d.data() }));
+            const stories = [];
+            const userMap = {};
+            users.forEach(u => { userMap[u.id] = u.name; });
+            storiesSnap.forEach(d => {
+                const s = { id: d.id, ...d.data() };
+                s.userName = userMap[s.userId] || 'Unknown';
+                stories.push(s);
+            });
+            const productBacklogs = [];
+            const storyMap = {};
+            stories.forEach(s => { storyMap[s.id] = s; });
+            backlogSnap.forEach(d => {
+                const b = { id: d.id, ...d.data() };
+                const story = storyMap[b.userStoryId];
+                b.storyText = story ? `As a ${story.userName}, I want ${story.feature}, so that ${story.benefit}.` : 'Unknown Story';
+                b.userName = userMap[b.userId] || 'Unknown';
+                productBacklogs.push(b);
+            });
+            productBacklogs.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+            const approvedPS = problemSnap.empty ? null : problemSnap.docs[0].data();
+            const firstSched = firstSchedDoc.exists() ? firstSchedDoc.data() : { modules: [], standaloneBacklogs: [] };
+            const secondSched = secondSchedDoc.exists() ? secondSchedDoc.data() : { modules: [], standaloneBacklogs: [] };
+            const thirdSched = thirdSchedDoc.exists() ? thirdSchedDoc.data() : { modules: [], standaloneBacklogs: [] };
+            const firstBacklogs = [];
+            firstBacklogsSnap.forEach(d => firstBacklogs.push({ id: d.id, ...d.data() }));
+            const secondBacklogs = [];
+            secondBacklogsSnap.forEach(d => secondBacklogs.push({ id: d.id, ...d.data() }));
+            const thirdBacklogs = [];
+            thirdBacklogsSnap.forEach(d => thirdBacklogs.push({ id: d.id, ...d.data() }));
+            const modules = [];
+            modulesSnap.forEach(d => modules.push({ id: d.id, ...d.data() }));
+            const getModuleName = (mid) => (modules.find(m => m.id === mid) || {}).name || 'Unknown Module';
+            const fmt = (v) => (v == null || v === '') ? '' : String(v);
+            const esc = (t) => (t == null ? '' : String(t)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const formatDate = (ts) => {
+                if (!ts) return '';
+                try {
+                    const d = ts.toDate ? ts.toDate() : new Date(ts);
+                    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                } catch (_) { return ''; }
+            };
+            const buildSprintSection = (title, scheduleData, allBacklogs) => {
+                let html = `<h2>${esc(title)}</h2>`;
+                const backlogById = {};
+                allBacklogs.forEach(b => { backlogById[String(b.id)] = b; });
+                const ordered = [];
+                (scheduleData.modules || []).forEach((mod, idx) => {
+                    const name = getModuleName(mod.moduleId);
+                    (mod.productBacklogs || []).forEach((pb, i) => {
+                        const bl = backlogById[String(pb.backlogId)];
+                        if (bl) ordered.push({ ...bl, moduleName: name, scheduledDate: pb.scheduledDate, order: pb.order });
+                    });
+                });
+                (scheduleData.standaloneBacklogs || []).forEach(pb => {
+                    const bl = backlogById[String(pb.backlogId)];
+                    if (bl) ordered.push({ ...bl, moduleName: 'Standalone', scheduledDate: pb.scheduledDate, order: pb.order });
+                });
+                if (ordered.length === 0) {
+                    html += '<p>No scheduled items.</p>';
+                    return html;
+                }
+                let curModule = '';
+                ordered.forEach((bl, i) => {
+                    if (bl.moduleName !== curModule) {
+                        curModule = bl.moduleName;
+                        html += `<h3>${esc(curModule)}</h3>`;
+                    }
+                    const dateStr = formatDate(bl.scheduledDate);
+                    const backlogTitle = bl.task || bl.storyText || bl.title || bl.description || 'Item';
+                    html += `<p><strong>${i + 1}.</strong> ${esc(backlogTitle)}${dateStr ? ` <em>(${dateStr})</em>` : ''}</p>`;
+                    if (bl.storyText && bl.storyText !== backlogTitle) html += `<p style="margin-left: 1.5em; color: #444;">${esc(bl.storyText)}</p>`;
+                    if (bl.description && bl.description !== backlogTitle && bl.description !== bl.storyText) html += `<p style="margin-left: 1.5em;">${esc(bl.description)}</p>`;
+                });
+                return html;
+            };
+            // Product Backlog grouped by User → User Story → Backlog items
+            const productBacklogByUser = {};
+            productBacklogs.forEach(b => {
+                const uid = b.userId || 'unknown';
+                if (!productBacklogByUser[uid]) productBacklogByUser[uid] = { userName: b.userName, byStory: {} };
+                const sid = b.userStoryId || 'unknown';
+                if (!productBacklogByUser[uid].byStory[sid]) productBacklogByUser[uid].byStory[sid] = { storyText: b.storyText, items: [] };
+                productBacklogByUser[uid].byStory[sid].items.push(b);
+            });
+            const usersWithBacklogs = users.filter(u => {
+                const g = productBacklogByUser[u.id];
+                return g && Object.values(g.byStory).some(s => s.items.length > 0);
+            });
+            const productBacklogHtml = productBacklogs.length === 0
+                ? '<p>No product backlog items.</p>'
+                : (usersWithBacklogs.length === 0
+                    ? productBacklogs.map((b, i) => `<p><strong>${i + 1}.</strong> ${esc(b.task || b.storyText || '')}</p>`).join('')
+                    : usersWithBacklogs.map(u => {
+                        const group = productBacklogByUser[u.id];
+                        let block = `<h3>${esc(u.name)}</h3>`;
+                        Object.values(group.byStory).forEach(({ storyText, items }) => {
+                            if (items.length === 0) return;
+                            block += `<p><strong>User story:</strong> ${esc(storyText || '')}</p><ul>`;
+                            items.forEach(b => { block += `<li>${esc(b.task || b.storyText || '')}</li>`; });
+                            block += '</ul>';
+                        });
+                        return block;
+                    }).join(''));
+            let body = `
+<h1>Mini Project – ${esc(teamName)}</h1>
+<p><strong>Team:</strong> ${esc(teamName)}${team.guideName ? ` &nbsp;|&nbsp; <strong>Guide:</strong> ${esc(team.guideName)}` : ''}</p>
+<hr/>
+<h2>1. Users (Personas)</h2>
+${users.length === 0 ? '<p>No users added.</p>' : users.map(u => `<p><strong>${esc(u.name)}</strong><br/>${esc(u.description || '')}</p>`).join('')}
+<hr/>
+<h2>2. Approved Problem Statement</h2>
+${approvedPS ? `<p><strong>${esc(approvedPS.title || 'Problem Statement')}</strong></p><p>${esc(approvedPS.problemStatement || '')}</p>${approvedPS.solution ? `<p><strong>Solution:</strong></p><p>${esc(approvedPS.solution)}</p>` : ''}` : '<p>No approved problem statement.</p>'}
+<hr/>
+<h2>3. User Stories</h2>
+${stories.length === 0 ? '<p>No user stories.</p>' : stories.map((s, i) => `<p><strong>${i + 1}.</strong> As a <strong>${esc(s.userName)}</strong>, I want <em>${esc(s.feature)}</em>, so that ${esc(s.benefit)}. &nbsp;[Priority: ${esc(s.priority || 'medium')}]</p>`).join('')}
+<hr/>
+<h2>4. Product Backlog</h2>
+<p>Product backlogs are grouped by user (persona) and their user stories.</p>
+${productBacklogHtml}
+<hr/>
+${buildSprintSection('5. Sprint 1 Schedule', firstSched, firstBacklogs)}
+<hr/>
+${buildSprintSection('6. Sprint 2 Schedule', secondSched, secondBacklogs)}
+<hr/>
+${buildSprintSection('7. Sprint 3 Schedule', thirdSched, thirdBacklogs)}
+`;
+            const htmlContent = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head>
+<meta charset="UTF-8"/>
+<meta name="ProgId" content="Word.Document"/>
+<meta name="Generator" content="Mini Project Export"/>
+<title>Mini Project – ${esc(teamName)}</title>
+<style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; margin: 1in; }
+h1 { font-size: 18pt; margin-top: 0; }
+h2 { font-size: 14pt; margin-top: 16pt; }
+h3 { font-size: 12pt; margin-top: 12pt; }
+p { margin: 6pt 0; }
+hr { margin: 12pt 0; border: none; border-top: 1pt solid #ccc; }
+</style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+            const blob = new Blob(['\ufeff' + htmlContent], { type: 'application/msword' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `Mini-Project-${teamName.replace(/[^a-zA-Z0-9\-_]/g, '-')}.doc`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (err) {
+            console.error('Download Mini Project as Word:', err);
+            alert('Failed to generate document. Please try again.');
         }
     },
     
