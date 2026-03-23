@@ -9581,7 +9581,9 @@ const app = {
         }
         
         // Calculate and update marks
-        const totalMarks = await this.getFirstReviewTotalMarks();
+        let totalMarks = await this.getFirstReviewTotalMarks();
+        // Keep UI consistent with guide dashboard fallback behavior.
+        if (totalMarks === 0) totalMarks = 10;
         const calculatedMarks = totalMarks > 0 ? Math.round((percentage / 100) * totalMarks * 100) / 100 : 0;
         
         const marksDisplay = document.getElementById('first-review-marks-display');
@@ -9613,7 +9615,9 @@ const app = {
         }
         
         // Calculate and update marks
-        const totalMarks = await this.getSecondReviewTotalMarks();
+        let totalMarks = await this.getSecondReviewTotalMarks();
+        // Keep UI consistent with guide dashboard fallback behavior.
+        if (totalMarks === 0) totalMarks = 10;
         const calculatedMarks = totalMarks > 0 ? Math.round((percentage / 100) * totalMarks * 100) / 100 : 0;
         
         const marksDisplay = document.getElementById('second-review-marks-display');
@@ -9642,7 +9646,9 @@ const app = {
             progressBar.style.width = `${percentage}%`;
         }
         
-        const totalMarks = await this.getThirdReviewTotalMarks();
+        let totalMarks = await this.getThirdReviewTotalMarks();
+        // Keep UI consistent with guide dashboard fallback behavior.
+        if (totalMarks === 0) totalMarks = 10;
         const calculatedMarks = totalMarks > 0 ? Math.round((percentage / 100) * totalMarks * 100) / 100 : 0;
         
         const marksDisplay = document.getElementById('third-review-marks-display');
