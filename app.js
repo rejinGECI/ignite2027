@@ -6809,11 +6809,14 @@ const app = {
                 const cardSortingVerified = planningData.cardSortingVerified === true;
                 const scheduleSubmitted = planningData.scheduleSubmitted === true;
                 const scheduleVerified = planningData.scheduleVerified === true;
+                const projectReportSubmitted = planningData.projectReportSubmitted === true;
+                const projectReportVerified = planningData.projectReportVerified === true;
                 
                 if ((userStoriesSubmitted && !userStoriesVerified) ||
                     (productBacklogSubmitted && !productBacklogVerified) ||
                     (cardSortingSubmitted && !cardSortingVerified) ||
-                    (scheduleSubmitted && !scheduleVerified)) {
+                    (scheduleSubmitted && !scheduleVerified) ||
+                    (projectReportSubmitted && !projectReportVerified)) {
                     pendingReportsCount++;
                 }
             });
@@ -7245,6 +7248,10 @@ const app = {
         // Load first sprint PPT when tab is switched
         if (tabName === 'first-sprint-ppt') {
             setTimeout(() => this.loadFirstSprintPPTTeams(), 100);
+        }
+        // Load project reports when tab is switched
+        if (tabName === 'project-report') {
+            setTimeout(() => this.loadProjectReportTeams(), 100);
         }
         // Load attendance module when tab is switched
         if (tabName === 'attendance') {
@@ -16880,6 +16887,8 @@ const app = {
             await this.loadSchedule();
         } else if (tabName === 'design') {
             await this.loadDesignTab();
+        } else if (tabName === 'documentation') {
+            await this.loadProjectReportTab();
         }
     },
     
@@ -18728,6 +18737,7 @@ ${body}
                 team.planningData = planningData;
                 team.architectureDiagrams = team.architectureDiagrams || [];
                 team.firstSprintPPT = team.firstSprintPPT || [];
+                team.projectReports = team.projectReports || [];
                 team.users = users;
                 team.stories = stories;
                 team.backlogs = backlogs;
@@ -18754,13 +18764,16 @@ ${body}
                 const archApproved = team.planningData && team.planningData.architectureDiagramsApproved === true;
                 const pptVerified = team.planningData && team.planningData.firstSprintPPTVerified === true;
                 const pptApproved = team.planningData && team.planningData.firstSprintPPTApproved === true;
+                const reportSubmitted = team.planningData && team.planningData.projectReportSubmitted === true;
+                const reportVerified = team.planningData && team.planningData.projectReportVerified === true;
+                const reportApprovedForPrint = team.planningData && team.planningData.projectReportApprovedForPrint === true;
                 
                 // Debug: Log modules for troubleshooting
                 // console.log(`Team ${team.groupName}: modules count = ${team.modules ? team.modules.length : 0}, csSubmitted = ${csSubmitted}, csVerified = ${csVerified}`);
                 
                 // Show team if they have submitted user stories OR product backlog OR card sorting OR schedule
                 // OR if they have created modules (card sorting in progress)
-                if (!isSubmitted && !pbSubmitted && !csSubmitted && !schedSubmitted && (!team.modules || team.modules.length === 0)) {
+                if (!isSubmitted && !pbSubmitted && !csSubmitted && !schedSubmitted && !reportSubmitted && (!team.modules || team.modules.length === 0)) {
                     return `
                         <div class="guide-team-card" style="padding: 1.5rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
                             <h3 style="margin: 0 0 1rem 0; color: var(--text-primary);">
@@ -18825,6 +18838,12 @@ ${body}
                                     </span>
                                     ${schedVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : ''}
                                     ${schedSubmitted && !schedVerified ? `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>` : ''}
+                                ` : ''}
+                                ${reportSubmitted || reportVerified || reportApprovedForPrint ? `
+                                    <span style="color: var(--text-secondary); margin-left: 0.5rem;">
+                                        <i class="fas fa-file-pdf"></i> Project Report
+                                    </span>
+                                    ${reportApprovedForPrint ? `<span style="color: #16a34a;"><i class="fas fa-print"></i> Print Approved</span>` : reportVerified ? `<span style="color: #10b981;"><i class="fas fa-check-circle"></i> Verified</span>` : `<span style="color: #f59e0b;"><i class="fas fa-clock"></i> Pending</span>`}
                                 ` : ''}
                                 ${(() => {
                                     // Check if first sprint schedule exists
@@ -18904,6 +18923,11 @@ ${body}
                                 ${(team.firstSprintPPT && team.firstSprintPPT.length > 0) || pptVerified || pptApproved ? `
                                     <button type="button" class="btn btn-secondary" onclick="app.showGuideFirstSprintPPTModal('${team.id}')" style="background: #f59e0b; color: white; border: none;">
                                         <i class="fas fa-file-powerpoint"></i> ${pptApproved ? 'Review PPT (Final)' : pptVerified ? 'Review PPT (Verified)' : 'Review PPT'}
+                                    </button>
+                                ` : ''}
+                                ${(team.projectReports && team.projectReports.length > 0) || reportSubmitted || reportVerified || reportApprovedForPrint ? `
+                                    <button type="button" class="btn btn-secondary" onclick="app.showGuideProjectReportModal('${team.id}')" style="background: #0f766e; color: white; border: none;">
+                                        <i class="fas fa-file-pdf"></i> ${reportApprovedForPrint ? 'Project Report (Print Approved)' : reportVerified ? 'Project Report (Verified)' : reportSubmitted ? 'Review Project Report' : 'Project Report'}
                                     </button>
                                 ` : ''}
                             </div>
@@ -23909,6 +23933,169 @@ ${body}
         } catch (error) {
             console.error('Error revoking PPT approval:', error);
             alert('Error revoking approval. Please try again.');
+        }
+    },
+    
+    // ========== PROJECT REPORT VERIFICATION (GUIDE) ==========
+    
+    async showGuideProjectReportModal(teamId) {
+        if (!this.isGuide && this.userRole !== 'guide') return;
+        
+        const existingModal = document.getElementById('guide-project-report-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'guide-project-report-modal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        
+        try {
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            if (!teamDoc.exists()) {
+                alert('Team not found.');
+                return;
+            }
+            const teamData = teamDoc.data();
+            const teamName = teamData.groupName || teamData.name || `Team ${teamId.substring(0, 8)}`;
+            const projectReports = teamData.projectReports || [];
+            
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamId));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const reportSubmitted = planningData.projectReportSubmitted === true;
+            const reportVerified = planningData.projectReportVerified === true;
+            const reportApprovedForPrint = planningData.projectReportApprovedForPrint === true;
+            const verificationStatus = planningData.projectReportVerificationStatus || {};
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-file-pdf"></i> Project Report - ${this.escapeHtml(teamName)}
+                        </h2>
+                        <button type="button" class="modal-close" onclick="document.getElementById('guide-project-report-modal').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        ${projectReports.length === 0 ? `
+                            <div style="padding: 1.25rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; margin-bottom: 1rem;">
+                                <i class="fas fa-info-circle"></i> No report links uploaded by the team yet.
+                            </div>
+                        ` : `
+                            <div style="margin-bottom: 1.25rem;">
+                                <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary);">Uploaded Reports (${projectReports.length})</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${projectReports.map((reportItem, index) => {
+                                        const report = this.normalizeProjectReportItem(reportItem);
+                                        const sizeLabel = report.size ? ` (${(report.size / (1024 * 1024)).toFixed(2)} MB)` : '';
+                                        return `
+                                        <a href="${this.escapeHtml(report.url)}" target="_blank" rel="noopener noreferrer" style="padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; text-decoration: none; color: #0f766e; word-break: break-all;">
+                                            <i class="fas fa-file-pdf"></i> Report ${index + 1}: ${this.escapeHtml(report.name || report.url)}${sizeLabel}
+                                        </a>
+                                    `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `}
+
+                        ${reportApprovedForPrint ? `
+                            <div style="padding: 1rem; background: #dcfce7; border-left: 4px solid #16a34a; border-radius: 8px;">
+                                <div style="font-weight: 700; color: #166534;"><i class="fas fa-check-circle"></i> Approved for Print</div>
+                                ${verificationStatus.feedback ? `<div style="margin-top: 0.5rem; color: #166534; white-space: pre-wrap;"><strong>Comments:</strong> ${this.escapeHtml(verificationStatus.feedback)}</div>` : ''}
+                                <button type="button" class="btn btn-warning" onclick="app.revokeProjectReportPrintApproval('${teamId}')" style="margin-top: 0.75rem;">
+                                    <i class="fas fa-undo"></i> Revoke Print Approval
+                                </button>
+                            </div>
+                        ` : `
+                            <div style="padding: 1rem; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px;">
+                                <label for="project-report-comments" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                    Comments for team:
+                                </label>
+                                <textarea id="project-report-comments" class="form-input" rows="4" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Add comments for report corrections or print readiness...">${verificationStatus.feedback || ''}</textarea>
+                                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-success" onclick="app.verifyProjectReport('${teamId}', false)">
+                                        <i class="fas fa-check-circle"></i> Verify (Allow Revisions)
+                                    </button>
+                                    <button type="button" class="btn btn-primary" onclick="app.verifyProjectReport('${teamId}', true)">
+                                        <i class="fas fa-print"></i> Approve for Print
+                                    </button>
+                                </div>
+                                ${reportVerified ? `
+                                    <p style="margin: 0.75rem 0 0 0; color: #92400e; font-size: 0.9rem;">
+                                        <i class="fas fa-info-circle"></i> Report is verified. Students can still revise until print approval is granted.
+                                    </p>
+                                ` : ''}
+                                ${!reportSubmitted ? `
+                                    <p style="margin: 0.75rem 0 0 0; color: #991b1b; font-size: 0.9rem;">
+                                        <i class="fas fa-exclamation-triangle"></i> Team has not submitted the report yet.
+                                    </p>
+                                ` : ''}
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        } catch (error) {
+            console.error('Error loading project report modal:', error);
+            alert('Error loading project report details. Please try again.');
+            modal.remove();
+        }
+    },
+    
+    async verifyProjectReport(teamId, approveForPrint) {
+        try {
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', teamId));
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const reportLinks = teamData.projectReports || [];
+            if (reportLinks.length === 0) {
+                alert('No report links found for this team.');
+                return;
+            }
+            
+            const commentsInput = document.getElementById('project-report-comments');
+            const comments = commentsInput ? commentsInput.value.trim() : '';
+            
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                projectReportVerified: true,
+                projectReportSubmitted: true,
+                projectReportApprovedForPrint: approveForPrint ? true : false,
+                projectReportVerificationStatus: {
+                    verifiedBy: this.currentUser.uid,
+                    verifiedAt: serverTimestamp(),
+                    feedback: comments
+                },
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert(approveForPrint ? 'Project report approved for print.' : 'Project report verified. Students can revise and re-submit.');
+            await this.showGuideProjectReportModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error verifying project report:', error);
+            alert('Error verifying project report. Please try again.');
+        }
+    },
+    
+    async revokeProjectReportPrintApproval(teamId) {
+        if (!confirm('Revoke print approval? Students will be able to revise and re-submit the report.')) {
+            return;
+        }
+        
+        try {
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', teamId), {
+                projectReportApprovedForPrint: false,
+                projectReportVerified: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Print approval revoked.');
+            await this.showGuideProjectReportModal(teamId);
+            await this.loadGuideProjectPlanning();
+        } catch (error) {
+            console.error('Error revoking project report approval:', error);
+            alert('Error revoking print approval. Please try again.');
         }
     },
     
@@ -30549,6 +30736,404 @@ ${body}
         } catch (error) {
             console.error('Error removing PPT link:', error);
             alert('Error removing PPT link. Please try again.');
+        }
+    },
+    
+    // ========== PROJECT REPORT FUNCTIONS (STUDENT + ADMIN VIEW) ==========
+    
+    normalizeProjectReportItem(item) {
+        if (!item) {
+            return { url: '', name: 'Report', size: 0, storagePath: '' };
+        }
+        if (typeof item === 'string') {
+            const fallbackName = item.split('/').pop() || 'Report';
+            return { url: item, name: fallbackName, size: 0, storagePath: '' };
+        }
+        return {
+            url: item.url || '',
+            name: item.name || 'Report',
+            size: Number(item.size || 0),
+            storagePath: item.storagePath || ''
+        };
+    },
+    
+    async loadProjectReportTab() {
+        const container = document.getElementById('project-report-list');
+        const statusContainer = document.getElementById('project-report-submission-status');
+        const submitBtn = document.getElementById('submit-project-report-btn');
+        const addSection = document.getElementById('project-report-add-section');
+        const uploadStatus = document.getElementById('project-report-upload-status');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading project report links...</div>';
+            const team = await this.getUserTeam();
+            if (!team) {
+                container.innerHTML = '<p class="empty-state">You are not assigned to a team.</p>';
+                if (submitBtn) submitBtn.style.display = 'none';
+                return;
+            }
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const projectReports = teamData.projectReports || [];
+            
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            const isSubmitted = planningData.projectReportSubmitted === true;
+            const isVerified = planningData.projectReportVerified === true;
+            const approvedForPrint = planningData.projectReportApprovedForPrint === true;
+            const verificationStatus = planningData.projectReportVerificationStatus || {};
+            
+            if (approvedForPrint) {
+                if (addSection) addSection.style.display = 'none';
+            } else {
+                if (addSection) addSection.style.display = 'block';
+            }
+            
+            if (projectReports.length === 0) {
+                container.innerHTML = '<p class="empty-state">No project report files uploaded yet.</p>';
+            } else {
+                container.innerHTML = projectReports.map((reportItem, index) => {
+                    const report = this.normalizeProjectReportItem(reportItem);
+                    const fileSizeLabel = report.size ? `${(report.size / (1024 * 1024)).toFixed(2)} MB` : 'Unknown size';
+                    return `
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem; background: white; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem;">
+                        <div style="flex: 1; min-width: 0;">
+                            <a href="${this.escapeHtml(report.url)}" target="_blank" rel="noopener noreferrer" style="color: #0f766e; text-decoration: none; word-break: break-all; font-weight: 500;">
+                                <i class="fas fa-file-pdf"></i> Report ${index + 1}
+                            </a>
+                            <div style="font-size: 0.82rem; color: var(--text-secondary); word-break: break-all; margin-top: 0.25rem;">
+                                ${this.escapeHtml(report.name || report.url)} | ${fileSizeLabel}
+                            </div>
+                        </div>
+                        ${!approvedForPrint ? `
+                            <button type="button" class="btn btn-danger btn-sm" onclick="app.removeProjectReportLink(${index})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                }).join('');
+            }
+            
+            if (statusContainer) {
+                if (approvedForPrint) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #dcfce7; border-left: 4px solid #16a34a; border-radius: 8px; color: #166534;">
+                            <strong><i class="fas fa-check-circle"></i> Approved for Print</strong>
+                            ${verificationStatus.feedback ? `<p style="margin: 0.5rem 0 0 0; white-space: pre-wrap;"><strong>Guide Comments:</strong> ${this.escapeHtml(verificationStatus.feedback)}</p>` : ''}
+                        </div>
+                    `;
+                } else if (isVerified) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 8px; color: #92400e;">
+                            <strong><i class="fas fa-check"></i> Verified (Revisions Allowed)</strong>
+                            ${verificationStatus.feedback ? `<p style="margin: 0.5rem 0 0 0; white-space: pre-wrap;"><strong>Guide Comments:</strong> ${this.escapeHtml(verificationStatus.feedback)}</p>` : ''}
+                        </div>
+                    `;
+                } else if (isSubmitted) {
+                    statusContainer.innerHTML = `
+                        <div style="padding: 1rem; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 8px; color: #1e3a8a;">
+                            <strong><i class="fas fa-paper-plane"></i> Submitted to Guide</strong>
+                        </div>
+                    `;
+                } else {
+                    statusContainer.innerHTML = '';
+                }
+            }
+            
+            if (submitBtn) {
+                submitBtn.style.display = (!approvedForPrint && projectReports.length > 0) ? 'inline-flex' : 'none';
+            }
+            if (uploadStatus) {
+                uploadStatus.innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Error loading project report tab:', error);
+            container.innerHTML = '<p class="error-message">Error loading project report data.</p>';
+        }
+    },
+    
+    async uploadProjectReportFile() {
+        const input = document.getElementById('project-report-file-input');
+        const uploadStatus = document.getElementById('project-report-upload-status');
+        const uploadBtn = document.getElementById('upload-project-report-btn');
+        if (!input || !input.files || input.files.length === 0) {
+            alert('Please choose a PDF file.');
+            return;
+        }
+        const file = input.files[0];
+        const maxBytes = 50 * 1024 * 1024;
+        
+        const isPdfByType = file.type === 'application/pdf';
+        const isPdfByName = file.name && file.name.toLowerCase().endsWith('.pdf');
+        if (!isPdfByType && !isPdfByName) {
+            alert('Only PDF files are allowed.');
+            return;
+        }
+        
+        if (file.size > maxBytes) {
+            alert('File size exceeds 50 MB. Please upload a smaller PDF.');
+            return;
+        }
+        
+        try {
+            if (uploadStatus) {
+                uploadStatus.innerHTML = '<div style="color: #1d4ed8; font-size: 0.9rem;"><i class="fas fa-spinner fa-spin"></i> Uploading PDF...</div>';
+            }
+            if (uploadBtn) {
+                uploadBtn.disabled = true;
+            }
+            
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            if (planningData.projectReportApprovedForPrint === true) {
+                alert('Report is already approved for print. Further revisions are locked.');
+                return;
+            }
+            
+            const teamRef = doc(window.firebaseDb, 'projectGroups', team.id);
+            const teamDoc = await getDoc(teamRef);
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const reports = teamData.projectReports || [];
+            
+            const duplicate = reports.some(item => {
+                const existing = this.normalizeProjectReportItem(item);
+                return existing.name === file.name && existing.size === file.size;
+            });
+            if (duplicate) {
+                alert('This PDF seems to be already uploaded.');
+                return;
+            }
+            if (!window.firebaseStorage) {
+                alert('Storage is not initialized. Please check Firebase configuration.');
+                return;
+            }
+            
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storagePath = `projectReports/${team.id}/${Date.now()}_${safeName}`;
+            const storageRef = ref(window.firebaseStorage, storagePath);
+            await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
+            const downloadUrl = await getDownloadURL(storageRef);
+            
+            reports.push({
+                url: downloadUrl,
+                name: file.name,
+                size: file.size,
+                type: 'application/pdf',
+                storagePath: storagePath,
+                uploadedAt: new Date().toISOString()
+            });
+            await setDoc(teamRef, { projectReports: reports }, { merge: true });
+            
+            input.value = '';
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                projectReportSubmitted: false,
+                projectReportVerified: false,
+                projectReportApprovedForPrint: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            await this.loadProjectReportTab();
+            if (uploadStatus) {
+                uploadStatus.innerHTML = '<div style="color: #15803d; font-size: 0.9rem;"><i class="fas fa-check-circle"></i> PDF uploaded successfully. You can now submit it to guide.</div>';
+            }
+        } catch (error) {
+            console.error('Error uploading project report:', error);
+            let message = 'Error uploading PDF. Please try again.';
+            if (error && (error.code === 'storage/unauthorized' || error.code === 'permission-denied')) {
+                message = 'Upload blocked by Firebase Storage rules. Please allow authenticated uploads in Storage rules.';
+            }
+            if (uploadStatus) {
+                uploadStatus.innerHTML = `<div style="color: #b91c1c; font-size: 0.9rem;"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(message)}</div>`;
+            }
+            alert(message);
+        } finally {
+            if (uploadBtn) {
+                uploadBtn.disabled = false;
+            }
+        }
+    },
+    
+    async removeProjectReportLink(index) {
+        if (!confirm('Remove this project report link?')) return;
+        
+        try {
+            const team = await this.getUserTeam();
+            if (!team) return;
+            
+            const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', team.id));
+            const planningData = planningDoc.exists() ? planningDoc.data() : {};
+            if (planningData.projectReportApprovedForPrint === true) {
+                alert('Report is approved for print. Revisions are locked.');
+                return;
+            }
+            
+            const teamRef = doc(window.firebaseDb, 'projectGroups', team.id);
+            const teamDoc = await getDoc(teamRef);
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const reports = teamData.projectReports || [];
+            if (index < 0 || index >= reports.length) {
+                alert('Invalid report index.');
+                return;
+            }
+            
+            const removedItem = reports[index];
+            const removedReport = this.normalizeProjectReportItem(removedItem);
+            reports.splice(index, 1);
+            await setDoc(teamRef, { projectReports: reports }, { merge: true });
+            
+            if (removedReport.storagePath && window.firebaseStorage) {
+                try {
+                    const storageRef = ref(window.firebaseStorage, removedReport.storagePath);
+                    await deleteObject(storageRef);
+                } catch (storageError) {
+                    console.warn('Could not delete file from storage:', storageError);
+                }
+            }
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                projectReportSubmitted: false,
+                projectReportVerified: false,
+                projectReportApprovedForPrint: false,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            await this.loadProjectReportTab();
+        } catch (error) {
+            console.error('Error removing report link:', error);
+            alert('Error removing report link. Please try again.');
+        }
+    },
+    
+    async submitProjectReportForVerification() {
+        try {
+            const team = await this.getUserTeam();
+            if (!team) {
+                alert('You are not assigned to a team.');
+                return;
+            }
+            
+            const teamDoc = await getDoc(doc(window.firebaseDb, 'projectGroups', team.id));
+            const teamData = teamDoc.exists() ? teamDoc.data() : {};
+            const projectReports = teamData.projectReports || [];
+            if (projectReports.length === 0) {
+                alert('Please add at least one report link before submitting.');
+                return;
+            }
+            
+            await setDoc(doc(window.firebaseDb, 'projectPlanning', team.id), {
+                projectReportSubmitted: true,
+                projectReportVerified: false,
+                projectReportApprovedForPrint: false,
+                projectReportVerificationStatus: null,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            alert('Project report submitted for guide verification.');
+            await this.loadProjectReportTab();
+        } catch (error) {
+            console.error('Error submitting project report:', error);
+            alert('Error submitting project report. Please try again.');
+        }
+    },
+    
+    async loadProjectReportTeams() {
+        const container = document.getElementById('project-report-teams-list');
+        const searchInput = document.getElementById('search-project-report-teams');
+        if (!container) return;
+        
+        try {
+            container.innerHTML = '<div class="loading-state">Loading project report status...</div>';
+            
+            const teamsSnapshot = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+            const teams = [];
+            
+            for (const teamDoc of teamsSnapshot.docs) {
+                const data = teamDoc.data();
+                if (data.deleted) continue;
+                
+                const planningDoc = await getDoc(doc(window.firebaseDb, 'projectPlanning', teamDoc.id));
+                const planning = planningDoc.exists() ? planningDoc.data() : {};
+                const reports = data.projectReports || [];
+                
+                teams.push({
+                    id: teamDoc.id,
+                    groupName: data.groupName || data.name || 'Unnamed Team',
+                    guideName: data.guideName || 'No Guide',
+                    reportCount: reports.length,
+                    submitted: planning.projectReportSubmitted === true,
+                    verified: planning.projectReportVerified === true,
+                    approvedForPrint: planning.projectReportApprovedForPrint === true,
+                    feedback: planning.projectReportVerificationStatus?.feedback || ''
+                });
+            }
+            
+            if (teams.length === 0) {
+                container.innerHTML = '<p class="empty-state">No teams found.</p>';
+                return;
+            }
+            
+            const render = (term = '') => {
+                const q = term.toLowerCase().trim();
+                const filtered = teams.filter(t =>
+                    t.groupName.toLowerCase().includes(q) ||
+                    t.guideName.toLowerCase().includes(q)
+                );
+                
+                if (filtered.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No matching teams found.</p>';
+                    return;
+                }
+                
+                container.innerHTML = `
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: var(--bg-color); border-bottom: 1px solid var(--border-color);">
+                                    <th style="text-align: left; padding: 0.75rem;">Team</th>
+                                    <th style="text-align: left; padding: 0.75rem;">Guide</th>
+                                    <th style="text-align: center; padding: 0.75rem;">Report Links</th>
+                                    <th style="text-align: center; padding: 0.75rem;">Student Submission</th>
+                                    <th style="text-align: center; padding: 0.75rem;">Guide Verification</th>
+                                    <th style="text-align: center; padding: 0.75rem;">Print Approval</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filtered.map(team => `
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <td style="padding: 0.75rem;">${this.escapeHtml(team.groupName)}</td>
+                                        <td style="padding: 0.75rem;">${this.escapeHtml(team.guideName)}</td>
+                                        <td style="padding: 0.75rem; text-align: center;">${team.reportCount}</td>
+                                        <td style="padding: 0.75rem; text-align: center;">${team.submitted ? 'Submitted' : 'Not Submitted'}</td>
+                                        <td style="padding: 0.75rem; text-align: center;">${team.verified ? 'Verified' : 'Pending'}</td>
+                                        <td style="padding: 0.75rem; text-align: center; color: ${team.approvedForPrint ? '#15803d' : '#b45309'}; font-weight: 600;">${team.approvedForPrint ? 'Approved for Print' : 'Not Approved'}</td>
+                                    </tr>
+                                    ${team.feedback ? `
+                                        <tr style="border-bottom: 1px solid var(--border-color); background: #fafafa;">
+                                            <td colspan="6" style="padding: 0.75rem; color: var(--text-secondary);">
+                                                <strong>Guide comments:</strong> ${this.escapeHtml(team.feedback)}
+                                            </td>
+                                        </tr>
+                                    ` : ''}
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            };
+            
+            render(searchInput ? searchInput.value : '');
+            if (searchInput) {
+                searchInput.oninput = () => render(searchInput.value);
+            }
+        } catch (error) {
+            console.error('Error loading project report teams:', error);
+            container.innerHTML = '<p class="error-message">Error loading project report status.</p>';
         }
     },
     

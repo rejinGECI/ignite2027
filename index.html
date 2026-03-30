@@ -28,6 +28,7 @@
             apiKey: "AIzaSyBAwCVg4qsUIC36xDKAzrM2jlzXqwxrYTA",
             authDomain: "ignite-it27.firebaseapp.com",
             projectId: "ignite-it27",
+            // Storage bucket aligned with current Firebase project bucket.
             storageBucket: "ignite-it27.firebasestorage.app",
             messagingSenderId: "41071583620",
             appId: "1:41071583620:web:5f07bcb55fceb4c4fb7dd1",
@@ -38,7 +39,8 @@
         const firebaseApp = initializeApp(firebaseConfig);
         window.firebaseAuth = getAuth(firebaseApp);
         window.firebaseDb = getFirestore(firebaseApp);
-        window.firebaseStorage = getStorage(firebaseApp);
+        // Explicit bucket avoids accidental mismatch with default bucket selection.
+        window.firebaseStorage = getStorage(firebaseApp, 'gs://ignite-it27.firebasestorage.app');
         
         // Initialize Analytics (optional, can be removed if not needed)
         try {
@@ -916,6 +918,9 @@ Bob Johnson,GHI789</pre>
                     <button class="tab-btn" data-tab="first-sprint-ppt" onclick="app.switchAdminMiniProjectTab('first-sprint-ppt')">
                         <i class="fas fa-file-powerpoint"></i> First Sprint PPT
                     </button>
+                    <button class="tab-btn" data-tab="project-report" onclick="app.switchAdminMiniProjectTab('project-report')">
+                        <i class="fas fa-file-pdf"></i> Project Reports
+                    </button>
                     <button class="tab-btn" data-tab="attendance" onclick="app.switchAdminMiniProjectTab('attendance')">
                         <i class="fas fa-calendar-check"></i> Attendance
                     </button>
@@ -1234,6 +1239,25 @@ Bob Johnson,GHI789</pre>
                             
                             <div id="first-sprint-ppt-teams-list" class="admin-teams-list">
                                 <div class="loading-state">Loading First Sprint PPT status...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Project Reports Tab -->
+                    <div id="admin-miniproject-project-report-tab" class="admin-tab-content">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-file-pdf"></i> Project Report Verification Status</h3>
+                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">
+                                Consolidated view of report submissions, guide verification, and print approval status for all teams.
+                            </p>
+                            <div class="admin-controls" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="search-project-report-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
+                                <button type="button" class="btn btn-primary" onclick="app.loadProjectReportTeams()">
+                                    <i class="fas fa-sync"></i> Refresh
+                                </button>
+                            </div>
+                            <div id="project-report-teams-list" class="admin-teams-list">
+                                <div class="loading-state">Loading project report status...</div>
                             </div>
                         </div>
                     </div>
@@ -1646,9 +1670,33 @@ Bob Johnson,GHI789</pre>
                         <div id="documentation-tab" class="admin-tab-content">
                             <div class="project-planning-section">
                                 <h3><i class="fas fa-file-alt"></i> Project Documentation</h3>
-                                <div style="padding: 2rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
-                                    <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">Generate comprehensive project documentation in PPT format.</p>
+                                <div style="padding: 2rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                                    <h4 style="margin: 0 0 0.75rem 0; color: var(--text-primary);">
+                                        <i class="fas fa-upload"></i> Upload Project Report
+                                    </h4>
+                                    <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">
+                                        Add report links, submit for guide verification, and get approval for print.
+                                    </p>
+                                    <div id="project-report-add-section" style="margin-bottom: 1.25rem;">
+                                        <label for="project-report-file-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                                            Upload Project Report (PDF, max 50 MB):
+                                        </label>
+                                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                            <input type="file" id="project-report-file-input" class="form-input" accept="application/pdf,.pdf" style="flex: 1; min-width: 260px; padding: 0.75rem;">
+                                            <button type="button" class="btn btn-success" id="upload-project-report-btn" onclick="app.uploadProjectReportFile()">
+                                                <i class="fas fa-upload"></i> Upload
+                                            </button>
+                                        </div>
+                                        <div id="project-report-upload-status" style="margin-top: 0.6rem;"></div>
+                                    </div>
+                                    <div id="project-report-list" class="architecture-diagrams-container" style="margin-bottom: 1rem;">
+                                        <p class="empty-state">Loading project report links...</p>
+                                    </div>
+                                    <div id="project-report-submission-status" style="margin-bottom: 1rem;"></div>
                                     <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                                        <button type="button" class="btn btn-success" id="submit-project-report-btn" onclick="app.submitProjectReportForVerification()" style="display: none;">
+                                            <i class="fas fa-paper-plane"></i> Submit for Guide Verification
+                                        </button>
                                         <button type="button" class="btn btn-primary" id="generate-ppt-btn" onclick="app.generateProjectPPT()" style="min-width: 200px;">
                                             <i class="fas fa-file-powerpoint"></i> Generate PPT
                                         </button>
