@@ -277,6 +277,69 @@ export function createAdminForgeLabModule(app) {
             `;
         },
 
+        formatAdminDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '—';
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        },
+
+        buildStudentActivity(forge) {
+            const logs = [...(forge.sessionLogs || [])].sort(
+                (a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date)
+            );
+            const milestones = forge.path?.milestones || [];
+            const totalMinutes = logs.reduce((s, l) => s + (l.durationMinutes || 0), 0);
+
+            return {
+                logs,
+                milestones,
+                totalMinutes,
+                avgMinutes: logs.length ? Math.round(totalMinutes / logs.length) : 0,
+                milestoneDone: milestones.filter(m => m.status === 'completed').length,
+                milestoneActive: milestones.filter(m => m.status === 'in_progress').length,
+                milestonePending: milestones.filter(m => m.status === 'pending').length,
+                lastLog: logs[0] || null
+            };
+        },
+
+        renderAdminSessionRow(log, forge) {
+            const slots = getAssignedSlots(forge, app.forgeLabCommonSlots);
+            const slot = slots.find(s => s.id === log.slotId);
+            const slotLabel = slot ? formatCustomSlotLabel(slot) : getSlotLabel(log.slotId, forge);
+            const notes = log.learnings || log.notes || '';
+            return `
+                <tr>
+                    <td>${escapeHtml(log.date || '—')}</td>
+                    <td>${escapeHtml(slotLabel)}</td>
+                    <td>${log.durationMinutes || 0} min</td>
+                    <td>${escapeHtml(log.whatWorkedOn || '—')}</td>
+                    <td>${notes ? escapeHtml(notes) : '<span class="form-hint">—</span>'}</td>
+                </tr>
+            `;
+        },
+
+        renderAdminMilestones(milestones) {
+            if (!milestones.length) {
+                return '<p class="form-hint">No milestones added yet.</p>';
+            }
+            const statusLabel = { completed: 'Done', in_progress: 'In progress', pending: 'To do' };
+            return `
+                <div class="forge-lab-admin-milestones">
+                    ${milestones.map((m, i) => `
+                        <div class="forge-lab-admin-milestone-row milestone-${escapeHtml(m.status || 'pending')}">
+                            <span class="forge-lab-admin-milestone-num">${i + 1}</span>
+                            <div class="forge-lab-admin-milestone-text">
+                                <strong>${escapeHtml(m.title)}</strong>
+                                ${m.targetDate ? `<small><i class="fas fa-calendar"></i> ${escapeHtml(m.targetDate)}</small>` : ''}
+                            </div>
+                            <span class="forge-lab-admin-milestone-status">${statusLabel[m.status] || 'To do'}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        },
+
         renderForgeLabAdminStudents(students, listEl) {
             students.sort((a, b) => {
                 if (a.isInactive !== b.isInactive) return a.isInactive ? -1 : 1;
@@ -290,13 +353,12 @@ export function createAdminForgeLabModule(app) {
 
             listEl.innerHTML = students.map(s => {
                 const forge = s.forge;
+                const activity = this.buildStudentActivity(forge);
                 const domains = getForgeLabDomains(forge);
                 const pathPct = s.milestoneTotal > 0
                     ? Math.round((s.milestoneDone / s.milestoneTotal) * 100)
                     : 0;
-                const recentLogs = (forge.sessionLogs || [])
-                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                    .slice(0, 3);
+                const skills = forge.skillsToAcquire || forge.domain?.skillsToAcquire || [];
 
                 const domainsHtml = domains.map(d => `
                     <div class="forge-lab-admin-domain-item">
@@ -305,44 +367,92 @@ export function createAdminForgeLabModule(app) {
                     </div>
                 `).join('');
 
-                const assigned = sortSlotsByDateTime(getAssignedSlots(forge, app.forgeLabCommonSlots));
-                const slotsSummary = assigned.length
-                    ? assigned.map(s => escapeHtml(formatCustomSlotLabel(s))).join('<br>')
-                    : '<span class="form-hint">No common lab slots set yet.</span>';
+                const lastSessionText = activity.lastLog
+                    ? `${escapeHtml(activity.lastLog.date)} (${s.daysSinceSession === 0 ? 'today' : s.daysSinceSession === 1 ? 'yesterday' : `${s.daysSinceSession} days ago`})`
+                    : 'Never logged';
+
+                const sessionsTable = activity.logs.length
+                    ? `
+                        <div class="forge-lab-admin-table-wrap">
+                            <table class="forge-lab-admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Slot</th>
+                                        <th>Time</th>
+                                        <th>What they did</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${activity.logs.map(log => this.renderAdminSessionRow(log, forge)).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `
+                    : '<p class="form-hint">No lab sessions logged yet.</p>';
 
                 return `
                     <div class="forge-lab-admin-student-card ${s.isInactive ? 'inactive-student' : ''}" data-name="${escapeHtml(s.name.toLowerCase())}" data-ktuid="${escapeHtml(s.ktuid.toLowerCase())}" data-student-id="${escapeHtml(s.id)}">
                         <div class="forge-lab-admin-student-header">
                             <div>
                                 <h4>${escapeHtml(s.name)} <small>(${escapeHtml(s.ktuid)})</small></h4>
-                                <p class="forge-lab-admin-domain">${domains.length} focus area${domains.length !== 1 ? 's' : ''}</p>
+                                <p class="forge-lab-admin-domain">Joined ${this.formatAdminDate(forge.enrolledAt)} · ${domains.length} topic${domains.length !== 1 ? 's' : ''}</p>
                             </div>
                             <div class="forge-lab-admin-badges">
                                 ${s.isInactive ? '<span class="badge badge-warning">Inactive</span>' : '<span class="badge badge-success">Active</span>'}
-                                <span class="badge">${s.sessionCount} sessions</span>
-                                <span class="badge">${s.minutes} min</span>
+                                <span class="badge">${s.sessionCount} session${s.sessionCount !== 1 ? 's' : ''}</span>
+                                <span class="badge">${s.minutes} min total</span>
+                                ${s.milestoneTotal ? `<span class="badge">${pathPct}% milestones</span>` : ''}
                             </div>
                         </div>
-                        <div class="forge-lab-admin-details">
-                            <p><strong>Focus areas:</strong></p>
-                            ${domainsHtml || '<p>—</p>'}
-                            <p><strong>Target:</strong> ${escapeHtml(forge.targetOutcome || forge.domain?.targetOutcome || '—')}</p>
-                            ${forge.path?.title ? `<p><strong>Path:</strong> ${escapeHtml(forge.path.title)} — ${pathPct}% complete (${s.milestoneDone}/${s.milestoneTotal} milestones)</p>` : ''}
-                            ${(forge.skillsToAcquire || forge.domain?.skillsToAcquire || []).length ? `<p><strong>Skills:</strong> ${(forge.skillsToAcquire || forge.domain?.skillsToAcquire || []).map(sk => escapeHtml(sk)).join(', ')}</p>` : ''}
-                            <p><strong>Lab slots:</strong><br>${slotsSummary}</p>
-                        </div>
-                        ${recentLogs.length ? `
-                            <div class="forge-lab-admin-recent">
-                                <strong>Recent Sessions:</strong>
-                                ${recentLogs.map(log => `
-                                    <div class="forge-lab-admin-log-item">
-                                        <span>${escapeHtml(log.date)}</span> —
-                                        ${escapeHtml(log.whatWorkedOn?.substring(0, 100) || '')}${(log.whatWorkedOn?.length || 0) > 100 ? '…' : ''}
-                                        <em>(${log.durationMinutes} min)</em>
-                                    </div>
-                                `).join('')}
+
+                        <div class="forge-lab-admin-activity-stats">
+                            <div class="forge-lab-admin-stat-pill">
+                                <span class="label">Last session</span>
+                                <span class="value">${lastSessionText}</span>
                             </div>
-                        ` : '<p class="empty-state" style="margin:0.5rem 0;">No sessions logged yet.</p>'}
+                            <div class="forge-lab-admin-stat-pill">
+                                <span class="label">Avg per session</span>
+                                <span class="value">${activity.avgMinutes} min</span>
+                            </div>
+                            <div class="forge-lab-admin-stat-pill">
+                                <span class="label">Milestones</span>
+                                <span class="value">${activity.milestoneDone} done · ${activity.milestoneActive} active · ${activity.milestonePending} to do</span>
+                            </div>
+                            <div class="forge-lab-admin-stat-pill">
+                                <span class="label">Promise</span>
+                                <span class="value">${forge.commitmentAcceptedAt ? `Accepted ${this.formatAdminDate(forge.commitmentAcceptedAt)}` : '—'}</span>
+                            </div>
+                        </div>
+
+                        <div class="forge-lab-admin-sections">
+                            <div class="forge-lab-admin-section">
+                                <h5><i class="fas fa-bullseye"></i> Goal &amp; plan</h5>
+                                <p><strong>Goal:</strong> ${escapeHtml(forge.targetOutcome || forge.domain?.targetOutcome || '—')}</p>
+                                ${skills.length ? `<p><strong>Skills:</strong> ${skills.map(sk => escapeHtml(sk)).join(', ')}</p>` : ''}
+                                ${forge.path?.title ? `<p><strong>Plan:</strong> ${escapeHtml(forge.path.title)}</p>` : ''}
+                                ${forge.path?.objective ? `<p class="forge-lab-admin-objective">${escapeHtml(forge.path.objective)}</p>` : ''}
+                            </div>
+
+                            <div class="forge-lab-admin-section">
+                                <h5><i class="fas fa-bookmark"></i> Topics</h5>
+                                ${domainsHtml || '<p class="form-hint">—</p>'}
+                            </div>
+
+                            <div class="forge-lab-admin-section">
+                                <h5><i class="fas fa-flag"></i> Milestones (${s.milestoneDone}/${s.milestoneTotal})</h5>
+                                ${this.renderAdminMilestones(activity.milestones)}
+                            </div>
+                        </div>
+
+                        <details class="forge-lab-admin-sessions-details" ${activity.logs.length ? 'open' : ''}>
+                            <summary>
+                                <i class="fas fa-history"></i>
+                                Session history (${activity.logs.length})
+                            </summary>
+                            ${sessionsTable}
+                        </details>
                     </div>
                 `;
             }).join('');
