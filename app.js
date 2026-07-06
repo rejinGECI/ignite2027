@@ -49,6 +49,8 @@ import { createAdminMiniProjectModule } from './js/admin/miniproject.js';
 import { createGuideDashboardModule } from './js/guide/dashboard.js';
 import { createGuideProjectPlanningModule } from './js/guide/project-planning.js';
 import { createGuideEvaluatorModule } from './js/guide/evaluator.js';
+import { createForgeLabModule } from './js/components/forgeLab.js';
+import { createAdminForgeLabModule } from './js/admin/forgeLab.js';
 
 // Application State
 // Define app object first, then make it global
@@ -245,6 +247,10 @@ const app = {
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'block';
             }
+            const adminForgeLabNav = document.getElementById('admin-forge-lab-nav');
+            if (adminForgeLabNav) {
+                adminForgeLabNav.style.display = 'block';
+            }
             
             // Hide guide navigation
             const guideNav = document.getElementById('guide-dashboard-nav');
@@ -255,7 +261,7 @@ const app = {
             // Restore saved page or default to admin progress (home page)
             const savedPage = localStorage.getItem('currentPage');
             // Only use saved page if it's a valid admin page, otherwise default to progress
-            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-miniproject', 'admin-miniproject-settings'];
+            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-forge-lab', 'admin-miniproject', 'admin-miniproject-settings'];
             const defaultPage = (savedPage && validAdminPages.includes(savedPage)) ? savedPage : 'admin-progress';
             
             // Make Progress nav active by default or saved page
@@ -291,6 +297,10 @@ const app = {
             const adminSettingsNav = document.getElementById('admin-settings-nav');
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
+            }
+            const adminForgeLabNav = document.getElementById('admin-forge-lab-nav');
+            if (adminForgeLabNav) {
+                adminForgeLabNav.style.display = 'none';
             }
             document.querySelectorAll('.student-nav').forEach(nav => {
                 nav.style.display = 'none';
@@ -350,6 +360,10 @@ const app = {
             const adminSettingsNav = document.getElementById('admin-settings-nav');
             if (adminSettingsNav) {
                 adminSettingsNav.style.display = 'none';
+            }
+            const adminForgeLabNavStudent = document.getElementById('admin-forge-lab-nav');
+            if (adminForgeLabNavStudent) {
+                adminForgeLabNavStudent.style.display = 'none';
             }
             // Hide guide navigation items for students
             const guideDashboardNav = document.getElementById('guide-dashboard-nav');
@@ -773,7 +787,20 @@ const app = {
                 timeLog: [],
                 habits: { reading: [], custom: [], books: [] },
                 feedback: [],
-                reflections: []
+                reflections: [],
+                forgeLab: {
+                    enrolled: false,
+                    enrolledAt: null,
+                    commitmentAcceptedAt: null,
+                    domains: [],
+                    targetOutcome: '',
+                    skillsToAcquire: [],
+                    assignedSlots: [],
+                    slotsAssignedAt: null,
+                    path: { title: '', objective: '', milestones: [], createdAt: null, updatedAt: null },
+                    sessionLogs: [],
+                    updatedAt: null
+                }
             });
         } catch (error) {
             // If user already exists, that's okay
@@ -940,7 +967,7 @@ const app = {
     showPage: async function(pageId) {
         try {
             // Prevent non-admins from accessing admin pages
-            const adminPages = ['admin-dashboard', 'admin-progress', 'admin-miniproject', 'admin-miniproject-settings', 'admin-settings'];
+            const adminPages = ['admin-dashboard', 'admin-progress', 'admin-forge-lab', 'admin-miniproject', 'admin-miniproject-settings', 'admin-settings'];
             if (adminPages.includes(pageId) && !this.isAdmin && this.userRole !== 'admin') {
                 console.warn('Access denied: Admin pages require admin privileges');
                 // Redirect to appropriate page
@@ -993,6 +1020,8 @@ const app = {
             this.updateReadingStats();
                     await this.loadBookSuggestions();
                     await this.renderCustomHabits();
+                } else if (pageId === 'forge-lab') {
+                    await this.loadForgeLab();
                 } else if (pageId === 'admin-miniproject-settings') {
                     await this.loadMiniProjectSettings();
                 } else if (pageId === 'admin-settings') {
@@ -1028,6 +1057,8 @@ const app = {
             // Load detailed student progress
             this.loadStudentProgress();
             this.setupProgressSearch();
+        } else if (pageId === 'admin-forge-lab') {
+            await this.loadForgeLabAnalytics();
                 } else if (pageId === 'dashboard') {
                     // Dashboard - already loads in loadUserData, but ensure loader is hidden
                 } else if (pageId === 'dreams') {
@@ -13031,7 +13062,7 @@ const app = {
         }
     },
     
-    async generateConsolidatedReport(stage, stageIndex, format) {
+    async loadConsolidatedTeamsEvaluationsForStage(stageIndex, stage) {
         try {
             // Load all teams
             const teamsQuery = query(collection(window.firebaseDb, 'projectGroups'));
@@ -13568,6 +13599,17 @@ const app = {
             // Apply team order settings
             const sortedTeamsWithEvaluations = await this.applyTeamOrder(teamsWithEvaluations);
             
+            return sortedTeamsWithEvaluations;
+        } catch (error) {
+            console.error('Error loading consolidated team evaluations:', error);
+            throw error;
+        }
+    },
+    
+    async generateConsolidatedReport(stage, stageIndex, format) {
+        try {
+            const sortedTeamsWithEvaluations = await this.loadConsolidatedTeamsEvaluationsForStage(stageIndex, stage);
+            
             // Get mark parameters
             const teamParams = stage.teamMarkParams || [];
             const individualParams = stage.individualMarkParams || [];
@@ -13601,6 +13643,223 @@ const app = {
         } catch (error) {
             console.error('Error generating consolidated report:', error);
             throw error;
+        }
+    },
+    
+    buildConsolidatedMarksOnlyAOA(teamsWithEvaluations, stage, teamParams, individualParams, teamTotal, individualTotal) {
+        const rows = [];
+        rows.push([`Stage: ${stage.name || 'Evaluation'}`, '', 'Marks only (no comments)']);
+        rows.push([`Generated: ${new Date().toLocaleString('en-IN')}`]);
+        rows.push([]);
+        rows.push(['— Team marks —']);
+        const teamHeader = ['Team', 'Guide'];
+        teamParams.forEach(p => {
+            teamHeader.push(`${p.name} (max ${p.maxMarks})`);
+        });
+        teamHeader.push('Team total', `Max ${teamTotal}`);
+        rows.push(teamHeader);
+        teamsWithEvaluations.forEach(team => {
+            const evalData = team.evaluation || {};
+            const teamMarksData = evalData.teamMarksData || {};
+            const teamMarks = evalData.teamMarks !== null && evalData.teamMarks !== undefined
+                ? evalData.teamMarks
+                : Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+            const row = [team.groupName || 'Unnamed Team', team.guideName || ''];
+            teamParams.forEach(p => {
+                const v = teamMarksData[p.name];
+                row.push(v !== undefined && v !== null && v !== '' ? Number(parseFloat(v)) : '');
+            });
+            row.push(typeof teamMarks === 'number' ? teamMarks : (parseFloat(teamMarks) || ''));
+            row.push(teamTotal);
+            rows.push(row);
+        });
+        rows.push([]);
+        rows.push(['— Individual marks —']);
+        const indHeader = ['Team', 'Member', 'KTU ID', 'Absent'];
+        individualParams.forEach(p => {
+            indHeader.push(`${p.name} (max ${p.maxMarks})`);
+        });
+        indHeader.push('Individual total', `Max ${individualTotal}`);
+        rows.push(indHeader);
+        teamsWithEvaluations.forEach(team => {
+            const evalData = team.evaluation || {};
+            const individualEvaluations = evalData.individualEvaluations || {};
+            (team.members || []).forEach(member => {
+                const userId = member.userId || member.ktuid;
+                const individualEval = individualEvaluations[userId] || {};
+                let studentMarks = '';
+                if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+                    studentMarks = Object.values(individualEval.marksData).reduce((sum, m) => {
+                        const numValue = parseFloat(m);
+                        return sum + (isNaN(numValue) ? 0 : numValue);
+                    }, 0);
+                } else if (individualEval.marks !== null && individualEval.marks !== undefined) {
+                    studentMarks = individualEval.marks;
+                }
+                const isAbsent = individualEval.isAbsent || false;
+                const row = [
+                    team.groupName || 'Unnamed Team',
+                    member.name || '',
+                    member.ktuid || '',
+                    isAbsent ? 'Yes' : 'No'
+                ];
+                if (!isAbsent && individualParams.length > 0) {
+                    individualParams.forEach(p => {
+                        const v = individualEval.marksData && individualEval.marksData[p.name] !== undefined
+                            ? individualEval.marksData[p.name]
+                            : '';
+                        row.push(v !== '' && v !== undefined && v !== null ? Number(parseFloat(v)) : '');
+                    });
+                } else {
+                    individualParams.forEach(() => row.push(''));
+                }
+                row.push(typeof studentMarks === 'number' ? studentMarks : (parseFloat(studentMarks) || ''));
+                row.push(individualTotal);
+                rows.push(row);
+            });
+        });
+        return rows;
+    },
+    
+    extractConsolidatedTeamMarksTotal(evalData) {
+        if (!evalData || typeof evalData !== 'object') return 0;
+        const teamMarksData = evalData.teamMarksData || {};
+        if (evalData.teamMarks !== null && evalData.teamMarks !== undefined) {
+            const v = parseFloat(evalData.teamMarks);
+            return isNaN(v) ? 0 : v;
+        }
+        return Object.values(teamMarksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+    },
+    
+    extractConsolidatedIndividualTotal(individualEval) {
+        if (!individualEval) return { total: 0, absent: false };
+        if (individualEval.isAbsent) return { total: 0, absent: true };
+        if (individualEval.marksData && Object.keys(individualEval.marksData).length > 0) {
+            const t = Object.values(individualEval.marksData).reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+            return { total: t, absent: false };
+        }
+        if (individualEval.marks !== null && individualEval.marks !== undefined) {
+            return { total: parseFloat(individualEval.marks) || 0, absent: false };
+        }
+        return { total: 0, absent: false };
+    },
+    
+    buildAllStagesSummaryAOA(stageResults) {
+        const rows = [];
+        if (!stageResults || stageResults.length === 0) {
+            return [['No evaluation data']];
+        }
+        const stageLabels = stageResults.map((sr, i) => (sr.stage && sr.stage.name) ? String(sr.stage.name) : `Stage ${i + 1}`);
+        rows.push(['Consolidated summary — all evaluation stages (marks only)']);
+        rows.push(['Generated:', new Date().toLocaleString('en-IN')]);
+        rows.push([]);
+        rows.push(['— Team totals (one column per evaluation) —']);
+        const teamHeader = ['Team', 'Guide', ...stageLabels.map(name => `${name} — team total`), 'Sum (team across stages)'];
+        rows.push(teamHeader);
+        const teamIdsOrder = (stageResults[0].sortedTeams || []).map(t => t.id);
+        teamIdsOrder.forEach(teamId => {
+            const t0 = stageResults[0].sortedTeams.find(t => t.id === teamId);
+            if (!t0) return;
+            const line = [t0.groupName || 'Unnamed Team', t0.guideName || ''];
+            let teamSum = 0;
+            stageResults.forEach(sr => {
+                const team = sr.sortedTeams.find(t => t.id === teamId);
+                const ev = team && team.evaluation ? team.evaluation : {};
+                const val = this.extractConsolidatedTeamMarksTotal(ev);
+                line.push(val);
+                teamSum += val;
+            });
+            line.push(teamSum);
+            rows.push(line);
+        });
+        rows.push([]);
+        rows.push(['— Individual totals (one column per evaluation) —']);
+        const indHeader = ['Team', 'Member', 'KTU ID', ...stageLabels.map(name => `${name} — ind. total`), 'Sum (individual across stages)'];
+        rows.push(indHeader);
+        teamIdsOrder.forEach(teamId => {
+            const t0 = stageResults[0].sortedTeams.find(t => t.id === teamId);
+            if (!t0) return;
+            (t0.members || []).forEach(member => {
+                const userId = member.userId || member.ktuid;
+                const line = [t0.groupName || 'Unnamed Team', member.name || '', member.ktuid || ''];
+                let indSum = 0;
+                stageResults.forEach(sr => {
+                    const team = sr.sortedTeams.find(t => t.id === teamId);
+                    const ev = team && team.evaluation ? team.evaluation : {};
+                    const indMap = ev.individualEvaluations || {};
+                    const ind = indMap[userId] || indMap[member.ktuid] || indMap[member.userId] || {};
+                    const { total, absent } = this.extractConsolidatedIndividualTotal(ind);
+                    if (absent) {
+                        line.push('Absent');
+                    } else {
+                        line.push(total);
+                        indSum += total;
+                    }
+                });
+                line.push(indSum);
+                rows.push(line);
+            });
+        });
+        return rows;
+    },
+    
+    async exportAllEvaluationsMarksExcel() {
+        if (!this.isAdmin && this.userRole !== 'admin') {
+            alert('Only administrators can export consolidated marks.');
+            return;
+        }
+        if (typeof XLSX === 'undefined') {
+            alert('Excel export library not loaded. Please refresh the page.');
+            return;
+        }
+        try {
+            const settingsDoc = await getDoc(doc(window.firebaseDb, 'settings', 'miniproject'));
+            const stages = settingsDoc.exists() ? (settingsDoc.data().evaluationStages || []) : [];
+            if (!stages.length) {
+                alert('No evaluation stages configured in Mini Project settings.');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const usedSheetNames = new Set();
+            const stageResults = [];
+            for (let si = 0; si < stages.length; si++) {
+                const stage = stages[si];
+                const sortedTeams = await this.loadConsolidatedTeamsEvaluationsForStage(si, stage);
+                stageResults.push({ stage, sortedTeams });
+                const teamParams = stage.teamMarkParams || [];
+                const individualParams = stage.individualMarkParams || [];
+                const teamTotal = teamParams.reduce((sum, p) => sum + (parseFloat(p.maxMarks) || 0), 0);
+                const individualTotal = individualParams.reduce((sum, p) => sum + (parseFloat(p.maxMarks) || 0), 0);
+                const aoa = this.buildConsolidatedMarksOnlyAOA(sortedTeams, stage, teamParams, individualParams, teamTotal, individualTotal);
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                let base = (stage.name || `Stage_${si + 1}`).replace(/[\\/?*[\]:]/g, '_').substring(0, 31);
+                if (!base.trim()) base = `Stage_${si + 1}`;
+                let sheetName = base;
+                let n = 2;
+                while (usedSheetNames.has(sheetName)) {
+                    const suffix = `_${n}`;
+                    sheetName = (base.length + suffix.length > 31 ? base.substring(0, 31 - suffix.length) : base) + suffix;
+                    n++;
+                }
+                usedSheetNames.add(sheetName);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            }
+            const summaryAoa = this.buildAllStagesSummaryAOA(stageResults);
+            const summaryWs = XLSX.utils.aoa_to_sheet(summaryAoa);
+            let summaryName = 'Consolidated summary';
+            let sn = 2;
+            while (usedSheetNames.has(summaryName)) {
+                summaryName = `Summary ${sn}`;
+                sn++;
+                summaryName = summaryName.substring(0, 31);
+            }
+            usedSheetNames.add(summaryName);
+            XLSX.utils.book_append_sheet(wb, summaryWs, summaryName);
+            const fname = `Consolidated_Evaluation_Marks_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            XLSX.writeFile(wb, fname);
+        } catch (error) {
+            console.error('exportAllEvaluationsMarksExcel:', error);
+            alert('Could not generate Excel file. Please try again.');
         }
     },
     
@@ -31068,12 +31327,12 @@ ${body}
                     reportCount: reports.length,
                     submitted: planning.projectReportSubmitted === true,
                     verified: planning.projectReportVerified === true,
-                    approvedForPrint: planning.projectReportApprovedForPrint === true,
-                    feedback: planning.projectReportVerificationStatus?.feedback || ''
+                    approvedForPrint: planning.projectReportApprovedForPrint === true
                 });
             }
             
             if (teams.length === 0) {
+                this._projectReportLastFilteredTeams = [];
                 container.innerHTML = '<p class="empty-state">No teams found.</p>';
                 return;
             }
@@ -31084,6 +31343,8 @@ ${body}
                     t.groupName.toLowerCase().includes(q) ||
                     t.guideName.toLowerCase().includes(q)
                 );
+                
+                this._projectReportLastFilteredTeams = filtered;
                 
                 if (filtered.length === 0) {
                     container.innerHTML = '<p class="empty-state">No matching teams found.</p>';
@@ -31113,13 +31374,6 @@ ${body}
                                         <td style="padding: 0.75rem; text-align: center;">${team.verified ? 'Verified' : 'Pending'}</td>
                                         <td style="padding: 0.75rem; text-align: center; color: ${team.approvedForPrint ? '#15803d' : '#b45309'}; font-weight: 600;">${team.approvedForPrint ? 'Approved for Print' : 'Not Approved'}</td>
                                     </tr>
-                                    ${team.feedback ? `
-                                        <tr style="border-bottom: 1px solid var(--border-color); background: #fafafa;">
-                                            <td colspan="6" style="padding: 0.75rem; color: var(--text-secondary);">
-                                                <strong>Guide comments:</strong> ${this.escapeHtml(team.feedback)}
-                                            </td>
-                                        </tr>
-                                    ` : ''}
                                 `).join('')}
                             </tbody>
                         </table>
@@ -31133,8 +31387,76 @@ ${body}
             }
         } catch (error) {
             console.error('Error loading project report teams:', error);
+            this._projectReportLastFilteredTeams = [];
             container.innerHTML = '<p class="error-message">Error loading project report status.</p>';
         }
+    },
+    
+    printProjectReportStatus() {
+        const rows = this._projectReportLastFilteredTeams;
+        if (!rows || rows.length === 0) {
+            alert('No data to print. Open Mini Projects → Project Reports, wait for the list to load (or adjust search), then try again.');
+            return;
+        }
+        
+        const title = 'Project Report Verification Status';
+        const generated = new Date().toLocaleString();
+        
+        const tableRows = rows.map(team => `
+            <tr>
+                <td>${this.escapeHtml(team.groupName)}</td>
+                <td>${this.escapeHtml(team.guideName)}</td>
+                <td style="text-align:center">${team.reportCount}</td>
+                <td style="text-align:center">${team.submitted ? 'Submitted' : 'Not Submitted'}</td>
+                <td style="text-align:center">${team.verified ? 'Verified' : 'Pending'}</td>
+                <td style="text-align:center">${team.approvedForPrint ? 'Approved for Print' : 'Not Approved'}</td>
+            </tr>
+        `).join('');
+        
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>${this.escapeHtml(title)}</title>
+<style>
+  body { font-family: Segoe UI, system-ui, sans-serif; padding: 16px; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 8px 0; }
+  .meta { color: #555; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
+  th { background: #f3f4f6; }
+  th:nth-child(1), th:nth-child(2) { text-align: left; }
+  th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6) { text-align: center; }
+  @media print { body { padding: 8px; } }
+</style>
+</head>
+<body>
+<h1>${this.escapeHtml(title)}</h1>
+<div class="meta">Generated: ${this.escapeHtml(generated)}</div>
+<table>
+<thead>
+<tr>
+<th>Team</th><th>Guide</th><th>Report links</th><th>Student submission</th><th>Guide verification</th><th>Print approval</th>
+</tr>
+</thead>
+<tbody>${tableRows}</tbody>
+</table>
+<script>
+window.onload = function() {
+  window.print();
+};
+</script>
+</body>
+</html>`;
+        
+        const w = window.open('', '_blank', 'width=900,height=700');
+        if (!w) {
+            alert('Pop-up blocked. Allow pop-ups for this site to print.');
+            return;
+        }
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
     },
     
     async saveStudentCompletedTasks() {
@@ -40672,9 +40994,11 @@ const adminMiniProjectModule = createAdminMiniProjectModule(app);
 const guideDashboardModule = createGuideDashboardModule(app);
 const guideProjectPlanningModule = createGuideProjectPlanningModule(app);
 const guideEvaluatorModule = createGuideEvaluatorModule(app);
+const forgeLabModule = createForgeLabModule(app);
+const adminForgeLabModule = createAdminForgeLabModule(app);
 
 // Merge module methods into app (module methods override existing ones)
-Object.assign(app, dreamsModule, activitiesModule, dashboardModule, calendarModule, habitsModule, feedbackModule, adminDashboardModule, adminProgressModule, adminSettingsModule, adminMiniProjectModule, guideDashboardModule, guideProjectPlanningModule, guideEvaluatorModule);
+Object.assign(app, dreamsModule, activitiesModule, dashboardModule, calendarModule, habitsModule, feedbackModule, adminDashboardModule, adminProgressModule, adminSettingsModule, adminMiniProjectModule, guideDashboardModule, guideProjectPlanningModule, guideEvaluatorModule, forgeLabModule, adminForgeLabModule);
 
 // Add escapeHtml helper if not already present
 if (!app.escapeHtml) {

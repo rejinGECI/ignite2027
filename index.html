@@ -15,6 +15,8 @@
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <!-- html2pdf.js for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- SheetJS (XLSX) for admin consolidated marks Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -138,6 +140,7 @@
             <ul class="nav-menu" id="nav-menu">
                 <li id="nav-dashboard" class="student-nav"><a href="#" class="nav-link active" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
                 <li id="admin-progress-nav" style="display: none;"><a href="#" class="nav-link active" data-page="admin-progress"><i class="fas fa-chart-line"></i> Progress</a></li>
+                <li id="admin-forge-lab-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-forge-lab"><i class="fas fa-fire"></i> Forge Lab</a></li>
                 <li id="admin-dash-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-dashboard"><i class="fas fa-users"></i> Students</a></li>
                 <li id="admin-miniproject-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject"><i class="fas fa-project-diagram"></i> Mini Projects</a></li>
                 <li id="admin-miniproject-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject-settings"><i class="fas fa-cog"></i> Mini Project Settings</a></li>
@@ -150,6 +153,7 @@
                 <li id="nav-progress" class="student-nav"><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
                 <li id="nav-stats" class="student-nav"><a href="#" class="nav-link" data-page="stats"><i class="fas fa-chart-bar"></i> Statistics</a></li>
                 <li id="nav-habits" class="student-nav"><a href="#" class="nav-link" data-page="habits"><i class="fas fa-book"></i> Habits</a></li>
+                <li id="nav-forge-lab" class="student-nav"><a href="#" class="nav-link" data-page="forge-lab"><i class="fas fa-fire"></i> Forge Lab</a></li>
                 <li id="nav-feedback" class="student-nav"><a href="#" class="nav-link" data-page="feedback"><i class="fas fa-comments"></i> Feedback</a></li>
                 <li><a href="#" class="nav-link" onclick="app.logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
@@ -566,6 +570,178 @@
                 </div>
             </div>
 
+            <!-- Forge Lab Page -->
+            <div id="forge-lab" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-fire" style="color: #f97316;"></i> Forge Lab</h1>
+                    <p class="subtitle">Join, log your lab sessions, and track your progress</p>
+                </div>
+
+                <!-- Enrollment -->
+                <div id="forge-lab-enroll-section" class="forge-lab-section">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-fire"></i> Join Forge Lab</h3>
+                        <p class="form-hint">Tell us what you want to learn. You can add more topics later anytime.</p>
+
+                        <div class="form-group">
+                            <label for="forge-lab-domain-category"><strong>Topic area</strong></label>
+                            <select id="forge-lab-domain-category" class="form-input" onchange="app.onForgeLabDomainChange()">
+                                <option value="">Choose...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="forge-lab-subdomain-group">
+                            <label for="forge-lab-domain-sub"><strong>Focus</strong></label>
+                            <select id="forge-lab-domain-sub" class="form-input" onchange="app.onForgeLabSubDomainChange()">
+                                <option value="">Choose...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="forge-lab-specific-focus-group">
+                            <label id="forge-lab-specific-focus-label" for="forge-lab-specific-focus"><strong>Details</strong></label>
+                            <textarea id="forge-lab-specific-focus" class="form-input" rows="2"
+                                placeholder="What exactly do you want to work on?"></textarea>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="app.addForgeLabFocusArea()">
+                            <i class="fas fa-plus"></i> Add to my list
+                        </button>
+
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label><strong>My topics</strong></label>
+                            <div id="forge-lab-pending-domains" class="forge-lab-pending-domains">
+                                <p class="empty-state">Add at least one topic above.</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="forge-lab-target-outcome"><strong>My goal</strong></label>
+                            <textarea id="forge-lab-target-outcome" class="form-input" rows="2"
+                                placeholder="What do you want to achieve?"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="forge-lab-skills"><strong>Skills (optional)</strong></label>
+                            <input type="text" id="forge-lab-skills" class="form-input"
+                                placeholder="e.g. React, DSA, Communication">
+                        </div>
+
+                        <div id="forge-lab-commitment-box" class="forge-lab-commitment-box">
+                            <p><strong>Forge Lab Promise</strong> — I will attend my assigned lab sessions with focus, work on my goals, and log my progress honestly.</p>
+                            <label class="forge-lab-commitment-check">
+                                <input type="checkbox" id="forge-lab-commitment-accept">
+                                <span>I agree</span>
+                            </label>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" onclick="app.enrollForgeLab()">
+                            <i class="fas fa-fire"></i> Join Forge Lab
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Enrolled workspace -->
+                <div id="forge-lab-workspace-section" class="forge-lab-section" style="display: none;">
+                    <div class="forge-lab-tabs">
+                        <button type="button" class="forge-lab-tab active" data-tab="home" onclick="app.showForgeLabTab('home')">
+                            <i class="fas fa-home"></i> Home
+                        </button>
+                        <button type="button" class="forge-lab-tab" data-tab="log" onclick="app.showForgeLabTab('log')">
+                            <i class="fas fa-pen"></i> Log Session
+                        </button>
+                        <button type="button" class="forge-lab-tab" data-tab="plan" onclick="app.showForgeLabTab('plan')">
+                            <i class="fas fa-route"></i> My Plan
+                        </button>
+                    </div>
+
+                    <div id="forge-lab-tab-home" class="forge-lab-tab-panel active">
+                        <div id="forge-lab-home"></div>
+                    </div>
+
+                    <div id="forge-lab-tab-log" class="forge-lab-tab-panel">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-pen"></i> Log a lab session</h3>
+                            <p class="form-hint">Fill this after each lab visit.</p>
+
+                            <div class="form-row" style="flex-wrap: wrap; gap: 0.75rem;">
+                                <div class="form-group" style="flex: 1; min-width: 140px;">
+                                    <label for="forge-lab-log-date"><strong>Date</strong></label>
+                                    <input type="date" id="forge-lab-log-date" class="form-input">
+                                </div>
+                                <div class="form-group" style="flex: 2; min-width: 180px;">
+                                    <label for="forge-lab-log-slot"><strong>Lab slot</strong></label>
+                                    <select id="forge-lab-log-slot" class="form-input">
+                                        <option value="">Choose slot...</option>
+                                    </select>
+                                    <p id="forge-lab-log-slot-hint" class="form-hint"></p>
+                                </div>
+                                <div class="form-group" style="flex: 1; min-width: 100px;">
+                                    <label for="forge-lab-log-duration"><strong>Minutes</strong></label>
+                                    <input type="number" id="forge-lab-log-duration" class="form-input" min="1" max="480" placeholder="120">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="forge-lab-log-work"><strong>What did you do?</strong></label>
+                                <textarea id="forge-lab-log-work" class="form-input" rows="4"
+                                    placeholder="Topics covered, problems solved, practice done..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="forge-lab-log-notes"><strong>Notes (optional)</strong></label>
+                                <textarea id="forge-lab-log-notes" class="form-input" rows="2"
+                                    placeholder="Learnings, difficulties, plan for next time..."></textarea>
+                            </div>
+
+                            <button type="button" class="btn btn-primary" onclick="app.logForgeLabSession()">
+                                <i class="fas fa-check"></i> Save session
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="forge-lab-tab-plan" class="forge-lab-tab-panel">
+                        <div class="admin-card">
+                            <h3><i class="fas fa-bullseye"></i> My goal</h3>
+                            <textarea id="forge-lab-update-target-outcome" class="form-input" rows="2"
+                                placeholder="What do you want to achieve?"></textarea>
+                            <div class="form-group" style="margin-top: 0.75rem;">
+                                <label for="forge-lab-update-skills"><strong>Skills (optional)</strong></label>
+                                <input type="text" id="forge-lab-update-skills" class="form-input" placeholder="Comma-separated">
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="app.saveForgeLabGoals()">
+                                <i class="fas fa-save"></i> Save goal
+                            </button>
+                        </div>
+
+                        <div class="admin-card" style="margin-top: 1rem;">
+                            <h3><i class="fas fa-route"></i> My plan</h3>
+                            <div class="form-group">
+                                <input type="text" id="forge-lab-path-title" class="form-input"
+                                    placeholder="Plan title — e.g. Placement prep in 3 months">
+                            </div>
+                            <div class="form-group">
+                                <textarea id="forge-lab-path-objective" class="form-input" rows="3"
+                                    placeholder="How will you use lab sessions to reach your goal?"></textarea>
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="app.saveForgeLabPath()">
+                                <i class="fas fa-save"></i> Save plan
+                            </button>
+                        </div>
+
+                        <div class="admin-card" style="margin-top: 1rem;">
+                            <h3><i class="fas fa-flag"></i> Milestones</h3>
+                            <p class="form-hint">Small checkpoints on the way to your goal.</p>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem;">
+                                <input type="text" id="forge-lab-milestone-title" class="form-input" style="flex: 2; min-width: 180px;"
+                                    placeholder="Milestone — e.g. Finish 20 DSA problems">
+                                <input type="date" id="forge-lab-milestone-date" class="form-input" style="flex: 1; min-width: 130px;">
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="app.addForgeLabMilestone()">
+                                <i class="fas fa-plus"></i> Add milestone
+                            </button>
+                            <div id="forge-lab-milestones-list" class="forge-lab-milestones-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Feedback Page -->
             <div id="feedback" class="page">
                 <div class="page-header">
@@ -706,6 +882,33 @@ Bob Johnson,GHI789</pre>
                 <div id="progress-students-list" class="progress-students-container">
                     <div class="loading-state">Loading student progress...</div>
                 </div>
+            </div>
+
+            <!-- Admin Forge Lab Analytics Page -->
+            <div id="admin-forge-lab" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-fire" style="color: #f97316;"></i> Forge Lab Analytics</h1>
+                    <p class="subtitle">Enrollment analytics, lab slot assignment, and student progress</p>
+                </div>
+
+                <div class="admin-section">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-calendar-check"></i> Lab Slot Assignment</h3>
+                        <p>Assign lab session slots to each enrolled student. Students can only log sessions in their assigned slots.</p>
+                    </div>
+                </div>
+
+                <div id="forge-lab-admin-summary" class="progress-summary-section">
+                    <div class="loading-state">Loading summary...</div>
+                </div>
+
+                <div id="forge-lab-admin-charts" class="progress-charts-section"></div>
+
+                <div class="admin-controls">
+                    <input type="text" id="search-forge-lab-students" placeholder="Search enrolled students by name or KTU ID..." class="search-input" style="flex: 1; max-width: 400px;">
+                </div>
+
+                <div id="forge-lab-admin-students" class="forge-lab-admin-students-list"></div>
             </div>
             <!-- Mini Project Pages -->
             
@@ -979,9 +1182,12 @@ Bob Johnson,GHI789</pre>
                                         <option value="">-- Select a stage --</option>
                                     </select>
                                 </div>
-                                <div class="form-group" style="display: flex; align-items: flex-end; gap: 0.75rem;">
+                                <div class="form-group" style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
                                     <button type="button" class="btn btn-secondary" id="generate-consolidated-report-btn" onclick="app.showConsolidatedReportOptions()" style="white-space: nowrap;" disabled>
                                         <i class="fas fa-file-alt"></i> Consolidated Report
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" onclick="app.exportAllEvaluationsMarksExcel()" style="white-space: nowrap;" title="Download marks only (no comments), all stages in one workbook">
+                                        <i class="fas fa-file-excel"></i> Export All Marks (Excel)
                                     </button>
                                     <button type="button" class="btn btn-primary" id="view-all-evaluations-btn" onclick="app.showAllEvaluationsView()" style="white-space: nowrap;">
                                         <i class="fas fa-eye"></i> View All Evaluations
@@ -1254,6 +1460,9 @@ Bob Johnson,GHI789</pre>
                                 <input type="text" id="search-project-report-teams" placeholder="Search teams..." class="search-input" style="flex: 1; max-width: 400px;">
                                 <button type="button" class="btn btn-primary" onclick="app.loadProjectReportTeams()">
                                     <i class="fas fa-sync"></i> Refresh
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="app.printProjectReportStatus()" title="Print current table (respects search filter)">
+                                    <i class="fas fa-print"></i> Print
                                 </button>
                             </div>
                             <div id="project-report-teams-list" class="admin-teams-list">

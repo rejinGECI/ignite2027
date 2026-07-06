@@ -5214,3 +5214,681 @@ textarea:not(:placeholder-shown)::placeholder {
     background: #059669;
 }
 
+/* Forge Lab */
+.form-hint {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 0.35rem;
+}
+
+.forge-lab-section {
+    margin-bottom: 2rem;
+}
+
+.forge-lab-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.forge-lab-slot-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.forge-lab-slot-chip:has(input:checked) {
+    border-color: #f97316;
+    background: rgba(249, 115, 22, 0.08);
+}
+
+.forge-lab-slot-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.85rem;
+}
+
+.forge-lab-slot-label strong {
+    color: var(--text-primary);
+}
+
+.forge-lab-slot-label small {
+    color: var(--text-secondary);
+}
+
+.forge-lab-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1.5rem 0 1rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.forge-lab-tab {
+    padding: 0.6rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    transition: color 0.2s, background 0.2s;
+}
+
+.forge-lab-tab:hover {
+    color: var(--text-primary);
+    background: rgba(249, 115, 22, 0.06);
+}
+
+.forge-lab-tab.active {
+    color: #ea580c;
+    background: rgba(249, 115, 22, 0.1);
+    font-weight: 600;
+}
+
+.forge-lab-tab-panel {
+    display: none;
+}
+
+.forge-lab-tab-panel.active {
+    display: block;
+}
+
+.forge-lab-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.forge-lab-domain-banner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(234, 88, 12, 0.04));
+    border-radius: 12px;
+    border: 1px solid rgba(249, 115, 22, 0.2);
+    margin-bottom: 1rem;
+}
+
+.forge-lab-domain-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.35rem;
+}
+
+.forge-lab-domain-banner h3 {
+    font-size: 1.1rem;
+    margin: 0 0 0.5rem;
+}
+
+.forge-lab-slot-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.forge-lab-tag {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-last-session {
+    padding: 0.75rem 1rem;
+    background: var(--card-bg);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-milestones-list {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.forge-lab-milestone {
+    padding: 1rem 1.25rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+
+.forge-lab-milestone.milestone-done {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.06);
+}
+
+.forge-lab-milestone.milestone-active {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.forge-lab-milestone-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.forge-lab-milestone-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #f97316;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.forge-lab-milestone-info {
+    flex: 1;
+}
+
+.forge-lab-milestone-info h4 {
+    margin: 0 0 0.25rem;
+}
+
+.forge-lab-milestone-info p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-milestone-status {
+    text-transform: capitalize;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    background: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.forge-lab-milestone-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-left: 2.75rem;
+}
+
+.forge-lab-session-card {
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    background: var(--card-bg);
+}
+
+.forge-lab-session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.forge-lab-session-duration {
+    font-weight: 600;
+    color: #f97316;
+}
+
+.forge-lab-session-milestone {
+    color: #3b82f6;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.forge-lab-rating {
+    color: #f59e0b;
+    letter-spacing: 2px;
+}
+
+.forge-lab-admin-students-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.forge-lab-admin-student-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: var(--shadow);
+    border-left: 4px solid #10b981;
+}
+
+.forge-lab-admin-student-card.inactive-student {
+    border-left-color: #ef4444;
+}
+
+.forge-lab-admin-student-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.forge-lab-admin-student-header h4 {
+    margin: 0;
+}
+
+.forge-lab-admin-domain {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0.25rem 0 0;
+}
+
+.forge-lab-admin-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    background: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.badge-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+}
+
+.badge-warning {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+}
+
+.forge-lab-admin-details p {
+    margin: 0.35rem 0;
+    font-size: 0.9rem;
+}
+
+.forge-lab-admin-recent {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+
+.forge-lab-admin-log-item {
+    margin: 0.35rem 0;
+    color: var(--text-secondary);
+}
+
+.chart-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.chart-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.chart-bar-row .chart-bar-label {
+    flex: 0 0 180px;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chart-bar-track {
+    flex: 1;
+    height: 24px;
+    background: var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.chart-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    min-width: 2px;
+    transition: width 0.3s;
+}
+
+.chart-bar-row .chart-bar-value {
+    flex: 0 0 30px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.btn-sm {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.forge-lab-pending-domains {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.forge-lab-pending-domain-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--card-bg);
+}
+
+.forge-lab-pending-domain-info p {
+    margin: 0.25rem 0 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-domains-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.forge-lab-domain-card {
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    background: var(--card-bg);
+}
+
+.forge-lab-domain-card h4 {
+    margin: 0 0 0.35rem;
+    font-size: 0.95rem;
+}
+
+.forge-lab-domain-card p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-admin-domain-item {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.9rem;
+}
+
+.forge-lab-path-intro h3 {
+    margin-top: 0;
+}
+
+.forge-lab-flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.forge-lab-flow-step {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.forge-lab-flow-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #f97316;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.forge-lab-flow-step p {
+    margin: 0.2rem 0 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-flow-step em {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.forge-lab-path-context-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.forge-lab-path-target-box {
+    padding: 0.85rem 1rem;
+    background: rgba(59, 130, 246, 0.06);
+    border-radius: 8px;
+    border-left: 3px solid #3b82f6;
+    margin-bottom: 1rem;
+}
+
+.forge-lab-milestone-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.35rem 0;
+}
+
+.forge-lab-pending-domains {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.forge-lab-pending-domain-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--card-bg);
+}
+
+.forge-lab-pending-domain-info p {
+    margin: 0.25rem 0 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-domains-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.forge-lab-domain-card {
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    background: var(--card-bg);
+}
+
+.forge-lab-domain-card h4 {
+    margin: 0 0 0.35rem;
+    font-size: 0.95rem;
+}
+
+.forge-lab-domain-card p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-admin-domain-item {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.9rem;
+}
+
+.forge-lab-path-intro h3 {
+    margin-top: 0;
+}
+
+.forge-lab-flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.forge-lab-flow-step {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.forge-lab-flow-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #f97316;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.forge-lab-flow-step p {
+    margin: 0.2rem 0 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.forge-lab-flow-step em {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.forge-lab-path-context-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.forge-lab-path-target-box {
+    padding: 0.85rem 1rem;
+    background: rgba(59, 130, 246, 0.06);
+    border-radius: 8px;
+    border-left: 3px solid #3b82f6;
+    margin-bottom: 1rem;
+}
+
+.forge-lab-milestone-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.35rem 0;
+}
+
+
+/* Forge Lab — commitment, hero, dashboard, admin slots */
+.forge-lab-commitment-box { margin: 1.25rem 0; padding: 1.25rem 1.5rem; border-radius: 12px; border: 2px solid rgba(249, 115, 22, 0.35); background: linear-gradient(135deg, rgba(249, 115, 22, 0.06), rgba(234, 88, 12, 0.03)); }
+.forge-lab-commitment-box h4 { margin: 0 0 0.5rem; color: #ea580c; }
+.forge-lab-commitment-list { margin: 0.75rem 0 1rem 1.25rem; padding: 0; }
+.forge-lab-commitment-list li { margin-bottom: 0.5rem; font-size: 0.92rem; color: var(--text-secondary); line-height: 1.5; }
+.forge-lab-commitment-check { display: flex; align-items: flex-start; gap: 0.65rem; cursor: pointer; font-size: 0.92rem; font-weight: 500; }
+.forge-lab-commitment-check input { margin-top: 0.2rem; flex-shrink: 0; }
+.forge-lab-hero { margin-bottom: 1.25rem; border-radius: 16px; background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%); color: white; overflow: hidden; box-shadow: 0 8px 32px rgba(249, 115, 22, 0.2); }
+.forge-lab-hero-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.75rem 2rem; }
+.forge-lab-hero-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.75rem; border-radius: 20px; background: rgba(249, 115, 22, 0.25); color: #fed7aa; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+.forge-lab-hero-text h2 { margin: 0 0 0.5rem; font-size: 1.5rem; }
+.forge-lab-hero-goal { margin: 0 0 0.75rem; opacity: 0.9; font-size: 0.95rem; max-width: 600px; }
+.forge-lab-hero-slots { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.forge-lab-hero-slot { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 8px; background: rgba(255, 255, 255, 0.12); font-size: 0.82rem; }
+.forge-lab-hero-slot.pending { background: rgba(251, 191, 36, 0.2); color: #fde68a; }
+.forge-lab-hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.forge-lab-hero-actions .btn-secondary { background: rgba(255, 255, 255, 0.15); color: white; border: 1px solid rgba(255, 255, 255, 0.25); }
+.forge-lab-hero-actions .btn-secondary:hover { background: rgba(255, 255, 255, 0.25); }
+.forge-lab-dash-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+.forge-lab-dash-stat { padding: 1.25rem; border-radius: 12px; text-align: center; color: white; }
+.forge-lab-dash-stat-fire { background: linear-gradient(135deg, #f97316, #ea580c); }
+.forge-lab-dash-stat-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.forge-lab-dash-stat-green { background: linear-gradient(135deg, #10b981, #059669); }
+.forge-lab-dash-stat-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+.forge-lab-dash-stat-value { display: block; font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.forge-lab-dash-stat-label { font-size: 0.8rem; opacity: 0.9; }
+.forge-lab-dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+.forge-lab-dash-card { background: var(--card-bg); border-radius: 12px; padding: 1.25rem; box-shadow: var(--shadow); border: 1px solid var(--border-color); }
+.forge-lab-dash-card h4 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--text-primary); }
+.forge-lab-dash-card h4 i { color: #f97316; margin-right: 0.35rem; }
+.forge-lab-dash-slots { display: flex; flex-direction: column; gap: 0.5rem; }
+.forge-lab-dash-slot-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.85rem; border-radius: 8px; background: rgba(249, 115, 22, 0.08); border: 1px solid rgba(249, 115, 22, 0.2); font-size: 0.9rem; }
+.forge-lab-dash-slot-item i { color: #f97316; }
+.forge-lab-dash-empty { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
+.forge-lab-dash-milestone strong { display: block; margin-bottom: 0.35rem; }
+.forge-lab-dash-milestone p { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--text-secondary); }
+.forge-lab-dash-focus-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.forge-lab-dash-focus-chip { padding: 0.65rem 0.85rem; border-radius: 8px; background: var(--bg-secondary, #f8fafc); border-left: 3px solid #f97316; }
+.forge-lab-dash-focus-chip strong { display: block; font-size: 0.9rem; }
+.forge-lab-dash-focus-chip span { font-size: 0.85rem; color: var(--text-secondary); }
+.forge-lab-dash-recent p { margin: 0.35rem 0; font-size: 0.9rem; }
+.forge-lab-dash-commitment { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.88rem; color: #059669; }
+.forge-lab-admin-slot-assign { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+.forge-lab-admin-slot-grid { margin-top: 0.5rem; }
+.forge-lab-custom-slots { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
+.forge-lab-custom-slot-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg, #fafafa);
+}
+.forge-lab-custom-slot-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 120px; flex: 1; }
+.forge-lab-custom-slot-field label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.forge-lab-slot-remove { flex-shrink: 0; margin-bottom: 2px; }
+@media (max-width: 768px) { .forge-lab-dash-stats { grid-template-columns: repeat(2, 1fr); } .forge-lab-hero-inner { padding: 1.25rem; } .forge-lab-custom-slot-row { flex-direction: column; align-items: stretch; } }
