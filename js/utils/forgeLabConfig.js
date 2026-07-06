@@ -112,9 +112,9 @@ export function isLoggableSlot(slot) {
     return !!FORGE_LAB_SLOTS.find(s => s.id === slot.id);
 }
 
-export function findAssignedSlot(forge, slotId) {
-    if (!slotId || !forge) return null;
-    return getAssignedSlots(forge).find(s => s.id === slotId) || null;
+export function findAssignedSlot(forge, slotId, commonSlots = undefined) {
+    if (!slotId) return null;
+    return getAssignedSlots(forge, commonSlots).find(s => s.id === slotId) || null;
 }
 
 export function sortSlotsByDateTime(slots) {
@@ -224,12 +224,13 @@ export const FORGE_LAB_COMMITMENT = {
     ]
 };
 
-export function getAssignedSlots(forge) {
+export function getAssignedSlots(forge, commonSlots = undefined) {
+    if (commonSlots !== undefined && commonSlots !== null) {
+        return sortSlotsByDateTime(normalizeAssignedSlots(commonSlots));
+    }
     if (!forge) return [];
     const assigned = toSlotList(forge.assignedSlots);
-    const raw = assigned.length
-        ? assigned
-        : toSlotList(forge.preferredSlots);
+    const raw = assigned.length ? assigned : toSlotList(forge.preferredSlots);
     return sortSlotsByDateTime(normalizeAssignedSlots(raw));
 }
 

@@ -1,5 +1,6 @@
 // Forge Lab — student skill upgrade & focused lab sessions
 import { escapeHtml } from '../utils/helpers.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
     FORGE_LAB_DOMAINS,
     FORGE_LAB_COMMITMENT,
@@ -22,6 +23,23 @@ export function createForgeLabModule(app) {
     const pendingEnrollmentDomains = [];
 
     return {
+        async fetchCommonForgeLabSlots() {
+            try {
+                const snap = await getDoc(doc(window.firebaseDb, 'settings', 'forgeLab'));
+                if (snap.exists()) {
+                    return snap.data().commonSlots || [];
+                }
+                return [];
+            } catch (err) {
+                console.error('Failed to load common lab slots:', err);
+                return undefined;
+            }
+        },
+
+        slotsFor(forge) {
+            return getAssignedSlots(forge, app.forgeLabCommonSlots);
+        },
+
         ensureForgeLab(data) {
             if (!data.forgeLab) {
                 data.forgeLab = getDefaultForgeLab();
@@ -53,6 +71,7 @@ export function createForgeLabModule(app) {
 
         async loadForgeLab() {
             this.populateForgeLabDomainSelect();
+            app.forgeLabCommonSlots = await this.fetchCommonForgeLabSlots();
             const data = await app.getUserData();
             if (!data) return;
             const forge = this.ensureForgeLab(data);
@@ -361,6 +380,7 @@ export function createForgeLabModule(app) {
             if (panel) panel.classList.add('active');
 
             if (tabId === 'log') {
+                app.forgeLabCommonSlots = await this.fetchCommonForgeLabSlots();
                 const data = await app.getUserData();
                 if (data) {
                     this.initForgeLabLogForm(this.ensureForgeLab(data));
@@ -374,7 +394,7 @@ export function createForgeLabModule(app) {
 
             const totalSessions = (forge.sessionLogs || []).length;
             const totalMinutes = (forge.sessionLogs || []).reduce((s, l) => s + (l.durationMinutes || 0), 0);
-            const assigned = sortSlotsByDateTime(getAssignedSlots(forge));
+            const assigned = sortSlotsByDateTime(this.slotsFor(forge));
             const domains = getForgeLabDomains(forge);
 
             const slotsHtml = assigned.length
@@ -641,14 +661,14 @@ export function createForgeLabModule(app) {
             const data = await app.getUserData();
             if (!data) return;
             const forge = this.ensureForgeLab(data);
-            const assigned = getAssignedSlots(forge);
+            const assigned = this.slotsFor(forge);
 
             if (assigned.length === 0) {
                 alert('Your lab slots are not assigned yet. Ask your admin.');
                 return;
             }
 
-            const matchedSlot = findAssignedSlot(forge, slotId);
+            const matchedSlot = findAssignedSlot(forge, slotId, app.forgeLabCommonSlots);
 
             if (!matchedSlot) {
                 alert('Pick one of your assigned lab slots.');
@@ -698,7 +718,7 @@ export function createForgeLabModule(app) {
                 dateEl.value = new Date().toISOString().split('T')[0];
             }
 
-            const assigned = sortSlotsByDateTime(getAssignedSlots(forge));
+            const assigned = sortSlotsByDateTime(this.slotsFor(forge));
             const slotSelect = document.getElementById('forge-lab-log-slot');
             const slotHint = document.getElementById('forge-lab-log-slot-hint');
 

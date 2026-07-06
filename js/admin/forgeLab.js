@@ -6,20 +6,40 @@ import {
     getDomainLabel,
     getForgeLabDomains,
     getAssignedSlots,
-    sortSlotsByDateTime
+    sortSlotsByDateTime,
+    formatCustomSlotLabel,
+    normalizeAssignedSlots
 } from '../utils/forgeLabConfig.js';
+
+const COMMON_SLOT_CONTEXT = 'common';
 
 export function createAdminForgeLabModule(app) {
     return {
+        async fetchCommonForgeLabSlots() {
+            try {
+                const snap = await getDoc(doc(window.firebaseDb, 'settings', 'forgeLab'));
+                if (snap.exists()) {
+                    return snap.data().commonSlots || [];
+                }
+            } catch (err) {
+                console.error('Failed to load common Forge Lab slots:', err);
+            }
+            return [];
+        },
+
         async loadForgeLabAnalytics() {
             const summaryEl = document.getElementById('forge-lab-admin-summary');
             const chartsEl = document.getElementById('forge-lab-admin-charts');
+            const commonSlotsEl = document.getElementById('forge-lab-admin-common-slots');
             const listEl = document.getElementById('forge-lab-admin-students');
             if (!summaryEl || !chartsEl || !listEl) return;
 
             summaryEl.innerHTML = '<div class="loading-state">Loading Forge Lab analytics...</div>';
             chartsEl.innerHTML = '';
             listEl.innerHTML = '';
+            if (commonSlotsEl) {
+                commonSlotsEl.innerHTML = '<div class="loading-state">Loading lab slots...</div>';
+            }
 
             if (!app.isAdmin && app.userRole !== 'admin') {
                 summaryEl.innerHTML = '<div class="error-message">Access denied. Admin access required.</div>';
@@ -27,6 +47,8 @@ export function createAdminForgeLabModule(app) {
             }
 
             try {
+                app.forgeLabCommonSlots = await this.fetchCommonForgeLabSlots();
+
                 const usersQuery = query(
                     collection(window.firebaseDb, 'users'),
                     where('role', '==', 'student')
@@ -102,6 +124,8 @@ export function createAdminForgeLabModule(app) {
                 const inactiveCount = students.filter(s => s.isInactive).length;
 
                 app.allForgeLabStudents = students;
+
+                this.renderCommonSlotAssignment(app.forgeLabCommonSlots, commonSlotsEl);
 
                 this.renderForgeLabAdminSummary({
                     totalEnrolled,
@@ -281,8 +305,10 @@ export function createAdminForgeLabModule(app) {
                     </div>
                 `).join('');
 
-                const assigned = sortSlotsByDateTime(getAssignedSlots(forge));
-                const slotAssignHtml = this.renderAdminSlotAssignment(s, assigned);
+                const assigned = sortSlotsByDateTime(getAssignedSlots(forge, app.forgeLabCommonSlots));
+                const slotsSummary = assigned.length
+                    ? assigned.map(s => escapeHtml(formatCustomSlotLabel(s))).join('<br>')
+                    : '<span class="form-hint">No common lab slots set yet.</span>';
 
                 return `
                     <div class="forge-lab-admin-student-card ${s.isInactive ? 'inactive-student' : ''}" data-name="${escapeHtml(s.name.toLowerCase())}" data-ktuid="${escapeHtml(s.ktuid.toLowerCase())}" data-student-id="${escapeHtml(s.id)}">
@@ -303,8 +329,8 @@ export function createAdminForgeLabModule(app) {
                             <p><strong>Target:</strong> ${escapeHtml(forge.targetOutcome || forge.domain?.targetOutcome || '—')}</p>
                             ${forge.path?.title ? `<p><strong>Path:</strong> ${escapeHtml(forge.path.title)} — ${pathPct}% complete (${s.milestoneDone}/${s.milestoneTotal} milestones)</p>` : ''}
                             ${(forge.skillsToAcquire || forge.domain?.skillsToAcquire || []).length ? `<p><strong>Skills:</strong> ${(forge.skillsToAcquire || forge.domain?.skillsToAcquire || []).map(sk => escapeHtml(sk)).join(', ')}</p>` : ''}
+                            <p><strong>Lab slots:</strong><br>${slotsSummary}</p>
                         </div>
-                        ${slotAssignHtml}
                         ${recentLogs.length ? `
                             <div class="forge-lab-admin-recent">
                                 <strong>Recent Sessions:</strong>
@@ -322,7 +348,7 @@ export function createAdminForgeLabModule(app) {
             }).join('');
         },
 
-        renderAdminSlotRow(studentId, slot) {
+        renderAdminSlotRow(contextId, slot) {
             const rowId = escapeHtml(slot.id);
             return `
                 <div class="forge-lab-custom-slot-row" data-row-id="${rowId}">
@@ -339,7 +365,7 @@ export function createAdminForgeLabModule(app) {
                         <input type="time" class="form-input forge-lab-slot-end" value="${escapeHtml(slot.endTime || '')}">
                     </div>
                     <button type="button" class="btn btn-sm btn-danger forge-lab-slot-remove"
-                        onclick="app.removeAdminForgeLabSlotRow('${escapeHtml(studentId)}', '${rowId}')"
+                        onclick="app.removeAdminForgeLabSlotRow('${escapeHtml(contextId)}', '${rowId}')"
                         title="Remove slot">
                         <i class="fas fa-times"></i>
                     </button>
@@ -347,32 +373,39 @@ export function createAdminForgeLabModule(app) {
             `;
         },
 
-        renderAdminSlotAssignment(student, assigned) {
-            const rowsHtml = assigned.length
-                ? assigned.map(slot => this.renderAdminSlotRow(student.id, slot)).join('')
-                : '<p class="form-hint forge-lab-no-slots-msg">No lab slots yet. Add one below.</p>';
+        renderCommonSlotAssignment(slots, containerEl) {
+            if (!containerEl) return;
 
-            return `
-                <div class="forge-lab-admin-slot-assign" id="slot-assign-${escapeHtml(student.id)}">
-                    <p><strong><i class="fas fa-calendar-check"></i> Lab slots</strong></p>
-                    <p class="form-hint">Pick a date and start/end time for each lab session.</p>
-                    <div id="slot-rows-${escapeHtml(student.id)}" class="forge-lab-custom-slots">
+            const normalized = sortSlotsByDateTime(normalizeAssignedSlots(slots));
+            const rowsHtml = normalized.length
+                ? normalized.map(slot => this.renderAdminSlotRow(COMMON_SLOT_CONTEXT, slot)).join('')
+                : '<p class="form-hint forge-lab-no-slots-msg">No lab slots yet. Add slots below — they apply to all enrolled students.</p>';
+
+            const enrolledCount = app.allForgeLabStudents?.length ?? '…';
+
+            containerEl.innerHTML = `
+                <div class="admin-card forge-lab-admin-slot-assign" id="slot-assign-${COMMON_SLOT_CONTEXT}">
+                    <h3><i class="fas fa-calendar-check"></i> Common lab slots</h3>
+                    <p class="form-hint">Set lab dates and times once. All enrolled students (${enrolledCount}) will see the same schedule.</p>
+                    <div id="slot-rows-${COMMON_SLOT_CONTEXT}" class="forge-lab-custom-slots">
                         ${rowsHtml}
                     </div>
-                    <button type="button" class="btn btn-sm btn-secondary" style="margin-top: 0.75rem;"
-                        onclick="app.addAdminForgeLabSlotRow('${escapeHtml(student.id)}')">
-                        <i class="fas fa-plus"></i> Add slot
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" style="margin-top: 0.75rem; margin-left: 0.5rem;"
-                        onclick="app.saveStudentForgeLabSlots('${escapeHtml(student.id)}')">
-                        <i class="fas fa-save"></i> Save slots
-                    </button>
+                    <div style="margin-top: 0.75rem;">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="app.addAdminForgeLabSlotRow('${COMMON_SLOT_CONTEXT}')">
+                            <i class="fas fa-plus"></i> Add slot
+                        </button>
+                        <button type="button" class="btn btn-primary" style="margin-left: 0.5rem;"
+                            onclick="app.saveCommonForgeLabSlots()">
+                            <i class="fas fa-save"></i> Save for all students
+                        </button>
+                    </div>
                 </div>
             `;
         },
 
-        addAdminForgeLabSlotRow(studentId) {
-            const rowsEl = document.getElementById(`slot-rows-${studentId}`);
+        addAdminForgeLabSlotRow(contextId) {
+            const rowsEl = document.getElementById(`slot-rows-${contextId}`);
             if (!rowsEl) return;
 
             const emptyMsg = rowsEl.querySelector('.forge-lab-no-slots-msg');
@@ -384,23 +417,23 @@ export function createAdminForgeLabModule(app) {
                 startTime: '',
                 endTime: ''
             };
-            rowsEl.insertAdjacentHTML('beforeend', this.renderAdminSlotRow(studentId, newSlot));
+            rowsEl.insertAdjacentHTML('beforeend', this.renderAdminSlotRow(contextId, newSlot));
         },
 
-        removeAdminForgeLabSlotRow(studentId, rowId) {
-            const rowsEl = document.getElementById(`slot-rows-${studentId}`);
+        removeAdminForgeLabSlotRow(contextId, rowId) {
+            const rowsEl = document.getElementById(`slot-rows-${contextId}`);
             if (!rowsEl) return;
 
             const row = rowsEl.querySelector(`[data-row-id="${rowId}"]`);
             if (row) row.remove();
 
             if (!rowsEl.querySelector('.forge-lab-custom-slot-row')) {
-                rowsEl.innerHTML = '<p class="form-hint forge-lab-no-slots-msg">No lab slots yet. Add one below.</p>';
+                rowsEl.innerHTML = '<p class="form-hint forge-lab-no-slots-msg">No lab slots yet. Add slots below — they apply to all enrolled students.</p>';
             }
         },
 
-        collectAdminForgeLabSlots(studentId) {
-            const rowsEl = document.getElementById(`slot-rows-${studentId}`);
+        collectAdminForgeLabSlots(contextId) {
+            const rowsEl = document.getElementById(`slot-rows-${contextId}`);
             if (!rowsEl) return [];
 
             return [...rowsEl.querySelectorAll('.forge-lab-custom-slot-row')].map(row => ({
@@ -408,6 +441,15 @@ export function createAdminForgeLabModule(app) {
                 date: row.querySelector('.forge-lab-slot-date')?.value || '',
                 startTime: row.querySelector('.forge-lab-slot-start')?.value || '',
                 endTime: row.querySelector('.forge-lab-slot-end')?.value || ''
+            }));
+        },
+
+        normalizeSlotsForSave(slots) {
+            return slots.map(s => ({
+                id: s.id || `slot_${s.date}_${(s.startTime || '').replace(/:/g, '')}`,
+                date: s.date,
+                startTime: (s.startTime || '').slice(0, 5),
+                endTime: (s.endTime || '').slice(0, 5)
             }));
         },
 
@@ -423,47 +465,53 @@ export function createAdminForgeLabModule(app) {
             return null;
         },
 
-        async saveStudentForgeLabSlots(studentId) {
+        async saveCommonForgeLabSlots() {
             if (!app.isAdmin && app.userRole !== 'admin') {
                 alert('Admin access required.');
                 return;
             }
 
-            const container = document.getElementById(`slot-assign-${studentId}`);
-            if (!container) return;
-
-            const slots = this.collectAdminForgeLabSlots(studentId);
+            const slots = this.collectAdminForgeLabSlots(COMMON_SLOT_CONTEXT);
             const validationError = this.validateForgeLabSlots(slots);
             if (validationError) {
                 alert(validationError);
                 return;
             }
 
-            try {
-                const studentDataRef = doc(window.firebaseDb, 'userData', studentId);
-                const studentDataDoc = await getDoc(studentDataRef);
-                const data = studentDataDoc.exists() ? studentDataDoc.data() : {};
+            const normalized = this.normalizeSlotsForSave(slots);
+            const now = new Date().toISOString();
 
-                if (!data.forgeLab?.enrolled) {
-                    alert('Student is not enrolled in Forge Lab.');
-                    return;
+            try {
+                await setDoc(doc(window.firebaseDb, 'settings', 'forgeLab'), {
+                    commonSlots: normalized,
+                    slotsUpdatedAt: now,
+                    updatedBy: app.currentUser?.uid || null
+                }, { merge: true });
+
+                app.forgeLabCommonSlots = normalized;
+
+                const students = app.allForgeLabStudents || [];
+                for (const student of students) {
+                    const studentDataRef = doc(window.firebaseDb, 'userData', student.id);
+                    const studentDataDoc = await getDoc(studentDataRef);
+                    const data = studentDataDoc.exists() ? studentDataDoc.data() : {};
+                    if (!data.forgeLab?.enrolled) continue;
+
+                    data.forgeLab.assignedSlots = normalized;
+                    data.forgeLab.slotsAssignedAt = now;
+                    await setDoc(studentDataRef, { forgeLab: data.forgeLab }, { merge: true });
                 }
 
-                data.forgeLab.assignedSlots = slots.map((s, i) => ({
-                    id: s.id || `slot_${s.date}_${(s.startTime || '').replace(/:/g, '')}`,
-                    date: s.date,
-                    startTime: (s.startTime || '').slice(0, 5),
-                    endTime: (s.endTime || '').slice(0, 5)
-                }));
-                data.forgeLab.slotsAssignedAt = new Date().toISOString();
-
-                await setDoc(studentDataRef, { forgeLab: data.forgeLab }, { merge: true });
-                alert('Lab slots saved. Students will see the updated schedule.');
+                alert(`Lab slots saved for all ${students.length} enrolled student(s).`);
                 await this.loadForgeLabAnalytics();
             } catch (err) {
-                console.error('Failed to save slot assignment:', err);
-                alert('Failed to save slots. Please try again.');
+                console.error('Failed to save common lab slots:', err);
+                alert('Failed to save lab slots. Please try again.');
             }
+        },
+
+        async saveStudentForgeLabSlots(studentId) {
+            alert('Lab slots are now set in Common lab slots above and apply to all students.');
         },
 
         setupForgeLabAdminSearch() {
