@@ -9,7 +9,9 @@ import {
     getForgeLabDomains,
     getAssignedSlots,
     formatCustomSlotLabel,
-    sortSlotsByDateTime
+    sortSlotsByDateTime,
+    isLoggableSlot,
+    findAssignedSlot
 } from '../utils/forgeLabConfig.js';
 
 function isCustomCategory(category) {
@@ -39,7 +41,7 @@ export function createForgeLabModule(app) {
             }
             if (!forge.skillsToAcquire) forge.skillsToAcquire = [];
             if (forge.targetOutcome === undefined) forge.targetOutcome = '';
-            if (!forge.assignedSlots) forge.assignedSlots = getAssignedSlots(forge);
+            if (!Array.isArray(forge.assignedSlots)) forge.assignedSlots = [];
             return forge;
         },
 
@@ -350,13 +352,20 @@ export function createForgeLabModule(app) {
             this.showForgeLabTab('home');
         },
 
-        showForgeLabTab(tabId) {
+        async showForgeLabTab(tabId) {
             document.querySelectorAll('.forge-lab-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.forge-lab-tab-panel').forEach(p => p.classList.remove('active'));
             const tab = document.querySelector(`.forge-lab-tab[data-tab="${tabId}"]`);
             const panel = document.getElementById(`forge-lab-tab-${tabId}`);
             if (tab) tab.classList.add('active');
             if (panel) panel.classList.add('active');
+
+            if (tabId === 'log') {
+                const data = await app.getUserData();
+                if (data) {
+                    this.initForgeLabLogForm(this.ensureForgeLab(data));
+                }
+            }
         },
 
         renderForgeLabHome(forge) {
@@ -638,7 +647,10 @@ export function createForgeLabModule(app) {
                 alert('Your lab slots are not assigned yet. Ask your admin.');
                 return;
             }
-            if (!assigned.some(s => s.id === slotId)) {
+
+            const matchedSlot = findAssignedSlot(forge, slotId);
+
+            if (!matchedSlot) {
                 alert('Pick one of your assigned lab slots.');
                 return;
             }
@@ -655,7 +667,7 @@ export function createForgeLabModule(app) {
             forge.sessionLogs.push({
                 id: `log_${Date.now()}`,
                 date,
-                slotId,
+                slotId: matchedSlot.id,
                 durationMinutes: duration,
                 focusArea: '',
                 whatWorkedOn,
@@ -691,7 +703,8 @@ export function createForgeLabModule(app) {
             const slotHint = document.getElementById('forge-lab-log-slot-hint');
 
             if (slotSelect) {
-                const loggable = assigned.filter(s => s.date && s.startTime && s.endTime);
+                const loggable = assigned.filter(isLoggableSlot);
+                const previous = slotSelect.value;
 
                 if (loggable.length === 0) {
                     slotSelect.innerHTML = '<option value="">No slots assigned yet</option>';
@@ -701,12 +714,19 @@ export function createForgeLabModule(app) {
                     }
                 } else {
                     slotSelect.disabled = false;
+                    slotSelect.removeAttribute('disabled');
                     slotSelect.innerHTML = '<option value="">Choose your slot...</option>' +
-                        loggable.map(s => `
-                            <option value="${escapeHtml(s.id)}">${escapeHtml(formatCustomSlotLabel(s))}</option>
-                        `).join('');
+                        loggable.map(s => {
+                            const id = String(s.id).replace(/"/g, '');
+                            return `<option value="${id}">${escapeHtml(formatCustomSlotLabel(s))}</option>`;
+                        }).join('');
+                    if (previous && loggable.some(s => s.id === previous)) {
+                        slotSelect.value = previous;
+                    }
                     if (slotHint) {
-                        slotHint.textContent = '';
+                        slotHint.textContent = loggable.length === 1
+                            ? 'Your assigned lab slot is selected below.'
+                            : '';
                     }
                 }
             }

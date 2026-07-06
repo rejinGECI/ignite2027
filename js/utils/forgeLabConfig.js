@@ -61,6 +61,15 @@ export function formatCustomSlotLabel(slot) {
     return slot.id || 'Lab slot';
 }
 
+function stableSlotId(slot, index) {
+    if (typeof slot === 'string') return slot;
+    if (slot.id) return String(slot.id);
+    if (slot.date && slot.startTime) {
+        return `slot_${slot.date}_${slot.startTime.replace(/:/g, '')}`;
+    }
+    return `slot_${index}`;
+}
+
 function normalizeSlotEntry(slot, index) {
     if (typeof slot === 'string') {
         const preset = FORGE_LAB_SLOTS.find(s => s.id === slot);
@@ -72,17 +81,40 @@ function normalizeSlotEntry(slot, index) {
             legacyPreset: preset || null
         };
     }
+    const date = slot.date || '';
+    const startTime = (slot.startTime || '').slice(0, 5);
+    const endTime = (slot.endTime || '').slice(0, 5);
     return {
-        id: slot.id || `slot_${index}_${Date.now()}`,
-        date: slot.date || '',
-        startTime: slot.startTime || '',
-        endTime: slot.endTime || ''
+        id: stableSlotId(slot, index),
+        date,
+        startTime,
+        endTime
     };
 }
 
+export function toSlotList(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'object') return Object.values(raw);
+    return [];
+}
+
 export function normalizeAssignedSlots(raw) {
-    if (!raw?.length) return [];
-    return raw.map((slot, i) => normalizeSlotEntry(slot, i));
+    const list = toSlotList(raw);
+    if (!list.length) return [];
+    return list.map((slot, i) => normalizeSlotEntry(slot, i));
+}
+
+export function isLoggableSlot(slot) {
+    if (!slot) return false;
+    if (slot.date && slot.startTime && slot.endTime) return true;
+    if (slot.legacyPreset) return true;
+    return !!FORGE_LAB_SLOTS.find(s => s.id === slot.id);
+}
+
+export function findAssignedSlot(forge, slotId) {
+    if (!slotId || !forge) return null;
+    return getAssignedSlots(forge).find(s => s.id === slotId) || null;
 }
 
 export function sortSlotsByDateTime(slots) {
@@ -194,9 +226,10 @@ export const FORGE_LAB_COMMITMENT = {
 
 export function getAssignedSlots(forge) {
     if (!forge) return [];
-    const raw = forge.assignedSlots?.length
-        ? forge.assignedSlots
-        : (forge.preferredSlots?.length ? forge.preferredSlots : []);
+    const assigned = toSlotList(forge.assignedSlots);
+    const raw = assigned.length
+        ? assigned
+        : toSlotList(forge.preferredSlots);
     return sortSlotsByDateTime(normalizeAssignedSlots(raw));
 }
 

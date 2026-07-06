@@ -449,11 +449,11 @@ export function createAdminForgeLabModule(app) {
                     return;
                 }
 
-                data.forgeLab.assignedSlots = slots.map(s => ({
-                    id: s.id,
+                data.forgeLab.assignedSlots = slots.map((s, i) => ({
+                    id: s.id || `slot_${s.date}_${(s.startTime || '').replace(/:/g, '')}`,
                     date: s.date,
-                    startTime: s.startTime,
-                    endTime: s.endTime
+                    startTime: (s.startTime || '').slice(0, 5),
+                    endTime: (s.endTime || '').slice(0, 5)
                 }));
                 data.forgeLab.slotsAssignedAt = new Date().toISOString();
 
