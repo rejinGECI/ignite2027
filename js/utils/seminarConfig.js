@@ -191,6 +191,7 @@ export function statusBadge(status) {
         submitted: 'Submitted',
         approved: 'Approved',
         rejected: 'Rejected',
+        needs_revision: 'Needs edit',
         locked: 'Locked (final)',
         guide_approved: 'Guide approved',
         guide_rejected: 'Guide rejected',

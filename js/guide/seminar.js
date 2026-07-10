@@ -29,6 +29,7 @@ export function createGuideSeminarModule(app) {
                 pending: topics.filter(t => t.status === 'submitted').length,
                 approved: topics.filter(t => t.status === 'approved').length,
                 rejected: topics.filter(t => t.status === 'rejected').length,
+                revision: topics.filter(t => t.status === 'needs_revision').length,
                 locked,
                 lockedTopic: getLockedTopic(seminar),
                 minMet: topics.length >= MIN_SEMINAR_TOPICS
@@ -146,8 +147,8 @@ export function createGuideSeminarModule(app) {
 
                     <p class="seminar-guide-howto">
                         <i class="fas fa-info-circle"></i>
-                        Review each topic → <strong>Approve</strong> or <strong>Reject</strong> (with reason) → then
-                        <strong>Lock as final</strong> on one approved topic. Students can keep adding topics until you lock.
+                        Review each topic → <strong>Approve</strong>, <strong>Reject</strong>, or <strong>Send for edit</strong>.
+                        You can lock <strong>only one</strong> approved topic as final. Until locked, students can keep adding topics.
                     </p>
 
                     <div id="guide-seminar-students" class="seminar-guide-students">
@@ -235,15 +236,19 @@ export function createGuideSeminarModule(app) {
                         <span><strong>${st.pending}</strong> pending</span>
                         <span><strong>${st.approved}</strong> approved</span>
                         <span><strong>${st.rejected}</strong> rejected</span>
+                        ${st.revision ? `<span><strong>${st.revision}</strong> with student for edit</span>` : ''}
                     </div>
 
                     ${st.lockedTopic ? `
                         <div class="seminar-final-topic-banner">
                             <i class="fas fa-lock"></i>
                             <div>
-                                <strong>Final selected topic</strong>
+                                <strong>Final selected topic (only one can be locked)</strong>
                                 <p>${escapeHtml(st.lockedTopic.title)}</p>
                             </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideUnlockSeminarTopics('${escapeHtml(student.id)}')">
+                                <i class="fas fa-unlock"></i> Unlock
+                            </button>
                         </div>
                     ` : ''}
 
@@ -257,6 +262,7 @@ export function createGuideSeminarModule(app) {
             const statusLabel = isLocked ? 'Locked (final)' : statusBadge(topic.status);
             const canLock = !locked && topic.status === 'approved';
             const statusClass = isLocked ? 'locked' : topic.status;
+            const canRevert = !isLocked && topic.status !== 'needs_revision';
 
             return `
                 <div class="seminar-topic-card seminar-topic-status-${escapeHtml(statusClass)} ${isLocked ? 'seminar-topic-locked' : ''}">
@@ -270,21 +276,38 @@ export function createGuideSeminarModule(app) {
                     ` : ''}
                     ${!locked ? `
                         <div class="seminar-guide-actions">
-                            ${topic.status !== 'approved' ? `
+                            ${topic.status !== 'approved' && topic.status !== 'needs_revision' ? `
                                 <button type="button" class="btn btn-sm btn-primary" onclick="app.guideApproveSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')">
                                     <i class="fas fa-check"></i> Approve
                                 </button>
                             ` : ''}
-                            ${topic.status !== 'rejected' ? `
+                            ${topic.status !== 'rejected' && topic.status !== 'needs_revision' ? `
                                 <button type="button" class="btn btn-sm btn-danger" onclick="app.guideRejectSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')">
                                     <i class="fas fa-times"></i> Reject
                                 </button>
                             ` : ''}
+                            ${canRevert ? `
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideRevertSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')">
+                                    <i class="fas fa-undo"></i> Send for edit
+                                </button>
+                            ` : ''}
                             ${canLock ? `
-                                <button type="button" class="btn btn-sm btn-success" onclick="app.guideLockSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')">
+                                <button type="button" class="btn btn-sm btn-success" onclick="app.guideLockSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')" title="Only one topic can be locked as final">
                                     <i class="fas fa-lock"></i> Lock as final
                                 </button>
                             ` : ''}
+                        </div>
+                        ${topic.status === 'approved' && !locked ? `
+                            <p class="form-hint" style="margin-top:0.4rem;">Only one topic can be locked. Locking this will set it as the final topic.</p>
+                        ` : ''}
+                        ${topic.status === 'needs_revision' ? `
+                            <p class="form-hint" style="margin-top:0.4rem;"><i class="fas fa-user-edit"></i> Waiting for student to edit and resubmit.</p>
+                        ` : ''}
+                    ` : isLocked ? `
+                        <div class="seminar-guide-actions">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideRevertSeminarTopic('${escapeHtml(student.id)}','${escapeHtml(topic.id)}')">
+                                <i class="fas fa-undo"></i> Unlock &amp; send for edit
+                            </button>
                         </div>
                     ` : ''}
                 </div>
@@ -345,7 +368,7 @@ export function createGuideSeminarModule(app) {
         },
 
         async guideLockSeminarTopic(studentId, topicId) {
-            if (!confirm('Lock this as the final topic? The student will not be able to add more topics.')) {
+            if (!confirm('Lock this as the only final topic? The student will not be able to add more topics, and no other topic can be locked.')) {
                 return;
             }
             const ref = doc(window.firebaseDb, 'userData', studentId);
@@ -354,7 +377,7 @@ export function createGuideSeminarModule(app) {
             if (!data.seminar) data.seminar = getDefaultSeminar();
             ensureSeminarTopics(data.seminar);
             if (isSeminarTopicsLocked(data.seminar)) {
-                alert('A topic is already locked for this student.');
+                alert('A topic is already locked for this student. Unlock it first if you need to change the final topic.');
                 return;
             }
             const topic = (data.seminar.topics || []).find(t => t.id === topicId);
@@ -363,6 +386,7 @@ export function createGuideSeminarModule(app) {
                 alert('Only an approved topic can be locked as final.');
                 return;
             }
+            // Enforce single lock
             data.seminar.lockedTopicId = topicId;
             data.seminar.topicsLockedAt = new Date().toISOString();
             data.seminar.topic = {
@@ -373,7 +397,51 @@ export function createGuideSeminarModule(app) {
                 submittedAt: topic.submittedAt || null
             };
             await setDoc(ref, { seminar: data.seminar }, { merge: true });
-            alert('Final topic locked successfully.');
+            alert('Final topic locked. Only this one topic is selected.');
+            await this.loadGuideSeminar();
+        },
+
+        async guideUnlockSeminarTopics(studentId) {
+            if (!confirm('Unlock topics for this student? They will be able to add topics again, and you can lock a different final topic later.')) {
+                return;
+            }
+            const ref = doc(window.firebaseDb, 'userData', studentId);
+            const snap = await getDoc(ref);
+            const data = snap.exists() ? snap.data() : {};
+            if (!data.seminar) data.seminar = getDefaultSeminar();
+            ensureSeminarTopics(data.seminar);
+            data.seminar.lockedTopicId = null;
+            data.seminar.topicsLockedAt = null;
+            if (data.seminar.topic) {
+                data.seminar.topic.status = 'guide_approved';
+            }
+            await setDoc(ref, { seminar: data.seminar }, { merge: true });
+            await this.loadGuideSeminar();
+        },
+
+        async guideRevertSeminarTopic(studentId, topicId) {
+            const fb = prompt('Comment for the student (what to change):');
+            if (fb === null) return;
+            const reason = fb.trim() || 'Please revise this topic and resubmit.';
+            const ref = doc(window.firebaseDb, 'userData', studentId);
+            const snap = await getDoc(ref);
+            const data = snap.exists() ? snap.data() : {};
+            if (!data.seminar) data.seminar = getDefaultSeminar();
+            ensureSeminarTopics(data.seminar);
+            const topic = (data.seminar.topics || []).find(t => t.id === topicId);
+            if (!topic) { alert('Topic not found.'); return; }
+
+            // If this was the locked final topic, unlock so student can edit
+            if (data.seminar.lockedTopicId === topicId) {
+                data.seminar.lockedTopicId = null;
+                data.seminar.topicsLockedAt = null;
+            }
+
+            topic.status = 'needs_revision';
+            topic.guideFeedback = reason;
+            topic.reviewedAt = new Date().toISOString();
+            await setDoc(ref, { seminar: data.seminar }, { merge: true });
+            alert('Topic sent back to the student for editing.');
             await this.loadGuideSeminar();
         },
 
@@ -384,7 +452,7 @@ export function createGuideSeminarModule(app) {
             alert('Reject individual topics from the list.');
         },
         async guideFinalApproveTopic() {
-            alert('Use “Lock as final” on an approved topic.');
+            alert('Use “Lock as final” on an approved topic. Only one topic can be locked.');
         },
 
         async guideApprovePaper(studentId, paperId) {

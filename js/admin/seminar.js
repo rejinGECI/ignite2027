@@ -1082,6 +1082,300 @@ export function createAdminSeminarModule(app) {
             a.href = URL.createObjectURL(blob);
             a.download = `seminar-report-${new Date().toISOString().split('T')[0]}.csv`;
             a.click();
+        },
+
+        seminarReportShell(title, bodyHtml) {
+            const generatedOn = new Date().toLocaleDateString('en-IN', {
+                day: '2-digit', month: 'long', year: 'numeric'
+            });
+            return `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>${escapeHtml(title)}</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Lato:wght@400;500;600;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            @page { size: A4; margin: 1cm; }
+                            body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        }
+                        body {
+                            font-family: 'Lato', sans-serif;
+                            color: #2d3748;
+                            line-height: 1.5;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #ffffff;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    </style>
+                </head>
+                <body>
+                    <div style="max-width: 900px; margin: 20px auto; padding: 20px; background: #ffffff;">
+                        <div style="text-align: center; margin-bottom: 30px; padding: 30px; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06);">
+                            <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">DEPARTMENT OF INFORMATION TECHNOLOGY</div>
+                            <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">GOVERNMENT ENGINEERING COLLEGE IDUKKI</div>
+                            <div style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 20px; letter-spacing: 1.5px; color: #1f2937; text-transform: uppercase;">SEMINAR MODULE</div>
+                            <div style="font-family: 'Lato', sans-serif; font-size: 24px; font-weight: 700; margin-top: 20px; padding: 15px 35px; background: #f8fafc; border-radius: 12px; display: inline-block; color: #1f2937; border: 2px solid rgba(0, 0, 0, 0.08);">
+                                ${escapeHtml(title)}
+                            </div>
+                        </div>
+                        ${bodyHtml}
+                        <div style="margin-top: 20px; text-align: right; font-size: 11px; color: #6b7280; padding-top: 12px; border-top: 1px solid #e5e7eb; font-family: 'Lato', sans-serif; font-weight: 500;">
+                            Generated on: ${escapeHtml(generatedOn)}
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+        },
+
+        async getSeminarTopicReportContext() {
+            const settings = await this.getSeminarSettings();
+            const students = await this.fetchSeminarStudents();
+            const guides = await this.fetchGuides();
+            const guideMap = Object.fromEntries(guides.map(g => [g.id, g]));
+            students.forEach(s => ensureSeminarTopics(s.seminar));
+            students.sort((a, b) => a.name.localeCompare(b.name));
+            return { settings, students, guides, guideMap };
+        },
+
+        buildSeminarTopicSubmissionsReportHtml(students, settings, guideMap) {
+            let totalTopics = 0;
+            let studentsWithTopics = 0;
+            const sections = students.map(s => {
+                const topics = s.seminar.topics || [];
+                if (topics.length) studentsWithTopics += 1;
+                totalTopics += topics.length;
+                const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                const guide = guideMap[gid];
+                const rows = topics.length
+                    ? topics.map((t, idx) => `
+                        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                            <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(t.title)}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(t.description || '—')}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(statusBadge(t.status))}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${t.submittedAt ? escapeHtml(new Date(t.submittedAt).toLocaleDateString('en-IN')) : '—'}</td>
+                        </tr>
+                    `).join('')
+                    : `<tr><td colspan="5" style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px;">No topics submitted</td></tr>`;
+
+                return `
+                    <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-inside: avoid;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 6px 0; color: #1f2937; border-left: 4px solid #6366f1; padding-left: 12px;">
+                            ${escapeHtml(s.name)} <span style="font-weight: 500; color: #6b7280; font-size: 13px;">(${escapeHtml(s.ktuid)})</span>
+                        </h3>
+                        <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 12px 16px;">
+                            Guide: ${escapeHtml(guide?.name || '—')} · Topics: ${topics.length}
+                        </p>
+                        <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb; width: 6%;">#</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 22%;">Title</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Description</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 14%;">Status</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 12%;">Submitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+
+            const summary = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; gap: 8px;">
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">Students:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${students.length}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">With submissions:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${studentsWithTopics}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">Total topics:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${totalTopics}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return this.seminarReportShell('Topic Submissions Report', summary + sections);
+        },
+
+        buildSeminarTopicApprovalsReportHtml(students, settings, guideMap) {
+            let approved = 0;
+            let rejected = 0;
+            let pending = 0;
+            let revision = 0;
+            const rows = [];
+
+            students.forEach(s => {
+                const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                const guide = guideMap[gid];
+                (s.seminar.topics || []).forEach(t => {
+                    if (t.status === 'approved') approved += 1;
+                    else if (t.status === 'rejected') rejected += 1;
+                    else if (t.status === 'needs_revision') revision += 1;
+                    else pending += 1;
+                    rows.push({ s, t, guide });
+                });
+            });
+
+            rows.sort((a, b) =>
+                (a.guide?.name || '').localeCompare(b.guide?.name || '') ||
+                a.s.name.localeCompare(b.s.name) ||
+                a.t.title.localeCompare(b.t.title)
+            );
+
+            const tableRows = rows.length
+                ? rows.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 10px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guide?.name || '—')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.t.title)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(statusBadge(r.t.status))}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.t.guideFeedback || '—')}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No topics found.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${approved}</div><div style="font-size: 11px; color: #047857;">Approved</div></div>
+                        <div style="padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #dc2626;">${rejected}</div><div style="font-size: 11px; color: #b91c1c;">Rejected</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${pending}</div><div style="font-size: 11px; color: #1d4ed8;">Pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${revision}</div><div style="font-size: 11px; color: #b45309;">Needs edit</div></div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">Guide Topic Approvals</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Topic</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Decision</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Guide Topic Approvals Report', body);
+        },
+
+        buildSeminarLockedTopicsReportHtml(students, settings, guideMap) {
+            const lockedRows = students
+                .map(s => {
+                    const locked = getLockedTopic(s.seminar);
+                    if (!locked) return null;
+                    const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                    return { s, locked, guide: guideMap[gid], lockedAt: s.seminar.topicsLockedAt };
+                })
+                .filter(Boolean)
+                .sort((a, b) => (a.guide?.name || '').localeCompare(b.guide?.name || '') || a.s.name.localeCompare(b.s.name));
+
+            const unlockedCount = students.length - lockedRows.length;
+
+            const tableRows = lockedRows.length
+                ? lockedRows.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guide?.name || '—')}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.locked.title)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.locked.description || '—')}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${r.lockedAt ? escapeHtml(new Date(r.lockedAt).toLocaleDateString('en-IN')) : '—'}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No topics locked yet.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; gap: 8px;">
+                        <div style="display: flex; padding: 10px 14px; background: #ecfdf5; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Students with locked topic:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${lockedRows.length}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #fffbeb; border-radius: 8px; border-left: 3px solid #d97706;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Not yet locked:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${unlockedCount}</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #6366f1; padding-left: 12px;">Locked Final Topics</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Final topic</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Description</th>
+                                <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Locked on</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Locked Topics Report', body);
+        },
+
+        async generateSeminarTopicSubmissionsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarTopicSubmissionsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Topic Submissions Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating topic submissions report. Please allow popups and try again.');
+            }
+        },
+
+        async generateSeminarTopicApprovalsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarTopicApprovalsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Guide Topic Approvals Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating topic approvals report. Please allow popups and try again.');
+            }
+        },
+
+        async generateSeminarLockedTopicsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarLockedTopicsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Locked Topics Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating locked topics report. Please allow popups and try again.');
+            }
         }
     };
 }

@@ -105,7 +105,31 @@ export function createSeminarModule(app) {
             }).join('');
 
             const topicsHtml = topics.length
-                ? topics.map((t, idx) => `
+                ? topics.map((t, idx) => {
+                    if (t.status === 'needs_revision' && !locked) {
+                        return `
+                            <div class="seminar-topic-card seminar-topic-status-needs_revision" data-topic-id="${escapeHtml(t.id)}">
+                                <div class="seminar-topic-card-header">
+                                    <strong>${idx + 1}. Edit topic</strong>
+                                    <span class="badge badge-needs_revision">Needs edit</span>
+                                </div>
+                                ${t.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(t.guideFeedback)}</p>` : ''}
+                                <div class="seminar-edit-topic-form">
+                                    <div class="form-group">
+                                        <label><strong>Topic title</strong></label>
+                                        <input type="text" class="form-input seminar-edit-title" value="${escapeHtml(t.title)}" data-topic-id="${escapeHtml(t.id)}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label><strong>Description</strong></label>
+                                        <textarea class="form-input seminar-edit-description" rows="3" data-topic-id="${escapeHtml(t.id)}">${escapeHtml(t.description || '')}</textarea>
+                                    </div>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="app.resubmitSeminarTopic('${escapeHtml(t.id)}')">
+                                        <i class="fas fa-paper-plane"></i> Save &amp; resubmit
+                                    </button>
+                                </div>
+                            </div>`;
+                    }
+                    return `
                     <div class="seminar-topic-card ${lockedTopic?.id === t.id ? 'seminar-topic-locked' : ''} seminar-topic-status-${escapeHtml(t.status)}">
                         <div class="seminar-topic-card-header">
                             <strong>${idx + 1}. ${escapeHtml(t.title)}</strong>
@@ -113,8 +137,8 @@ export function createSeminarModule(app) {
                         </div>
                         <p class="seminar-topic-desc">${escapeHtml(t.description || '')}</p>
                         ${t.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(t.guideFeedback)}</p>` : ''}
-                    </div>
-                `).join('')
+                    </div>`;
+                }).join('')
                 : '<p class="form-hint">No topics submitted yet. Add at least 5 seminar topics with a short description.</p>';
 
             const presenterParams = settings?.scoringParams?.presenter || [];
@@ -257,6 +281,46 @@ export function createSeminarModule(app) {
             } else {
                 alert(`Topic added. You have ${count} topics submitted for guide review.`);
             }
+            await this.loadSeminar();
+        },
+
+        async resubmitSeminarTopic(topicId) {
+            const card = document.querySelector(`.seminar-topic-card[data-topic-id="${topicId}"]`);
+            const title = (card?.querySelector('.seminar-edit-title')?.value
+                || document.querySelector(`.seminar-edit-title[data-topic-id="${topicId}"]`)?.value
+                || '').trim();
+            const description = (card?.querySelector('.seminar-edit-description')?.value
+                || document.querySelector(`.seminar-edit-description[data-topic-id="${topicId}"]`)?.value
+                || '').trim();
+
+            if (!title) { alert('Enter a topic title.'); return; }
+            if (!description) { alert('Enter a short description.'); return; }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+
+            if (isSeminarTopicsLocked(seminar) && seminar.lockedTopicId === topicId) {
+                alert('This topic is locked. Contact your guide if you need changes.');
+                return;
+            }
+
+            ensureSeminarTopics(seminar);
+            const topic = seminar.topics.find(t => t.id === topicId);
+            if (!topic) { alert('Topic not found.'); return; }
+            if (topic.status !== 'needs_revision') {
+                alert('This topic is not open for editing.');
+                return;
+            }
+
+            topic.title = title;
+            topic.description = description;
+            topic.status = 'submitted';
+            topic.submittedAt = new Date().toISOString();
+            topic.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('Topic updated and resubmitted for guide review.');
             await this.loadSeminar();
         },
 
