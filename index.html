@@ -141,6 +141,7 @@
                 <li id="nav-dashboard" class="student-nav"><a href="#" class="nav-link active" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
                 <li id="admin-progress-nav" style="display: none;"><a href="#" class="nav-link active" data-page="admin-progress"><i class="fas fa-chart-line"></i> Progress</a></li>
                 <li id="admin-forge-lab-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-forge-lab"><i class="fas fa-fire"></i> Forge Lab</a></li>
+                <li id="admin-seminar-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-seminar"><i class="fas fa-chalkboard-teacher"></i> Seminar</a></li>
                 <li id="admin-dash-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-dashboard"><i class="fas fa-users"></i> Students</a></li>
                 <li id="admin-miniproject-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject"><i class="fas fa-project-diagram"></i> Mini Projects</a></li>
                 <li id="admin-miniproject-settings-nav" style="display: none;"><a href="#" class="nav-link" data-page="admin-miniproject-settings"><i class="fas fa-cog"></i> Mini Project Settings</a></li>
@@ -148,12 +149,14 @@
                 <li id="guide-dashboard-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-dashboard"><i class="fas fa-user-tie"></i> Guide Dashboard</a></li>
                 <li id="guide-project-planning-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-project-planning"><i class="fas fa-tasks"></i> Project Planning</a></li>
                 <li id="guide-evaluator-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-evaluator"><i class="fas fa-clipboard-check"></i> Project Evaluation</a></li>
+                <li id="guide-seminar-nav" style="display: none;"><a href="#" class="nav-link" data-page="guide-seminar"><i class="fas fa-chalkboard-teacher"></i> Seminar</a></li>
                 <li id="nav-miniproject" class="student-nav" style="display: none;"><a href="#" class="nav-link" data-page="miniproject"><i class="fas fa-project-diagram"></i> Mini Project</a></li>
                 <li id="nav-dreams" class="student-nav"><a href="#" class="nav-link" data-page="dreams"><i class="fas fa-star"></i> My Dream Life</a></li>
                 <li id="nav-progress" class="student-nav"><a href="#" class="nav-link" data-page="progress"><i class="fas fa-tasks"></i> Daily Progress</a></li>
                 <li id="nav-stats" class="student-nav"><a href="#" class="nav-link" data-page="stats"><i class="fas fa-chart-bar"></i> Statistics</a></li>
                 <li id="nav-habits" class="student-nav"><a href="#" class="nav-link" data-page="habits"><i class="fas fa-book"></i> Habits</a></li>
                 <li id="nav-forge-lab" class="student-nav"><a href="#" class="nav-link" data-page="forge-lab"><i class="fas fa-fire"></i> Forge Lab</a></li>
+                <li id="nav-seminar" class="student-nav"><a href="#" class="nav-link" data-page="seminar"><i class="fas fa-chalkboard-teacher"></i> Seminar</a></li>
                 <li id="nav-feedback" class="student-nav"><a href="#" class="nav-link" data-page="feedback"><i class="fas fa-comments"></i> Feedback</a></li>
                 <li><a href="#" class="nav-link" onclick="app.logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
@@ -907,6 +910,126 @@ Bob Johnson,GHI789</pre>
 
                 <div id="forge-lab-admin-students" class="forge-lab-admin-students-list"></div>
             </div>
+
+            <!-- Student Seminar Page -->
+            <div id="seminar" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-chalkboard-teacher"></i> Seminar</h1>
+                    <p class="subtitle">Presentation, research organisation, and interactive questioning</p>
+                </div>
+                <div id="seminar-content"></div>
+            </div>
+
+            <!-- Admin Seminar Page -->
+            <div id="admin-seminar" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-chalkboard-teacher"></i> Seminar Management</h1>
+                    <p class="subtitle">Guide allotment, schedule, presentations, scoring &amp; reports</p>
+                </div>
+
+                <div class="seminar-admin-tabs">
+                    <button type="button" class="seminar-admin-tab active" data-tab="overview">Overview</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="allotment">Allotment</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="schedule">Schedule &amp; Slots</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="scoring">Scoring</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="students">Students</button>
+                </div>
+
+                <div id="seminar-admin-overview" class="seminar-admin-panel active"></div>
+
+                <div id="seminar-admin-allotment" class="seminar-admin-panel">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-random"></i> Random guide allotment</h3>
+                        <p class="form-hint">Assigns each student to a faculty guide at random with equal load across all guides (difference of at most one student per faculty).</p>
+                        <button type="button" class="btn btn-primary" onclick="app.randomAllotSeminarGuides()">
+                            <i class="fas fa-random"></i> Allot guides (equal faculty load)
+                        </button>
+                    </div>
+                    <div class="admin-card" style="margin-top: 1rem;">
+                        <h3><i class="fas fa-file-pdf"></i> Guide allotment report</h3>
+                        <p class="form-hint">Download a formatted PDF after allotment (same style as mini project reports). Includes faculty-wise breakdown and full student list.</p>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarGuideAllotmentReport()">
+                                <i class="fas fa-file-pdf"></i> Download guide allotment report (PDF)
+                            </button>
+                        </div>
+                        <div id="seminar-guide-allotment-summary"></div>
+                    </div>
+                    <div class="admin-card" style="margin-top: 1rem;">
+                        <h3><i class="fas fa-random"></i> Random presentation slots</h3>
+                        <p class="form-hint">Assigns presentation slots to students at random. Save slots in Schedule tab first.</p>
+                        <button type="button" class="btn btn-primary" onclick="app.randomAllotSeminarPresentations()">
+                            <i class="fas fa-random"></i> Allot presentation slots
+                        </button>
+                    </div>
+                </div>
+
+                <div id="seminar-admin-schedule" class="seminar-admin-panel">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-calendar-alt"></i> Tentative schedule</h3>
+                        <div id="seminar-admin-schedule-form"></div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button type="button" class="btn btn-primary" onclick="app.saveSeminarSchedule()">Save schedule</button>
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarScheduleReport()">
+                                <i class="fas fa-file-pdf"></i> Download schedule report (PDF)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="admin-card" style="margin-top: 1rem;">
+                        <h3><i class="fas fa-clock"></i> Presentation slots</h3>
+                        <div id="slot-rows-seminar-slots" class="forge-lab-custom-slots">
+                            <p class="form-hint forge-lab-no-slots-msg">No presentation slots yet.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary" style="margin-top: 0.75rem;" onclick="app.addSeminarSlotRow()">Add slot</button>
+                        <button type="button" class="btn btn-primary" style="margin-top: 0.75rem; margin-left: 0.5rem;" onclick="app.saveSeminarPresentationSlots()">Save slots</button>
+                    </div>
+                </div>
+
+                <div id="seminar-admin-scoring" class="seminar-admin-panel">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-microphone"></i> Presenter parameters</h3>
+                        <p class="form-hint">Skills: presentation delivery, organisation &amp; insights (default max 40).</p>
+                        <div id="seminar-scoring-presenter"></div>
+                    </div>
+                    <div class="admin-card" style="margin-top: 1rem;">
+                        <h3><i class="fas fa-question-circle"></i> Question-asker parameters</h3>
+                        <p class="form-hint">Skills: interaction &amp; understanding through questions (default max 15 per question).</p>
+                        <div id="seminar-scoring-questioner"></div>
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label><strong>Questions per presentation</strong></label>
+                            <input type="number" id="seminar-questions-per-pres" class="form-input" min="1" max="10" value="3" style="max-width: 100px;">
+                        </div>
+                        <button type="button" class="btn btn-primary" style="margin-top: 0.75rem;" onclick="app.saveSeminarScoringParams()">Save scoring setup</button>
+                    </div>
+                </div>
+
+                <div id="seminar-admin-students" class="seminar-admin-panel">
+                    <div class="admin-controls" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
+                        <input type="text" id="search-seminar-students" placeholder="Search students by name or KTU ID..." class="search-input" style="flex: 1; max-width: 400px;">
+                        <button type="button" class="btn btn-secondary" onclick="app.generateSeminarReport()">
+                            <i class="fas fa-file-csv"></i> Download CSV report
+                        </button>
+                    </div>
+                    <div id="seminar-admin-students-list" class="forge-lab-admin-students-list"></div>
+                </div>
+            </div>
+
+            <!-- Guide Seminar Page -->
+            <div id="guide-seminar" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-chalkboard-teacher"></i> Seminar Reviews</h1>
+                    <p class="subtitle">Review student topics — approve, reject, and lock the final selection</p>
+                </div>
+                <div id="guide-seminar-content"></div>
+            </div>
+
+            <!-- Seminar evaluation modal -->
+            <div id="seminar-eval-modal" class="modal" style="display: none;">
+                <div class="modal-content modal-large">
+                    <div id="seminar-eval-body"></div>
+                </div>
+            </div>
+
             <!-- Mini Project Pages -->
             
             <!-- Admin Mini Project Settings Page -->

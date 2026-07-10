@@ -51,6 +51,9 @@ import { createGuideProjectPlanningModule } from './js/guide/project-planning.js
 import { createGuideEvaluatorModule } from './js/guide/evaluator.js';
 import { createForgeLabModule } from './js/components/forgeLab.js';
 import { createAdminForgeLabModule } from './js/admin/forgeLab.js';
+import { createSeminarModule } from './js/components/seminar.js';
+import { createAdminSeminarModule } from './js/admin/seminar.js';
+import { createGuideSeminarModule } from './js/guide/seminar.js';
 
 // Application State
 // Define app object first, then make it global
@@ -251,6 +254,10 @@ const app = {
             if (adminForgeLabNav) {
                 adminForgeLabNav.style.display = 'block';
             }
+            const adminSeminarNav = document.getElementById('admin-seminar-nav');
+            if (adminSeminarNav) {
+                adminSeminarNav.style.display = 'block';
+            }
             
             // Hide guide navigation
             const guideNav = document.getElementById('guide-dashboard-nav');
@@ -261,7 +268,7 @@ const app = {
             // Restore saved page or default to admin progress (home page)
             const savedPage = localStorage.getItem('currentPage');
             // Only use saved page if it's a valid admin page, otherwise default to progress
-            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-forge-lab', 'admin-miniproject', 'admin-miniproject-settings'];
+            const validAdminPages = ['admin-progress', 'admin-dashboard', 'admin-forge-lab', 'admin-seminar', 'admin-miniproject', 'admin-miniproject-settings'];
             const defaultPage = (savedPage && validAdminPages.includes(savedPage)) ? savedPage : 'admin-progress';
             
             // Make Progress nav active by default or saved page
@@ -302,6 +309,14 @@ const app = {
             if (adminForgeLabNav) {
                 adminForgeLabNav.style.display = 'none';
             }
+            const adminSeminarNav = document.getElementById('admin-seminar-nav');
+            if (adminSeminarNav) {
+                adminSeminarNav.style.display = 'none';
+            }
+            const guideSeminarNavHide = document.getElementById('guide-seminar-nav');
+            if (guideSeminarNavHide) {
+                guideSeminarNavHide.style.display = 'none';
+            }
             document.querySelectorAll('.student-nav').forEach(nav => {
                 nav.style.display = 'none';
             });
@@ -320,6 +335,10 @@ const app = {
             const guideEvaluatorNav = document.getElementById('guide-evaluator-nav');
             if (guideEvaluatorNav) {
                 guideEvaluatorNav.style.display = isEvaluator ? 'block' : 'none';
+            }
+            const guideSeminarNav = document.getElementById('guide-seminar-nav');
+            if (guideSeminarNav) {
+                guideSeminarNav.style.display = 'block';
             }
             
             // Hide user info for guide
@@ -373,6 +392,14 @@ const app = {
             const guideProjectPlanningNav = document.getElementById('guide-project-planning-nav');
             if (guideProjectPlanningNav) {
                 guideProjectPlanningNav.style.display = 'none';
+            }
+            const guideSeminarNavStudent = document.getElementById('guide-seminar-nav');
+            if (guideSeminarNavStudent) {
+                guideSeminarNavStudent.style.display = 'none';
+            }
+            const adminSeminarNavStudent = document.getElementById('admin-seminar-nav');
+            if (adminSeminarNavStudent) {
+                adminSeminarNavStudent.style.display = 'none';
             }
             // Show all student navigation items
             document.querySelectorAll('.student-nav').forEach(nav => {
@@ -472,6 +499,18 @@ const app = {
                 const userDoc = await getDoc(doc(window.firebaseDb, 'users', userCredential.user.uid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
+                    if (userData.role === 'deleted') {
+                        await signOut(window.firebaseAuth);
+                        errorDiv.innerHTML = `
+                            <div style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                                <strong style="color: #991b1b;">⚠️ Account Removed</strong><br>
+                                <p style="margin: 8px 0; color: #7f1d1d; font-size: 0.9rem;">
+                                    This student account has been deleted. Contact your administrator if you believe this is a mistake.
+                                </p>
+                            </div>
+                        `;
+                        return;
+                    }
                     this.userRole = userData.role || 'student';
                     this.isAdmin = this.userRole === 'admin';
                     this.isGuide = this.userRole === 'guide';
@@ -967,7 +1006,7 @@ const app = {
     showPage: async function(pageId) {
         try {
             // Prevent non-admins from accessing admin pages
-            const adminPages = ['admin-dashboard', 'admin-progress', 'admin-forge-lab', 'admin-miniproject', 'admin-miniproject-settings', 'admin-settings'];
+            const adminPages = ['admin-dashboard', 'admin-progress', 'admin-forge-lab', 'admin-seminar', 'admin-miniproject', 'admin-miniproject-settings', 'admin-settings'];
             if (adminPages.includes(pageId) && !this.isAdmin && this.userRole !== 'admin') {
                 console.warn('Access denied: Admin pages require admin privileges');
                 // Redirect to appropriate page
@@ -1022,6 +1061,12 @@ const app = {
                     await this.renderCustomHabits();
                 } else if (pageId === 'forge-lab') {
                     await this.loadForgeLab();
+                } else if (pageId === 'seminar') {
+                    await this.loadSeminar();
+                } else if (pageId === 'admin-seminar') {
+                    await this.loadSeminarAdmin();
+                } else if (pageId === 'guide-seminar') {
+                    await this.loadGuideSeminar();
                 } else if (pageId === 'admin-miniproject-settings') {
                     await this.loadMiniProjectSettings();
                 } else if (pageId === 'admin-settings') {
@@ -40996,9 +41041,12 @@ const guideProjectPlanningModule = createGuideProjectPlanningModule(app);
 const guideEvaluatorModule = createGuideEvaluatorModule(app);
 const forgeLabModule = createForgeLabModule(app);
 const adminForgeLabModule = createAdminForgeLabModule(app);
+const seminarModule = createSeminarModule(app);
+const adminSeminarModule = createAdminSeminarModule(app);
+const guideSeminarModule = createGuideSeminarModule(app);
 
 // Merge module methods into app (module methods override existing ones)
-Object.assign(app, dreamsModule, activitiesModule, dashboardModule, calendarModule, habitsModule, feedbackModule, adminDashboardModule, adminProgressModule, adminSettingsModule, adminMiniProjectModule, guideDashboardModule, guideProjectPlanningModule, guideEvaluatorModule, forgeLabModule, adminForgeLabModule);
+Object.assign(app, dreamsModule, activitiesModule, dashboardModule, calendarModule, habitsModule, feedbackModule, adminDashboardModule, adminProgressModule, adminSettingsModule, adminMiniProjectModule, guideDashboardModule, guideProjectPlanningModule, guideEvaluatorModule, forgeLabModule, adminForgeLabModule, seminarModule, adminSeminarModule, guideSeminarModule);
 
 // Add escapeHtml helper if not already present
 if (!app.escapeHtml) {

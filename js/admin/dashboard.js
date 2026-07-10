@@ -1,6 +1,6 @@
 // Admin Dashboard module
 import { escapeHtml } from '../utils/helpers.js';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { doc, getDoc, updateDoc, deleteDoc, setDoc, collection, query, where, getDocs, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 export function createAdminDashboardModule(app) {
     return {
@@ -74,12 +74,15 @@ export function createAdminDashboardModule(app) {
                 }
                 
                 container.innerHTML = students.map(student => `
-                    <div class="student-card" data-student-name="${escapeHtml(student.name.toLowerCase())}" data-student-ktuid="${escapeHtml(student.username.toLowerCase())}">
+                    <div class="student-card" data-student-id="${escapeHtml(student.id)}" data-student-name="${escapeHtml(student.name.toLowerCase())}" data-student-ktuid="${escapeHtml(student.username.toLowerCase())}">
                         <div class="student-header">
                             <div>
                                 <div class="student-name">${escapeHtml(student.name)}</div>
                                 <div class="student-email">KTU ID: ${escapeHtml(student.username)}</div>
                             </div>
+                            <button type="button" class="btn btn-danger btn-sm" title="Delete student" onclick="app.deleteStudent('${escapeHtml(student.id)}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                         <div class="student-stats">
                             <div class="student-stat">
@@ -265,15 +268,110 @@ export function createAdminDashboardModule(app) {
             searchInput.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
                 document.querySelectorAll('.student-card').forEach(card => {
-                    const name = card.querySelector('.student-name').textContent.toLowerCase();
-                    const email = card.querySelector('.student-email').textContent.toLowerCase();
-                    if (name.includes(searchTerm) || email.includes(searchTerm)) {
+                    const name = card.dataset.studentName || card.querySelector('.student-name')?.textContent.toLowerCase() || '';
+                    const ktuid = card.dataset.studentKtuid || card.querySelector('.student-email')?.textContent.toLowerCase() || '';
+                    if (name.includes(searchTerm) || ktuid.includes(searchTerm)) {
                         card.style.display = 'block';
                     } else {
                         card.style.display = 'none';
                     }
                 });
             });
+        },
+
+        async cleanupStudentReferences(studentId) {
+            const seminarRef = doc(window.firebaseDb, 'settings', 'seminar');
+            const seminarSnap = await getDoc(seminarRef);
+            if (seminarSnap.exists()) {
+                const data = seminarSnap.data();
+                const updates = {};
+
+                if (data.guideAssignments?.[studentId]) {
+                    const guideAssignments = { ...data.guideAssignments };
+                    delete guideAssignments[studentId];
+                    updates.guideAssignments = guideAssignments;
+                }
+                if (data.presentationAssignments?.[studentId]) {
+                    const presentationAssignments = { ...data.presentationAssignments };
+                    delete presentationAssignments[studentId];
+                    updates.presentationAssignments = presentationAssignments;
+                }
+                if (Array.isArray(data.presentations) && data.presentations.length) {
+                    updates.presentations = data.presentations
+                        .filter(p => p.studentId !== studentId)
+                        .map(p => ({
+                            ...p,
+                            questionerIds: (p.questionerIds || []).filter(id => id !== studentId),
+                            questionerScores: Object.fromEntries(
+                                Object.entries(p.questionerScores || {}).filter(([id]) => id !== studentId)
+                            )
+                        }));
+                }
+                if (data.questionFairness?.[studentId]) {
+                    const questionFairness = { ...data.questionFairness };
+                    delete questionFairness[studentId];
+                    updates.questionFairness = questionFairness;
+                }
+
+                if (Object.keys(updates).length) {
+                    await setDoc(seminarRef, updates, { merge: true });
+                }
+            }
+
+            const teamsSnap = await getDocs(collection(window.firebaseDb, 'projectGroups'));
+            for (const teamDoc of teamsSnap.docs) {
+                const team = teamDoc.data();
+                const members = team.members || [];
+                const filtered = members.filter(m =>
+                    m.id !== studentId && m.uid !== studentId && m.studentId !== studentId
+                );
+                if (filtered.length !== members.length) {
+                    await updateDoc(teamDoc.ref, { members: filtered });
+                }
+            }
+        },
+
+        async deleteStudent(studentId) {
+            if (!app.isAdmin && app.userRole !== 'admin') {
+                alert('Only administrators can delete students.');
+                return;
+            }
+
+            const userSnap = await getDoc(doc(window.firebaseDb, 'users', studentId));
+            if (!userSnap.exists()) {
+                alert('Student not found.');
+                return;
+            }
+
+            const userData = userSnap.data();
+            if (userData.role !== 'student') {
+                alert('This account is not a student.');
+                return;
+            }
+
+            const label = userData.name || userData.username || 'this student';
+            if (!confirm(`Delete "${label}"?\n\nThis removes their profile and activity data from IGNITE. This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                await this.cleanupStudentReferences(studentId);
+                await deleteDoc(doc(window.firebaseDb, 'userData', studentId));
+                await updateDoc(doc(window.firebaseDb, 'users', studentId), {
+                    role: 'deleted',
+                    deletedAt: new Date().toISOString()
+                });
+
+                if (app.allStudents) {
+                    app.allStudents = app.allStudents.filter(s => s.id !== studentId);
+                }
+
+                await this.loadStudentsList();
+                alert('Student deleted successfully.');
+            } catch (error) {
+                console.error('Error deleting student:', error);
+                alert('Error deleting student. Please try again.');
+            }
         },
         
         async publishBookSuggestion(bookId, published) {
