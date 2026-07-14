@@ -21,7 +21,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { initializeFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getStorage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js';
         
@@ -40,7 +40,11 @@
         // Initialize Firebase
         const firebaseApp = initializeApp(firebaseConfig);
         window.firebaseAuth = getAuth(firebaseApp);
-        window.firebaseDb = getFirestore(firebaseApp);
+        // Long polling is more reliable on restricted networks / some browsers
+        window.firebaseDb = initializeFirestore(firebaseApp, {
+            experimentalForceLongPolling: true,
+            useFetchStreams: false
+        });
         // Explicit bucket avoids accidental mismatch with default bucket selection.
         window.firebaseStorage = getStorage(firebaseApp, 'gs://ignite-it27.firebasestorage.app');
         

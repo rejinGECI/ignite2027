@@ -15,6 +15,7 @@ import {
     formatPresentationSlot,
     formatTime12h,
     statusBadge,
+    MIN_SEMINAR_TOPICS,
     pickFairQuestioners,
     updateFairnessAfterPick,
     sumParamScores,
@@ -1146,12 +1147,24 @@ export function createAdminSeminarModule(app) {
         buildSeminarTopicSubmissionsReportHtml(students, settings, guideMap) {
             let totalTopics = 0;
             let studentsWithTopics = 0;
+            const belowMin = [];
+
             const sections = students.map(s => {
                 const topics = s.seminar.topics || [];
                 if (topics.length) studentsWithTopics += 1;
                 totalTopics += topics.length;
                 const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
                 const guide = guideMap[gid];
+
+                if (topics.length < MIN_SEMINAR_TOPICS) {
+                    belowMin.push({
+                        s,
+                        guide,
+                        count: topics.length,
+                        shortfall: MIN_SEMINAR_TOPICS - topics.length
+                    });
+                }
+
                 const rows = topics.length
                     ? topics.map((t, idx) => `
                         <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
@@ -1170,7 +1183,7 @@ export function createAdminSeminarModule(app) {
                             ${escapeHtml(s.name)} <span style="font-weight: 500; color: #6b7280; font-size: 13px;">(${escapeHtml(s.ktuid)})</span>
                         </h3>
                         <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 12px 16px;">
-                            Guide: ${escapeHtml(guide?.name || '—')} · Topics: ${topics.length}
+                            Guide: ${escapeHtml(guide?.name || '—')} · Topics: ${topics.length}${topics.length < MIN_SEMINAR_TOPICS ? ` (below minimum of ${MIN_SEMINAR_TOPICS})` : ''}
                         </p>
                         <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
                             <thead>
@@ -1188,23 +1201,60 @@ export function createAdminSeminarModule(app) {
                 `;
             }).join('');
 
+            belowMin.sort((a, b) => a.count - b.count || a.s.name.localeCompare(b.s.name));
+
+            const belowMinRows = belowMin.length
+                ? belowMin.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guide?.name || '—')}</td>
+                        <td style="padding: 8px 12px; text-align: center; color: #b45309; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${r.count}</td>
+                        <td style="padding: 8px 12px; text-align: center; color: #dc2626; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${r.shortfall}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="6" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have submitted at least ${MIN_SEMINAR_TOPICS} topics.</td></tr>`;
+
             const summary = `
                 <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
                     <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
                     <div style="display: grid; gap: 8px;">
                         <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">Students:</span>
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Students:</span>
                             <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${students.length}</span>
                         </div>
                         <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">With submissions:</span>
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">With submissions:</span>
                             <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${studentsWithTopics}</span>
                         </div>
                         <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
-                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 180px; font-size: 13px;">Total topics:</span>
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Total topics:</span>
                             <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${totalTopics}</span>
                         </div>
+                        <div style="display: flex; padding: 10px 14px; background: #fffbeb; border-radius: 8px; border-left: 3px solid #d97706;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Below minimum (${MIN_SEMINAR_TOPICS}):</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #b45309; font-size: 13px;">${belowMin.length}</span>
+                        </div>
                     </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with fewer than ${MIN_SEMINAR_TOPICS} topic submissions</h3>
+                    <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 14px 16px;">Minimum required: ${MIN_SEMINAR_TOPICS} topics per student</p>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 6%;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 14%;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 22%;">Guide</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 12%;">Submitted</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 12%;">Short by</th>
+                            </tr>
+                        </thead>
+                        <tbody>${belowMinRows}</tbody>
+                    </table>
                 </div>
             `;
 

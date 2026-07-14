@@ -14,7 +14,9 @@ import {
     getDaysUntilDeadline,
     getDeadlineUrgencyClass,
     statusBadge,
-    sumParamScores
+    sumParamScores,
+    normalizePaperStatus,
+    isPaperEditable
 } from '../utils/seminarConfig.js';
 
 export function createSeminarModule(app) {
@@ -165,6 +167,39 @@ export function createSeminarModule(app) {
                     </div>
                 `;
 
+            const papers = seminar.papers || [];
+            const papersHintDate = settings?.schedule?.referencePapersUpload;
+            const papersHtml = papers.length
+                ? papers.map((p, idx) => this.renderStudentPaperCard(p, idx)).join('')
+                : '<p class="form-hint">No reference papers yet. Add paper / article / resource links for guide review.</p>';
+
+            const addPaperForm = locked
+                ? `
+                    <div class="seminar-add-paper-form">
+                        <div class="form-group">
+                            <label><strong>Paper / resource title</strong></label>
+                            <input type="text" id="seminar-paper-title" class="form-input" placeholder="e.g. Attention Is All You Need">
+                        </div>
+                        <div class="form-group">
+                            <label><strong>Link (URL)</strong></label>
+                            <input type="url" id="seminar-paper-url" class="form-input" placeholder="https://...">
+                        </div>
+                        <div class="form-group">
+                            <label><strong>Type</strong></label>
+                            <select id="seminar-paper-type" class="form-input">
+                                <option value="paper">Research paper</option>
+                                <option value="article">Article / blog</option>
+                                <option value="docs">Documentation</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="app.submitSeminarPaper()">
+                            <i class="fas fa-link"></i> Add reference link
+                        </button>
+                    </div>
+                `
+                : `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> Reference paper uploads open after your guide locks a final topic.</p>`;
+
             el.innerHTML = `
                 <div class="seminar-student-page">
                     <div class="seminar-overview-strip">
@@ -233,8 +268,81 @@ export function createSeminarModule(app) {
                         <div id="seminar-topics-list" class="seminar-topics-list">${topicsHtml}</div>
                         ${addTopicForm}
                     </section>
+
+                    <section class="seminar-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-book"></i> Reference papers</h3>
+                                <p class="form-hint">
+                                    Upload links to research papers or resources your guide can verify.
+                                    ${papersHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(papersHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <strong>${papers.length}</strong> link${papers.length === 1 ? '' : 's'}
+                            </div>
+                        </div>
+                        <div id="seminar-papers-list" class="seminar-papers-list">${papersHtml}</div>
+                        ${addPaperForm}
+                    </section>
                 </div>
             `;
+        },
+
+        paperTypeLabel(type) {
+            const map = { paper: 'Research paper', article: 'Article', docs: 'Documentation', other: 'Other' };
+            return map[type] || 'Resource';
+        },
+
+        renderStudentPaperCard(paper, idx) {
+            const status = normalizePaperStatus(paper.status);
+            const editable = isPaperEditable(status);
+
+            if (editable) {
+                return `
+                    <div class="seminar-paper-card seminar-topic-status-needs_revision" data-paper-id="${escapeHtml(paper.id)}">
+                        <div class="seminar-topic-card-header">
+                            <strong>${idx + 1}. Update reference link</strong>
+                            <span class="badge badge-needs_revision">Open for upload</span>
+                        </div>
+                        ${paper.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(paper.guideFeedback)}</p>` : ''}
+                        <div class="seminar-edit-paper-form">
+                            <div class="form-group">
+                                <label><strong>Title</strong></label>
+                                <input type="text" class="form-input seminar-edit-paper-title" value="${escapeHtml(paper.title || '')}" data-paper-id="${escapeHtml(paper.id)}">
+                            </div>
+                            <div class="form-group">
+                                <label><strong>Link (URL)</strong></label>
+                                <input type="url" class="form-input seminar-edit-paper-url" value="${escapeHtml(paper.url || '')}" data-paper-id="${escapeHtml(paper.id)}">
+                            </div>
+                            <div class="form-group">
+                                <label><strong>Type</strong></label>
+                                <select class="form-input seminar-edit-paper-type" data-paper-id="${escapeHtml(paper.id)}">
+                                    <option value="paper" ${!paper.type || paper.type === 'paper' ? 'selected' : ''}>Research paper</option>
+                                    <option value="article" ${paper.type === 'article' ? 'selected' : ''}>Article / blog</option>
+                                    <option value="docs" ${paper.type === 'docs' ? 'selected' : ''}>Documentation</option>
+                                    <option value="other" ${paper.type === 'other' ? 'selected' : ''}>Other</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="app.resubmitSeminarPaper('${escapeHtml(paper.id)}')">
+                                <i class="fas fa-paper-plane"></i> Save &amp; resubmit
+                            </button>
+                        </div>
+                    </div>`;
+            }
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${idx + 1}. ${escapeHtml(paper.title || 'Untitled')}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusBadge(status))}</span>
+                    </div>
+                    <p class="seminar-paper-meta">
+                        <span class="seminar-paper-type">${escapeHtml(this.paperTypeLabel(paper.type))}</span>
+                        · <a href="${escapeHtml(paper.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(paper.url)}</a>
+                    </p>
+                    ${paper.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(paper.guideFeedback)}</p>` : ''}
+                </div>`;
         },
 
         async submitSeminarTopic() {
@@ -328,20 +436,82 @@ export function createSeminarModule(app) {
             const title = document.getElementById('seminar-paper-title')?.value.trim();
             const url = document.getElementById('seminar-paper-url')?.value.trim();
             const type = document.getElementById('seminar-paper-type')?.value || 'paper';
-            if (!title || !url) { alert('Enter title and link.'); return; }
+            if (!title) { alert('Enter a paper / resource title.'); return; }
+            if (!url) { alert('Enter a link (URL).'); return; }
+            try {
+                new URL(url);
+            } catch (e) {
+                alert('Enter a valid URL (include https://).');
+                return;
+            }
 
             const data = await app.getUserData();
             if (!data) return;
             const seminar = this.ensureSeminar(data);
+
+            if (!isSeminarTopicsLocked(seminar)) {
+                alert('Reference papers unlock after your guide locks a final topic.');
+                await this.loadSeminar();
+                return;
+            }
+
+            if (!seminar.papers) seminar.papers = [];
             seminar.papers.push({
-                id: `paper_${Date.now()}`,
-                title, url, type,
+                id: `paper_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                title,
+                url,
+                type,
                 status: 'submitted',
                 guideFeedback: '',
-                submittedAt: new Date().toISOString()
+                submittedAt: new Date().toISOString(),
+                reviewedAt: null
             });
             await app.saveUserData(data);
-            alert('Paper added for guide review.');
+            alert('Reference link submitted for guide review.');
+            await this.loadSeminar();
+        },
+
+        async resubmitSeminarPaper(paperId) {
+            const card = document.querySelector(`.seminar-paper-card[data-paper-id="${paperId}"]`);
+            const title = (card?.querySelector('.seminar-edit-paper-title')?.value
+                || document.querySelector(`.seminar-edit-paper-title[data-paper-id="${paperId}"]`)?.value
+                || '').trim();
+            const url = (card?.querySelector('.seminar-edit-paper-url')?.value
+                || document.querySelector(`.seminar-edit-paper-url[data-paper-id="${paperId}"]`)?.value
+                || '').trim();
+            const type = (card?.querySelector('.seminar-edit-paper-type')?.value
+                || document.querySelector(`.seminar-edit-paper-type[data-paper-id="${paperId}"]`)?.value
+                || 'paper');
+
+            if (!title) { alert('Enter a title.'); return; }
+            if (!url) { alert('Enter a link (URL).'); return; }
+            try {
+                new URL(url);
+            } catch (e) {
+                alert('Enter a valid URL (include https://).');
+                return;
+            }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+            if (!seminar.papers) seminar.papers = [];
+            const paper = seminar.papers.find(p => p.id === paperId);
+            if (!paper) { alert('Paper not found.'); return; }
+            if (!isPaperEditable(paper.status)) {
+                alert('This link is not open for upload. Ask your guide to open it for a new upload.');
+                return;
+            }
+
+            paper.title = title;
+            paper.url = url;
+            paper.type = type;
+            paper.status = 'submitted';
+            paper.submittedAt = new Date().toISOString();
+            paper.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('Reference link updated and resubmitted for guide review.');
             await this.loadSeminar();
         },
 

@@ -193,14 +193,31 @@ export function statusBadge(status) {
         rejected: 'Rejected',
         needs_revision: 'Needs edit',
         locked: 'Locked (final)',
-        guide_approved: 'Guide approved',
-        guide_rejected: 'Guide rejected',
+        guide_approved: 'Approved',
+        guide_rejected: 'Rejected',
         final_approved: 'Final approved',
         final_rejected: 'Rejected',
         scheduled: 'Scheduled',
         completed: 'Completed'
     };
     return map[status] || status || '—';
+}
+
+/** Normalize paper status (maps legacy guide_* values). */
+export function normalizePaperStatus(status) {
+    if (status === 'guide_approved') return 'approved';
+    if (status === 'guide_rejected') return 'rejected';
+    return status || 'submitted';
+}
+
+export function isPaperEditable(status) {
+    const s = normalizePaperStatus(status);
+    return s === 'needs_revision' || s === 'draft';
+}
+
+export function isPaperPendingReview(status) {
+    const s = normalizePaperStatus(status);
+    return s === 'submitted';
 }
 
 export function sumParamScores(scores, params) {

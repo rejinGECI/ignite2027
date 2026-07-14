@@ -137,8 +137,17 @@ const app = {
                 
                 if (user) {
                     this.currentUser = user;
-                    await this.loadUserData();
-                    this.showApp();
+                    try {
+                        await this.loadUserData();
+                        this.showApp();
+                    } catch (err) {
+                        console.error('Failed to load user data after auth:', err);
+                        const offline = err?.code === 'unavailable' || /offline/i.test(err?.message || '');
+                        alert(offline
+                            ? 'Cannot reach the database right now (offline / slow network). Check your internet connection, disable VPN if any, then refresh and try again.'
+                            : `Failed to load your account data: ${err.message || err}`);
+                        this.showLogin();
+                    }
                 } else {
                     this.showLogin();
                 }
@@ -151,50 +160,55 @@ const app = {
     
     async loadUserData() {
         if (!this.currentUser) return;
-        
-        const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
-        if (userDoc.exists()) {
-            const userData = userDoc.data();
-            this.userRole = userData.role || 'student';
-            this.isAdmin = this.userRole === 'admin';
-            this.isGuide = this.userRole === 'guide';
-            
-            // Display user name and KTU ID in navbar (for students only)
-            if (!this.isAdmin && this.userRole === 'student') {
-                const userName = userData.name || userData.username || 'Student';
-                const userKtuid = userData.username || '';
+
+        try {
+            const userDoc = await getDoc(doc(window.firebaseDb, 'users', this.currentUser.uid));
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                this.userRole = userData.role || 'student';
+                this.isAdmin = this.userRole === 'admin';
+                this.isGuide = this.userRole === 'guide';
                 
-                const userInfoDiv = document.getElementById('user-info');
-                const userNameDisplay = document.getElementById('user-name-display');
-                const userKtuidDisplay = document.getElementById('user-ktuid-display');
-                
-                if (userInfoDiv && userNameDisplay && userKtuidDisplay) {
-                    userNameDisplay.textContent = userName;
-                    userKtuidDisplay.textContent = userKtuid ? `KTU ID: ${userKtuid}` : '';
-                    userInfoDiv.style.display = 'flex';
+                // Display user name and KTU ID in navbar (for students only)
+                if (!this.isAdmin && this.userRole === 'student') {
+                    const userName = userData.name || userData.username || 'Student';
+                    const userKtuid = userData.username || '';
+                    
+                    const userInfoDiv = document.getElementById('user-info');
+                    const userNameDisplay = document.getElementById('user-name-display');
+                    const userKtuidDisplay = document.getElementById('user-ktuid-display');
+                    
+                    if (userInfoDiv && userNameDisplay && userKtuidDisplay) {
+                        userNameDisplay.textContent = userName;
+                        userKtuidDisplay.textContent = userKtuid ? `KTU ID: ${userKtuid}` : '';
+                        userInfoDiv.style.display = 'flex';
+                    }
+                } else if (this.isAdmin) {
+                    // Hide user info for admin
+                    const userInfoDiv = document.getElementById('user-info');
+                    if (userInfoDiv) {
+                        userInfoDiv.style.display = 'none';
+                    }
+                    
+                    // Load students list for admin
+                    await this.loadStudentsList();
                 }
-            } else if (this.isAdmin) {
-                // Hide user info for admin
-                const userInfoDiv = document.getElementById('user-info');
-                if (userInfoDiv) {
-                    userInfoDiv.style.display = 'none';
-                }
-                
-                // Load students list for admin
-                await this.loadStudentsList();
             }
-        }
-        
-        // Only load student-specific data if not admin
-        if (!this.isAdmin) {
-        await this.updateDashboard();
-        await this.updateStatistics();
-        this.renderCalendar();
-        this.renderRecentActivities();
-        this.renderTodayActivities();
-        this.renderFeedbackNotes();
-        this.renderCustomHabits();
-        await this.loadDreams();
+            
+            // Only load student-specific data if not admin
+            if (!this.isAdmin) {
+                await this.updateDashboard();
+                await this.updateStatistics();
+                this.renderCalendar();
+                this.renderRecentActivities();
+                this.renderTodayActivities();
+                this.renderFeedbackNotes();
+                this.renderCustomHabits();
+                await this.loadDreams();
+            }
+        } catch (err) {
+            console.error('loadUserData failed:', err);
+            throw err;
         }
     },
     
