@@ -22,7 +22,7 @@ import {
     sumParamScores,
     equallyAllotGuidesToStudents,
     buildSeminarGuideAllotmentGroups
-} from '../utils/seminarConfig.js';
+} from '../utils/seminarConfig.js?v=ta1';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',

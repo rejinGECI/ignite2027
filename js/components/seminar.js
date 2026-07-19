@@ -19,7 +19,7 @@ import {
     isPaperEditable,
     ensureTitleAbstract,
     hasTitleAbstractSubmission
-} from '../utils/seminarConfig.js';
+} from '../utils/seminarConfig.js?v=ta1';
 
 export function createSeminarModule(app) {
     return {
@@ -276,6 +276,22 @@ export function createSeminarModule(app) {
                         ${addTopicForm}
                     </section>
 
+                    <section class="seminar-section seminar-section-primary" id="seminar-title-abstract-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-align-left"></i> Title &amp; abstract</h3>
+                                <p class="form-hint">
+                                    Submit the seminar title and abstract for guide approval.
+                                    ${titleAbstractHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(titleAbstractHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <span class="badge badge-${escapeHtml(normalizePaperStatus(titleAbstract.status))}">${escapeHtml(statusBadge(normalizePaperStatus(titleAbstract.status)))}</span>
+                            </div>
+                        </div>
+                        <div id="seminar-title-abstract">${titleAbstractHtml}</div>
+                    </section>
+
                     <section class="seminar-section">
                         <div class="seminar-section-header">
                             <div>
@@ -291,22 +307,6 @@ export function createSeminarModule(app) {
                         </div>
                         <div id="seminar-papers-list" class="seminar-papers-list">${papersHtml}</div>
                         ${addPaperForm}
-                    </section>
-
-                    <section class="seminar-section">
-                        <div class="seminar-section-header">
-                            <div>
-                                <h3><i class="fas fa-align-left"></i> Title &amp; abstract</h3>
-                                <p class="form-hint">
-                                    Submit the seminar title and abstract for guide approval.
-                                    ${titleAbstractHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(titleAbstractHintDate))}</strong>.` : ''}
-                                </p>
-                            </div>
-                            <div class="seminar-progress-meta">
-                                <span class="badge badge-${escapeHtml(normalizePaperStatus(titleAbstract.status))}">${escapeHtml(statusBadge(normalizePaperStatus(titleAbstract.status)))}</span>
-                            </div>
-                        </div>
-                        <div id="seminar-title-abstract">${titleAbstractHtml}</div>
                     </section>
                 </div>
             `;

@@ -11,7 +11,7 @@ import {
     normalizePaperStatus,
     isPaperPendingReview,
     ensureTitleAbstract
-} from '../utils/seminarConfig.js';
+} from '../utils/seminarConfig.js?v=ta1';
 
 export function createGuideSeminarModule(app) {
     return {
