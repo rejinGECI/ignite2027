@@ -1023,6 +1023,18 @@ Bob Johnson,GHI789</pre>
                             </button>
                         </div>
                     </div>
+                    <div class="admin-card" style="margin-bottom: 1rem;">
+                        <h3><i class="fas fa-file-pdf"></i> Reference paper reports</h3>
+                        <p class="form-hint">Student uploads and guide verification status for reference paper links.</p>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarPaperUploadsReport()">
+                                <i class="fas fa-file-pdf"></i> Paper uploads
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarPaperVerificationsReport()">
+                                <i class="fas fa-file-pdf"></i> Guide paper verifications
+                            </button>
+                        </div>
+                    </div>
                     <div class="admin-controls" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
                         <input type="text" id="search-seminar-students" placeholder="Search students by name or KTU ID..." class="search-input" style="flex: 1; max-width: 400px;">
                         <button type="button" class="btn btn-secondary" onclick="app.generateSeminarReport()">

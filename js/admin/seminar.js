@@ -16,12 +16,20 @@ import {
     formatTime12h,
     statusBadge,
     MIN_SEMINAR_TOPICS,
+    normalizePaperStatus,
     pickFairQuestioners,
     updateFairnessAfterPick,
     sumParamScores,
     equallyAllotGuidesToStudents,
     buildSeminarGuideAllotmentGroups
 } from '../utils/seminarConfig.js';
+
+const PAPER_TYPE_LABELS = {
+    paper: 'Research paper',
+    article: 'Article',
+    docs: 'Documentation',
+    other: 'Other'
+};
 
 const SLOT_CTX = 'seminar-slots';
 
@@ -1343,7 +1351,10 @@ export function createAdminSeminarModule(app) {
                 .filter(Boolean)
                 .sort((a, b) => (a.guide?.name || '').localeCompare(b.guide?.name || '') || a.s.name.localeCompare(b.s.name));
 
-            const unlockedCount = students.length - lockedRows.length;
+            const unlockedRows = students
+                .filter(s => !getLockedTopic(s.seminar))
+                .map(s => ({ s }))
+                .sort((a, b) => a.s.name.localeCompare(b.s.name));
 
             const tableRows = lockedRows.length
                 ? lockedRows.map((r, idx) => `
@@ -1359,6 +1370,16 @@ export function createAdminSeminarModule(app) {
                 `).join('')
                 : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No topics locked yet.</td></tr>`;
 
+            const unlockedTableRows = unlockedRows.length
+                ? unlockedRows.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="3" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have a locked final topic.</td></tr>`;
+
             const body = `
                 <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
                     <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
@@ -1369,10 +1390,26 @@ export function createAdminSeminarModule(app) {
                         </div>
                         <div style="display: flex; padding: 10px 14px; background: #fffbeb; border-radius: 8px; border-left: 3px solid #d97706;">
                             <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Not yet locked:</span>
-                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${unlockedCount}</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${unlockedRows.length}</span>
                         </div>
                     </div>
                 </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-after: always;">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students whose topics are not locked yet</h3>
+                    <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 14px 16px;">Guide has not locked a final topic for these students</p>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 8%;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 28%;">KTU ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>${unlockedTableRows}</tbody>
+                    </table>
+                </div>
+
                 <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
                     <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #6366f1; padding-left: 12px;">Locked Final Topics</h3>
                     <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
@@ -1425,6 +1462,223 @@ export function createAdminSeminarModule(app) {
             } catch (error) {
                 console.error(error);
                 alert('Error generating locked topics report. Please allow popups and try again.');
+            }
+        },
+
+        paperTypeLabel(type) {
+            return PAPER_TYPE_LABELS[type] || 'Resource';
+        },
+
+        buildSeminarPaperUploadsReportHtml(students, settings, guideMap) {
+            let totalPapers = 0;
+            let studentsWithPapers = 0;
+            const noPapers = [];
+
+            const sections = students.map(s => {
+                const papers = s.seminar.papers || [];
+                if (papers.length) studentsWithPapers += 1;
+                else noPapers.push(s);
+                totalPapers += papers.length;
+
+                const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                const guide = guideMap[gid];
+                const locked = getLockedTopic(s.seminar);
+
+                const rows = papers.length
+                    ? papers.map((p, idx) => {
+                        const status = normalizePaperStatus(p.status);
+                        return `
+                        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                            <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(p.title || 'Untitled')}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(this.paperTypeLabel(p.type))}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb; word-break: break-all;">${escapeHtml(p.url || '—')}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(statusBadge(status))}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${p.submittedAt ? escapeHtml(new Date(p.submittedAt).toLocaleDateString('en-IN')) : '—'}</td>
+                        </tr>`;
+                    }).join('')
+                    : `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px;">No reference papers uploaded</td></tr>`;
+
+                return `
+                    <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-inside: avoid;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 6px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">
+                            ${escapeHtml(s.name)} <span style="font-weight: 500; color: #6b7280; font-size: 13px;">(${escapeHtml(s.ktuid)})</span>
+                        </h3>
+                        <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 12px 16px;">
+                            Guide: ${escapeHtml(guide?.name || '—')} · Papers: ${papers.length}
+                            · Final topic: ${escapeHtml(locked?.title || 'Not locked')}
+                        </p>
+                        <table style="width: 100%; border-collapse: separate; border-spacing: 0;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb; width: 5%;">#</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 20%;">Title</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 12%;">Type</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Link</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 12%;">Status</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 12%;">Submitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+
+            noPapers.sort((a, b) => a.name.localeCompare(b.name));
+            const noPaperRows = noPapers.length
+                ? noPapers.map((s, idx) => {
+                    const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                    const guide = guideMap[gid];
+                    const locked = getLockedTopic(s.seminar);
+                    return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(s.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(guide?.name || '—')}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(locked?.title || 'Not locked')}</td>
+                    </tr>`;
+                }).join('')
+                : `<tr><td colspan="5" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have uploaded at least one reference paper.</td></tr>`;
+
+            const summary = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; gap: 8px;">
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Students:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${students.length}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">With paper uploads:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${studentsWithPapers}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Total reference papers:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${totalPapers}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #fffbeb; border-radius: 8px; border-left: 3px solid #d97706;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">No uploads yet:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #b45309; font-size: 13px;">${noPapers.length}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with no reference paper uploads</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 6%;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 14%;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 22%;">Guide</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Final topic</th>
+                            </tr>
+                        </thead>
+                        <tbody>${noPaperRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Reference Paper Uploads Report', summary + sections);
+        },
+
+        buildSeminarPaperVerificationsReportHtml(students, settings, guideMap) {
+            let approved = 0;
+            let rejected = 0;
+            let pending = 0;
+            let revision = 0;
+            const rows = [];
+
+            students.forEach(s => {
+                const gid = s.seminar.guideId || settings.guideAssignments?.[s.id];
+                const guide = guideMap[gid];
+                (s.seminar.papers || []).forEach(p => {
+                    const status = normalizePaperStatus(p.status);
+                    if (status === 'approved') approved += 1;
+                    else if (status === 'rejected') rejected += 1;
+                    else if (status === 'needs_revision') revision += 1;
+                    else pending += 1;
+                    rows.push({ s, p, guide, status });
+                });
+            });
+
+            rows.sort((a, b) =>
+                (a.guide?.name || '').localeCompare(b.guide?.name || '') ||
+                a.s.name.localeCompare(b.s.name) ||
+                (a.p.title || '').localeCompare(b.p.title || '')
+            );
+
+            const tableRows = rows.length
+                ? rows.map((r, idx) => {
+                    const decisionLabel = r.status === 'needs_revision' ? 'Open for upload' : statusBadge(r.status);
+                    return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 10px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guide?.name || '—')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.p.title || 'Untitled')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(decisionLabel)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.p.guideFeedback || '—')}</td>
+                    </tr>`;
+                }).join('')
+                : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No reference papers found.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${approved}</div><div style="font-size: 11px; color: #047857;">Approved</div></div>
+                        <div style="padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #dc2626;">${rejected}</div><div style="font-size: 11px; color: #b91c1c;">Rejected</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${pending}</div><div style="font-size: 11px; color: #1d4ed8;">Pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${revision}</div><div style="font-size: 11px; color: #b45309;">Open for upload</div></div>
+                    </div>
+                    <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 12px 0 0 0;">Total papers: ${rows.length}</p>
+                </div>
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">Guide Paper Verifications</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Paper</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Decision</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Guide Paper Verifications Report', body);
+        },
+
+        async generateSeminarPaperUploadsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarPaperUploadsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Reference Paper Uploads Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating paper uploads report. Please allow popups and try again.');
+            }
+        },
+
+        async generateSeminarPaperVerificationsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarPaperVerificationsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Guide Paper Verifications Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating paper verifications report. Please allow popups and try again.');
             }
         }
     };

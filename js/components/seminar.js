@@ -16,7 +16,9 @@ import {
     statusBadge,
     sumParamScores,
     normalizePaperStatus,
-    isPaperEditable
+    isPaperEditable,
+    ensureTitleAbstract,
+    hasTitleAbstractSubmission
 } from '../utils/seminarConfig.js';
 
 export function createSeminarModule(app) {
@@ -25,6 +27,7 @@ export function createSeminarModule(app) {
             if (!data.seminar) data.seminar = getDefaultSeminar();
             const s = data.seminar;
             ensureSeminarTopics(s);
+            ensureTitleAbstract(s);
             if (!s.papers) s.papers = [];
             if (!s.totals) s.totals = { presentationMarks: 0, questionMarks: 0 };
             if (!s.questionHistory) s.questionHistory = [];
@@ -200,6 +203,10 @@ export function createSeminarModule(app) {
                 `
                 : `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> Reference paper uploads open after your guide locks a final topic.</p>`;
 
+            const titleAbstract = ensureTitleAbstract(seminar);
+            const titleAbstractHintDate = settings?.schedule?.titleAbstractSubmission;
+            const titleAbstractHtml = this.renderStudentTitleAbstract(titleAbstract, locked, lockedTopic);
+
             el.innerHTML = `
                 <div class="seminar-student-page">
                     <div class="seminar-overview-strip">
@@ -285,8 +292,86 @@ export function createSeminarModule(app) {
                         <div id="seminar-papers-list" class="seminar-papers-list">${papersHtml}</div>
                         ${addPaperForm}
                     </section>
+
+                    <section class="seminar-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-align-left"></i> Title &amp; abstract</h3>
+                                <p class="form-hint">
+                                    Submit the seminar title and abstract for guide approval.
+                                    ${titleAbstractHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(titleAbstractHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <span class="badge badge-${escapeHtml(normalizePaperStatus(titleAbstract.status))}">${escapeHtml(statusBadge(normalizePaperStatus(titleAbstract.status)))}</span>
+                            </div>
+                        </div>
+                        <div id="seminar-title-abstract">${titleAbstractHtml}</div>
+                    </section>
                 </div>
             `;
+        },
+
+        renderStudentTitleAbstract(ta, locked, lockedTopic) {
+            if (!locked) {
+                return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> Title and abstract open after your guide locks a final topic.</p>`;
+            }
+
+            const status = normalizePaperStatus(ta.status);
+            const suggestedTitle = lockedTopic?.title || '';
+
+            if (status === 'needs_revision') {
+                return `
+                    <div class="seminar-paper-card seminar-topic-status-needs_revision">
+                        <div class="seminar-topic-card-header">
+                            <strong>Update title &amp; abstract</strong>
+                            <span class="badge badge-needs_revision">Needs edit</span>
+                        </div>
+                        ${ta.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(ta.guideFeedback)}</p>` : ''}
+                        <div class="seminar-edit-title-abstract-form">
+                            <div class="form-group">
+                                <label><strong>Title</strong></label>
+                                <input type="text" id="seminar-ta-title" class="form-input" value="${escapeHtml(ta.title || '')}">
+                            </div>
+                            <div class="form-group">
+                                <label><strong>Abstract</strong></label>
+                                <textarea id="seminar-ta-abstract" class="form-input" rows="5">${escapeHtml(ta.abstract || '')}</textarea>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="app.resubmitSeminarTitleAbstract()">
+                                <i class="fas fa-paper-plane"></i> Save &amp; resubmit
+                            </button>
+                        </div>
+                    </div>`;
+            }
+
+            if (status === 'draft' || !ta.title?.trim()) {
+                return `
+                    <div class="seminar-add-paper-form">
+                        <div class="form-group">
+                            <label><strong>Title</strong></label>
+                            <input type="text" id="seminar-ta-title" class="form-input" placeholder="Seminar title"
+                                value="${escapeHtml(suggestedTitle)}">
+                        </div>
+                        <div class="form-group">
+                            <label><strong>Abstract</strong></label>
+                            <textarea id="seminar-ta-abstract" class="form-input" rows="5" placeholder="Write a short abstract for your seminar"></textarea>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="app.submitSeminarTitleAbstract()">
+                            <i class="fas fa-paper-plane"></i> Submit title &amp; abstract
+                        </button>
+                    </div>`;
+            }
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${escapeHtml(ta.title)}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusBadge(status))}</span>
+                    </div>
+                    <p class="seminar-topic-desc">${escapeHtml(ta.abstract || '')}</p>
+                    ${ta.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(ta.guideFeedback)}</p>` : ''}
+                    ${ta.submittedAt ? `<p class="form-hint">Submitted: ${escapeHtml(new Date(ta.submittedAt).toLocaleDateString())}</p>` : ''}
+                </div>`;
         },
 
         paperTypeLabel(type) {
@@ -512,6 +597,68 @@ export function createSeminarModule(app) {
 
             await app.saveUserData(data);
             alert('Reference link updated and resubmitted for guide review.');
+            await this.loadSeminar();
+        },
+
+        async submitSeminarTitleAbstract() {
+            const title = document.getElementById('seminar-ta-title')?.value.trim();
+            const abstract = document.getElementById('seminar-ta-abstract')?.value.trim();
+            if (!title) { alert('Enter the seminar title.'); return; }
+            if (!abstract) { alert('Enter the abstract.'); return; }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+
+            if (!isSeminarTopicsLocked(seminar)) {
+                alert('Title and abstract unlock after your guide locks a final topic.');
+                await this.loadSeminar();
+                return;
+            }
+
+            const ta = ensureTitleAbstract(seminar);
+            const status = normalizePaperStatus(ta.status);
+            if (status !== 'draft' && hasTitleAbstractSubmission(ta) && status !== 'needs_revision') {
+                alert('Title and abstract already submitted. Ask your guide to open them for edit if you need changes.');
+                return;
+            }
+
+            ta.title = title;
+            ta.abstract = abstract;
+            ta.status = 'submitted';
+            ta.guideFeedback = '';
+            ta.submittedAt = new Date().toISOString();
+            ta.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('Title and abstract submitted for guide review.');
+            await this.loadSeminar();
+        },
+
+        async resubmitSeminarTitleAbstract() {
+            const title = document.getElementById('seminar-ta-title')?.value.trim();
+            const abstract = document.getElementById('seminar-ta-abstract')?.value.trim();
+            if (!title) { alert('Enter the seminar title.'); return; }
+            if (!abstract) { alert('Enter the abstract.'); return; }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+            const ta = ensureTitleAbstract(seminar);
+
+            if (normalizePaperStatus(ta.status) !== 'needs_revision') {
+                alert('Title and abstract are not open for editing.');
+                return;
+            }
+
+            ta.title = title;
+            ta.abstract = abstract;
+            ta.status = 'submitted';
+            ta.submittedAt = new Date().toISOString();
+            ta.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('Title and abstract updated and resubmitted for guide review.');
             await this.loadSeminar();
         },
 

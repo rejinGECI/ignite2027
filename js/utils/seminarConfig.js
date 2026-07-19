@@ -68,6 +68,14 @@ export function getDefaultSeminar() {
             submittedAt: null
         },
         papers: [],
+        titleAbstract: {
+            title: '',
+            abstract: '',
+            status: 'draft',
+            guideFeedback: '',
+            submittedAt: null,
+            reviewedAt: null
+        },
         draftReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         finalReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         presentationSlotId: null,
@@ -218,6 +226,32 @@ export function isPaperEditable(status) {
 export function isPaperPendingReview(status) {
     const s = normalizePaperStatus(status);
     return s === 'submitted';
+}
+
+export function getDefaultTitleAbstract() {
+    return {
+        title: '',
+        abstract: '',
+        status: 'draft',
+        guideFeedback: '',
+        submittedAt: null,
+        reviewedAt: null
+    };
+}
+
+/** Ensure titleAbstract object exists on seminar. */
+export function ensureTitleAbstract(seminar) {
+    if (!seminar.titleAbstract || typeof seminar.titleAbstract !== 'object') {
+        seminar.titleAbstract = getDefaultTitleAbstract();
+    } else {
+        const d = getDefaultTitleAbstract();
+        seminar.titleAbstract = { ...d, ...seminar.titleAbstract };
+    }
+    return seminar.titleAbstract;
+}
+
+export function hasTitleAbstractSubmission(ta) {
+    return Boolean(ta?.title?.trim() && ta?.abstract?.trim() && normalizePaperStatus(ta.status) !== 'draft');
 }
 
 export function sumParamScores(scores, params) {

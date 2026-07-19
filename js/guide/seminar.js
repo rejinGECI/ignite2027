@@ -9,7 +9,8 @@ import {
     statusBadge,
     MIN_SEMINAR_TOPICS,
     normalizePaperStatus,
-    isPaperPendingReview
+    isPaperPendingReview,
+    ensureTitleAbstract
 } from '../utils/seminarConfig.js';
 
 export function createGuideSeminarModule(app) {
@@ -27,6 +28,8 @@ export function createGuideSeminarModule(app) {
             const topics = ensureSeminarTopics(seminar);
             const locked = isSeminarTopicsLocked(seminar);
             const papers = seminar.papers || [];
+            const ta = ensureTitleAbstract(seminar);
+            const taStatus = normalizePaperStatus(ta.status);
             return {
                 total: topics.length,
                 pending: topics.filter(t => t.status === 'submitted').length,
@@ -39,7 +42,11 @@ export function createGuideSeminarModule(app) {
                 papersTotal: papers.length,
                 papersPending: papers.filter(p => isPaperPendingReview(p.status)).length,
                 papersApproved: papers.filter(p => normalizePaperStatus(p.status) === 'approved').length,
-                papersRevision: papers.filter(p => normalizePaperStatus(p.status) === 'needs_revision').length
+                papersRevision: papers.filter(p => normalizePaperStatus(p.status) === 'needs_revision').length,
+                titleAbstract: ta,
+                titleAbstractStatus: taStatus,
+                titleAbstractPending: taStatus === 'submitted',
+                titleAbstractApproved: taStatus === 'approved'
             };
         },
 
@@ -65,6 +72,7 @@ export function createGuideSeminarModule(app) {
                     const userData = dataSnap.exists() ? dataSnap.data() : {};
                     const seminar = userData.seminar || getDefaultSeminar();
                     ensureSeminarTopics(seminar);
+                    ensureTitleAbstract(seminar);
                     const assignedGuide = seminar.guideId || assignments[uid];
                     if (assignedGuide !== guideId) continue;
 
@@ -117,8 +125,9 @@ export function createGuideSeminarModule(app) {
                 acc.awaiting += (!st.locked && st.total > 0) ? 1 : 0;
                 acc.noTopics += st.total === 0 ? 1 : 0;
                 acc.papersPending += st.papersPending;
+                acc.abstractPending += st.titleAbstractPending ? 1 : 0;
                 return acc;
-            }, { students: 0, pending: 0, locked: 0, awaiting: 0, noTopics: 0, papersPending: 0 });
+            }, { students: 0, pending: 0, locked: 0, awaiting: 0, noTopics: 0, papersPending: 0, abstractPending: 0 });
 
             el.innerHTML = `
                 <div class="seminar-guide-page">
@@ -135,19 +144,20 @@ export function createGuideSeminarModule(app) {
                             <strong>${stats.papersPending}</strong>
                             <span>Papers to review</span>
                         </div>
-                        <div class="seminar-guide-stat stat-ok">
-                            <strong>${stats.locked}</strong>
-                            <span>Topics locked</span>
+                        <div class="seminar-guide-stat ${stats.abstractPending ? 'stat-warn' : ''}">
+                            <strong>${stats.abstractPending}</strong>
+                            <span>Abstracts to review</span>
                         </div>
                     </div>
 
                     <div class="seminar-guide-toolbar">
                         <input type="search" id="guide-seminar-search" class="form-input search-input"
                             placeholder="Search student by name or KTU ID..." style="flex:1; max-width:360px;">
-                        <select id="guide-seminar-filter" class="form-input" style="max-width:220px;">
+                        <select id="guide-seminar-filter" class="form-input" style="max-width:240px;">
                             <option value="all">All students</option>
                             <option value="pending">Topics need review</option>
                             <option value="papers">Papers need review</option>
+                            <option value="abstract">Abstracts need review</option>
                             <option value="ready">Ready to lock</option>
                             <option value="locked">Locked</option>
                             <option value="none">No topics yet</option>
@@ -156,8 +166,8 @@ export function createGuideSeminarModule(app) {
 
                     <p class="seminar-guide-howto">
                         <i class="fas fa-info-circle"></i>
-                        Review topics → lock one final topic. Then review <strong>reference paper links</strong>:
-                        <strong>Approve</strong>, <strong>Reject</strong>, or <strong>Open for new upload</strong>.
+                        Review topics → lock one final topic. Then verify <strong>reference papers</strong> and
+                        <strong>title &amp; abstract</strong>: Approve, Reject, or Open for edit.
                     </p>
 
                     <div id="guide-seminar-students" class="seminar-guide-students">
@@ -205,17 +215,18 @@ export function createGuideSeminarModule(app) {
             const papers = sem.papers || [];
 
             let filterStatus = 'none';
-            if (st.papersPending > 0) filterStatus = 'papers';
+            if (st.titleAbstractPending) filterStatus = 'abstract';
+            else if (st.papersPending > 0) filterStatus = 'papers';
             else if (st.locked) filterStatus = 'locked';
             else if (st.pending > 0) filterStatus = 'pending';
             else if (st.approved > 0) filterStatus = 'ready';
             else if (st.total > 0) filterStatus = 'ready';
 
-            // Allow multi-status filter match via data attributes
             const filterFlags = [
                 st.locked ? 'locked' : '',
                 st.pending > 0 ? 'pending' : '',
                 st.papersPending > 0 ? 'papers' : '',
+                st.titleAbstractPending ? 'abstract' : '',
                 (!st.locked && st.approved > 0) ? 'ready' : '',
                 st.total === 0 ? 'none' : ''
             ].filter(Boolean).join(' ');
@@ -234,6 +245,12 @@ export function createGuideSeminarModule(app) {
                 ? `<span class="seminar-status-chip chip-pending"><i class="fas fa-book"></i> ${st.papersPending} paper${st.papersPending === 1 ? '' : 's'}</span>`
                 : st.papersTotal > 0
                     ? `<span class="seminar-status-chip chip-ready"><i class="fas fa-book"></i> ${st.papersApproved}/${st.papersTotal} papers ok</span>`
+                    : '';
+
+            const abstractChip = st.titleAbstractPending
+                ? '<span class="seminar-status-chip chip-pending"><i class="fas fa-align-left"></i> Abstract pending</span>'
+                : st.titleAbstractApproved
+                    ? '<span class="seminar-status-chip chip-ready"><i class="fas fa-align-left"></i> Abstract approved</span>'
                     : '';
 
             const topicsHtml = topics.length
@@ -264,6 +281,7 @@ export function createGuideSeminarModule(app) {
                         <div class="seminar-guide-student-meta">
                             ${statusChip}
                             ${paperChip}
+                            ${abstractChip}
                             <span class="seminar-topic-count">${st.total} topic${st.total === 1 ? '' : 's'}
                                 ${st.minMet ? '' : ` <small>(min ${MIN_SEMINAR_TOPICS})</small>`}
                             </span>
@@ -298,7 +316,64 @@ export function createGuideSeminarModule(app) {
                         <small>(${st.papersTotal})</small>
                     </h4>
                     <div class="seminar-papers-list">${papersHtml}</div>
+
+                    <h4 class="seminar-guide-subsection"><i class="fas fa-align-left"></i> Title &amp; abstract</h4>
+                    ${this.renderGuideTitleAbstractCard(student, st)}
                 </article>
+            `;
+        },
+
+        renderGuideTitleAbstractCard(student, st) {
+            const ta = st.titleAbstract;
+            const status = st.titleAbstractStatus;
+            const hasContent = Boolean(ta?.title?.trim() || ta?.abstract?.trim());
+
+            if (!st.locked) {
+                return `<div class="seminar-guide-no-topics">
+                    <i class="fas fa-align-left"></i>
+                    <p>Title &amp; abstract unlock after you lock a final topic.</p>
+                </div>`;
+            }
+
+            if (!hasContent || status === 'draft') {
+                return `<div class="seminar-guide-no-topics">
+                    <i class="fas fa-align-left"></i>
+                    <p>No title &amp; abstract submitted yet.</p>
+                </div>`;
+            }
+
+            const statusLabel = status === 'needs_revision' ? 'Needs edit' : statusBadge(status);
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${escapeHtml(ta.title || 'Untitled')}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                    <p class="seminar-topic-desc">${escapeHtml(ta.abstract || '')}</p>
+                    ${ta.guideFeedback ? `
+                        <p class="seminar-topic-feedback"><i class="fas fa-comment"></i> ${escapeHtml(ta.guideFeedback)}</p>
+                    ` : ''}
+                    <div class="seminar-guide-actions">
+                        ${status !== 'approved' && status !== 'needs_revision' ? `
+                            <button type="button" class="btn btn-sm btn-primary" onclick="app.guideApproveTitleAbstract('${escapeHtml(student.id)}')">
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                        ` : ''}
+                        ${status !== 'rejected' && status !== 'needs_revision' ? `
+                            <button type="button" class="btn btn-sm btn-danger" onclick="app.guideRejectTitleAbstract('${escapeHtml(student.id)}')">
+                                <i class="fas fa-times"></i> Reject
+                            </button>
+                        ` : ''}
+                        ${status !== 'needs_revision' ? `
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenTitleAbstractEdit('${escapeHtml(student.id)}')">
+                                <i class="fas fa-undo"></i> Open for edit
+                            </button>
+                        ` : `
+                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to edit and resubmit.</p>
+                        `}
+                    </div>
+                </div>
             `;
         },
 
@@ -413,6 +488,7 @@ export function createGuideSeminarModule(app) {
             const data = snap.exists() ? snap.data() : {};
             if (!data.seminar) data.seminar = getDefaultSeminar();
             ensureSeminarTopics(data.seminar);
+            ensureTitleAbstract(data.seminar);
             if (!data.seminar.papers) data.seminar.papers = [];
             updater(data.seminar);
             await setDoc(ref, { seminar: data.seminar }, { merge: true });
@@ -585,6 +661,41 @@ export function createGuideSeminarModule(app) {
                 p.reviewedAt = new Date().toISOString();
             });
             alert('Paper opened for new upload. Student can edit and resubmit the link.');
+        },
+
+        async guideApproveTitleAbstract(studentId) {
+            const fb = prompt('Optional note for the student (approval feedback):') || '';
+            await this.updateStudentSeminar(studentId, s => {
+                const ta = ensureTitleAbstract(s);
+                ta.status = 'approved';
+                ta.guideFeedback = fb;
+                ta.reviewedAt = new Date().toISOString();
+            });
+        },
+
+        async guideRejectTitleAbstract(studentId) {
+            const fb = prompt('Reason for rejection (shown to student):');
+            if (fb === null) return;
+            const reason = fb.trim() || 'Please revise the title and/or abstract.';
+            await this.updateStudentSeminar(studentId, s => {
+                const ta = ensureTitleAbstract(s);
+                ta.status = 'rejected';
+                ta.guideFeedback = reason;
+                ta.reviewedAt = new Date().toISOString();
+            });
+        },
+
+        async guideOpenTitleAbstractEdit(studentId) {
+            const fb = prompt('Comment for the student (what to change):');
+            if (fb === null) return;
+            const reason = fb.trim() || 'Please revise the title and abstract and resubmit.';
+            await this.updateStudentSeminar(studentId, s => {
+                const ta = ensureTitleAbstract(s);
+                ta.status = 'needs_revision';
+                ta.guideFeedback = reason;
+                ta.reviewedAt = new Date().toISOString();
+            });
+            alert('Title & abstract opened for edit. Student can update and resubmit.');
         },
 
         async guideApproveDraft(studentId) {
