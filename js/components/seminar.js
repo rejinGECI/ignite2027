@@ -18,8 +18,10 @@ import {
     normalizePaperStatus,
     isPaperEditable,
     ensureTitleAbstract,
-    hasTitleAbstractSubmission
-} from '../utils/seminarConfig.js?v=ta1';
+    hasTitleAbstractSubmission,
+    ensureSeminarPpt,
+    hasPptSubmission
+} from '../utils/seminarConfig.js?v=ppt1';
 
 export function createSeminarModule(app) {
     return {
@@ -28,6 +30,7 @@ export function createSeminarModule(app) {
             const s = data.seminar;
             ensureSeminarTopics(s);
             ensureTitleAbstract(s);
+            ensureSeminarPpt(s);
             if (!s.papers) s.papers = [];
             if (!s.totals) s.totals = { presentationMarks: 0, questionMarks: 0 };
             if (!s.questionHistory) s.questionHistory = [];
@@ -207,6 +210,10 @@ export function createSeminarModule(app) {
             const titleAbstractHintDate = settings?.schedule?.titleAbstractSubmission;
             const titleAbstractHtml = this.renderStudentTitleAbstract(titleAbstract, locked, lockedTopic);
 
+            const ppt = ensureSeminarPpt(seminar);
+            const pptHintDate = settings?.schedule?.pptSubmission;
+            const pptHtml = this.renderStudentPpt(ppt, locked);
+
             el.innerHTML = `
                 <div class="seminar-student-page">
                     <div class="seminar-overview-strip">
@@ -308,8 +315,88 @@ export function createSeminarModule(app) {
                         <div id="seminar-papers-list" class="seminar-papers-list">${papersHtml}</div>
                         ${addPaperForm}
                     </section>
+
+                    <section class="seminar-section seminar-section-primary" id="seminar-ppt-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-file-powerpoint"></i> PPT submission</h3>
+                                <p class="form-hint">
+                                    Upload a link to your presentation (Google Drive, OneDrive, etc.) for guide verification.
+                                    ${pptHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(pptHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <span class="badge badge-${escapeHtml(normalizePaperStatus(ppt.status))}">${escapeHtml(statusBadge(normalizePaperStatus(ppt.status)))}</span>
+                            </div>
+                        </div>
+                        <div id="seminar-ppt">${pptHtml}</div>
+                    </section>
                 </div>
             `;
+        },
+
+        renderStudentPpt(ppt, locked) {
+            if (!locked) {
+                return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> PPT upload opens after your guide locks a final topic.</p>`;
+            }
+
+            const status = normalizePaperStatus(ppt.status);
+
+            if (status === 'needs_revision') {
+                return `
+                    <div class="seminar-paper-card seminar-topic-status-needs_revision">
+                        <div class="seminar-topic-card-header">
+                            <strong>Update PPT link</strong>
+                            <span class="badge badge-needs_revision">Needs edit</span>
+                        </div>
+                        ${ppt.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(ppt.guideFeedback)}</p>` : ''}
+                        <div class="seminar-edit-ppt-form">
+                            <div class="form-group">
+                                <label><strong>PPT title (optional)</strong></label>
+                                <input type="text" id="seminar-ppt-title" class="form-input" value="${escapeHtml(ppt.title || '')}" placeholder="Presentation title">
+                            </div>
+                            <div class="form-group">
+                                <label><strong>PPT link (URL)</strong></label>
+                                <input type="url" id="seminar-ppt-url" class="form-input" value="${escapeHtml(ppt.url || '')}" placeholder="https://...">
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="app.resubmitSeminarPpt()">
+                                <i class="fas fa-paper-plane"></i> Save &amp; resubmit
+                            </button>
+                        </div>
+                    </div>`;
+            }
+
+            if (status === 'draft' || !ppt.url?.trim()) {
+                return `
+                    <div class="seminar-add-paper-form">
+                        <div class="form-group">
+                            <label><strong>PPT title (optional)</strong></label>
+                            <input type="text" id="seminar-ppt-title" class="form-input" placeholder="Presentation title">
+                        </div>
+                        <div class="form-group">
+                            <label><strong>PPT link (URL)</strong></label>
+                            <input type="url" id="seminar-ppt-url" class="form-input" placeholder="https://drive.google.com/...">
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="app.submitSeminarPpt()">
+                            <i class="fas fa-upload"></i> Submit PPT link
+                        </button>
+                    </div>`;
+            }
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${escapeHtml(ppt.title || 'Presentation')}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusBadge(status))}</span>
+                    </div>
+                    <p class="seminar-paper-meta">
+                        <a href="${escapeHtml(ppt.url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-external-link-alt"></i> ${escapeHtml(ppt.url)}
+                        </a>
+                    </p>
+                    ${ppt.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(ppt.guideFeedback)}</p>` : ''}
+                    ${ppt.submittedAt ? `<p class="form-hint">Submitted: ${escapeHtml(new Date(ppt.submittedAt).toLocaleDateString())}</p>` : ''}
+                </div>`;
         },
 
         renderStudentTitleAbstract(ta, locked, lockedTopic) {
@@ -659,6 +746,78 @@ export function createSeminarModule(app) {
 
             await app.saveUserData(data);
             alert('Title and abstract updated and resubmitted for guide review.');
+            await this.loadSeminar();
+        },
+
+        async submitSeminarPpt() {
+            const title = document.getElementById('seminar-ppt-title')?.value.trim() || '';
+            const url = document.getElementById('seminar-ppt-url')?.value.trim();
+            if (!url) { alert('Enter the PPT link (URL).'); return; }
+            try {
+                new URL(url);
+            } catch (e) {
+                alert('Enter a valid URL (include https://).');
+                return;
+            }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+
+            if (!isSeminarTopicsLocked(seminar)) {
+                alert('PPT upload unlocks after your guide locks a final topic.');
+                await this.loadSeminar();
+                return;
+            }
+
+            const ppt = ensureSeminarPpt(seminar);
+            const status = normalizePaperStatus(ppt.status);
+            if (status !== 'draft' && hasPptSubmission(ppt) && status !== 'needs_revision') {
+                alert('PPT already submitted. Ask your guide to open it for edit if you need to update the link.');
+                return;
+            }
+
+            ppt.title = title;
+            ppt.url = url;
+            ppt.status = 'submitted';
+            ppt.guideFeedback = '';
+            ppt.submittedAt = new Date().toISOString();
+            ppt.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('PPT link submitted for guide review.');
+            await this.loadSeminar();
+        },
+
+        async resubmitSeminarPpt() {
+            const title = document.getElementById('seminar-ppt-title')?.value.trim() || '';
+            const url = document.getElementById('seminar-ppt-url')?.value.trim();
+            if (!url) { alert('Enter the PPT link (URL).'); return; }
+            try {
+                new URL(url);
+            } catch (e) {
+                alert('Enter a valid URL (include https://).');
+                return;
+            }
+
+            const data = await app.getUserData();
+            if (!data) return;
+            const seminar = this.ensureSeminar(data);
+            const ppt = ensureSeminarPpt(seminar);
+
+            if (normalizePaperStatus(ppt.status) !== 'needs_revision') {
+                alert('PPT is not open for editing.');
+                return;
+            }
+
+            ppt.title = title;
+            ppt.url = url;
+            ppt.status = 'submitted';
+            ppt.submittedAt = new Date().toISOString();
+            ppt.reviewedAt = null;
+
+            await app.saveUserData(data);
+            alert('PPT link updated and resubmitted for guide review.');
             await this.loadSeminar();
         },
 

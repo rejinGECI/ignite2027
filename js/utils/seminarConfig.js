@@ -76,6 +76,14 @@ export function getDefaultSeminar() {
             submittedAt: null,
             reviewedAt: null
         },
+        ppt: {
+            url: '',
+            title: '',
+            status: 'draft',
+            guideFeedback: '',
+            submittedAt: null,
+            reviewedAt: null
+        },
         draftReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         finalReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         presentationSlotId: null,
@@ -252,6 +260,32 @@ export function ensureTitleAbstract(seminar) {
 
 export function hasTitleAbstractSubmission(ta) {
     return Boolean(ta?.title?.trim() && ta?.abstract?.trim() && normalizePaperStatus(ta.status) !== 'draft');
+}
+
+export function getDefaultPpt() {
+    return {
+        url: '',
+        title: '',
+        status: 'draft',
+        guideFeedback: '',
+        submittedAt: null,
+        reviewedAt: null
+    };
+}
+
+/** Ensure ppt object exists on seminar. */
+export function ensureSeminarPpt(seminar) {
+    if (!seminar.ppt || typeof seminar.ppt !== 'object') {
+        seminar.ppt = getDefaultPpt();
+    } else {
+        const d = getDefaultPpt();
+        seminar.ppt = { ...d, ...seminar.ppt };
+    }
+    return seminar.ppt;
+}
+
+export function hasPptSubmission(ppt) {
+    return Boolean(ppt?.url?.trim() && normalizePaperStatus(ppt.status) !== 'draft');
 }
 
 export function sumParamScores(scores, params) {
