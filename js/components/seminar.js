@@ -17,11 +17,12 @@ import {
     sumParamScores,
     normalizePaperStatus,
     isPaperEditable,
+    isSeminarSubmissionEditable,
     ensureTitleAbstract,
     hasTitleAbstractSubmission,
     ensureSeminarPpt,
     hasPptSubmission
-} from '../utils/seminarConfig.js?v=ppt1';
+} from '../utils/seminarConfig.js?v=rej1';
 
 export function createSeminarModule(app) {
     return {
@@ -342,12 +343,14 @@ export function createSeminarModule(app) {
 
             const status = normalizePaperStatus(ppt.status);
 
-            if (status === 'needs_revision') {
+            if (status === 'needs_revision' || status === 'rejected') {
+                const badgeLabel = status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
+                const badgeClass = status === 'rejected' ? 'rejected' : 'needs_revision';
                 return `
-                    <div class="seminar-paper-card seminar-topic-status-needs_revision">
+                    <div class="seminar-paper-card seminar-topic-status-${escapeHtml(badgeClass)}">
                         <div class="seminar-topic-card-header">
                             <strong>Update PPT link</strong>
-                            <span class="badge badge-needs_revision">Needs edit</span>
+                            <span class="badge badge-${escapeHtml(badgeClass)}">${escapeHtml(badgeLabel)}</span>
                         </div>
                         ${ppt.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(ppt.guideFeedback)}</p>` : ''}
                         <div class="seminar-edit-ppt-form">
@@ -407,12 +410,14 @@ export function createSeminarModule(app) {
             const status = normalizePaperStatus(ta.status);
             const suggestedTitle = lockedTopic?.title || '';
 
-            if (status === 'needs_revision') {
+            if (status === 'needs_revision' || status === 'rejected') {
+                const badgeLabel = status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
+                const badgeClass = status === 'rejected' ? 'rejected' : 'needs_revision';
                 return `
-                    <div class="seminar-paper-card seminar-topic-status-needs_revision">
+                    <div class="seminar-paper-card seminar-topic-status-${escapeHtml(badgeClass)}">
                         <div class="seminar-topic-card-header">
                             <strong>Update title &amp; abstract</strong>
-                            <span class="badge badge-needs_revision">Needs edit</span>
+                            <span class="badge badge-${escapeHtml(badgeClass)}">${escapeHtml(badgeLabel)}</span>
                         </div>
                         ${ta.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(ta.guideFeedback)}</p>` : ''}
                         <div class="seminar-edit-title-abstract-form">
@@ -705,7 +710,7 @@ export function createSeminarModule(app) {
 
             const ta = ensureTitleAbstract(seminar);
             const status = normalizePaperStatus(ta.status);
-            if (status !== 'draft' && hasTitleAbstractSubmission(ta) && status !== 'needs_revision') {
+            if (status !== 'draft' && hasTitleAbstractSubmission(ta) && !isSeminarSubmissionEditable(status)) {
                 alert('Title and abstract already submitted. Ask your guide to open them for edit if you need changes.');
                 return;
             }
@@ -733,7 +738,8 @@ export function createSeminarModule(app) {
             const seminar = this.ensureSeminar(data);
             const ta = ensureTitleAbstract(seminar);
 
-            if (normalizePaperStatus(ta.status) !== 'needs_revision') {
+            const taStatus = normalizePaperStatus(ta.status);
+            if (taStatus !== 'needs_revision' && taStatus !== 'rejected') {
                 alert('Title and abstract are not open for editing.');
                 return;
             }
@@ -772,7 +778,7 @@ export function createSeminarModule(app) {
 
             const ppt = ensureSeminarPpt(seminar);
             const status = normalizePaperStatus(ppt.status);
-            if (status !== 'draft' && hasPptSubmission(ppt) && status !== 'needs_revision') {
+            if (status !== 'draft' && hasPptSubmission(ppt) && !isSeminarSubmissionEditable(status)) {
                 alert('PPT already submitted. Ask your guide to open it for edit if you need to update the link.');
                 return;
             }
@@ -805,7 +811,8 @@ export function createSeminarModule(app) {
             const seminar = this.ensureSeminar(data);
             const ppt = ensureSeminarPpt(seminar);
 
-            if (normalizePaperStatus(ppt.status) !== 'needs_revision') {
+            const pptStatus = normalizePaperStatus(ppt.status);
+            if (pptStatus !== 'needs_revision' && pptStatus !== 'rejected') {
                 alert('PPT is not open for editing.');
                 return;
             }

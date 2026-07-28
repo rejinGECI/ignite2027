@@ -17,12 +17,16 @@ import {
     statusBadge,
     MIN_SEMINAR_TOPICS,
     normalizePaperStatus,
+    ensureTitleAbstract,
+    hasTitleAbstractSubmission,
+    ensureSeminarPpt,
+    hasPptSubmission,
     pickFairQuestioners,
     updateFairnessAfterPick,
     sumParamScores,
     equallyAllotGuidesToStudents,
     buildSeminarGuideAllotmentGroups
-} from '../utils/seminarConfig.js?v=ppt1';
+} from '../utils/seminarConfig.js?v=rej1';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -1679,6 +1683,328 @@ export function createAdminSeminarModule(app) {
             } catch (error) {
                 console.error(error);
                 alert('Error generating paper verifications report. Please allow popups and try again.');
+            }
+        },
+
+        buildSeminarTitleAbstractSubmissionsReportHtml(students, settings, guideMap) {
+            let submittedCount = 0;
+            const notSubmitted = [];
+
+            const sections = students.map(s => {
+                const ta = ensureTitleAbstract(s.seminar);
+                const status = normalizePaperStatus(ta.status);
+                const hasSubmission = hasTitleAbstractSubmission(ta);
+                const locked = getLockedTopic(s.seminar);
+
+                if (hasSubmission) submittedCount += 1;
+                else notSubmitted.push({ s, locked });
+
+                if (!hasSubmission) {
+                    return `
+                    <div style="margin-bottom: 16px; padding: 16px 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-inside: avoid;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 700; margin: 0 0 4px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">
+                            ${escapeHtml(s.name)} <span style="font-weight: 500; color: #6b7280; font-size: 12px;">(${escapeHtml(s.ktuid)})</span>
+                        </h3>
+                        <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 0 16px;">
+                            Final topic: ${escapeHtml(locked?.title || 'Not locked')} · <strong style="color:#b45309;">Not submitted</strong>
+                        </p>
+                    </div>`;
+                }
+
+                return `
+                    <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-inside: avoid;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 6px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">
+                            ${escapeHtml(s.name)} <span style="font-weight: 500; color: #6b7280; font-size: 13px;">(${escapeHtml(s.ktuid)})</span>
+                        </h3>
+                        <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 0 0 12px 16px;">
+                            Final topic: ${escapeHtml(locked?.title || 'Not locked')}
+                            · Status: <strong>${escapeHtml(statusBadge(status))}</strong>
+                            · Submitted: ${ta.submittedAt ? escapeHtml(new Date(ta.submittedAt).toLocaleDateString('en-IN')) : '—'}
+                        </p>
+                        <div style="padding: 12px 14px; background: #f8fafc; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="font-family: 'Montserrat', sans-serif; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Title</div>
+                            <div style="font-family: 'Lato', sans-serif; font-size: 14px; font-weight: 600; color: #1f2937;">${escapeHtml(ta.title || '—')}</div>
+                        </div>
+                        <div style="padding: 12px 14px; background: #f8fafc; border-radius: 8px;">
+                            <div style="font-family: 'Montserrat', sans-serif; font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Abstract</div>
+                            <div style="font-family: 'Lato', sans-serif; font-size: 13px; color: #1f2937; white-space: pre-wrap;">${escapeHtml(ta.abstract || '—')}</div>
+                        </div>
+                        ${ta.guideFeedback ? `
+                            <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #4b5563; margin: 10px 0 0 0;">
+                                <strong>Guide comment:</strong> ${escapeHtml(ta.guideFeedback)}
+                            </p>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            notSubmitted.sort((a, b) => a.s.name.localeCompare(b.s.name));
+            const notSubmittedRows = notSubmitted.length
+                ? notSubmitted.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.locked?.title || 'Not locked')}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="4" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have submitted title and abstract.</td></tr>`;
+
+            const summary = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; gap: 8px;">
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Students:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${students.length}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">With title &amp; abstract:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${submittedCount}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #fffbeb; border-radius: 8px; border-left: 3px solid #d97706;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 220px; font-size: 13px;">Not submitted yet:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #b45309; font-size: 13px;">${notSubmitted.length}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-after: always;">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with no title &amp; abstract submission</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 8%;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 18%;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Final topic</th>
+                            </tr>
+                        </thead>
+                        <tbody>${notSubmittedRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Title & Abstract Submissions Report', summary + sections);
+        },
+
+        buildSeminarTitleAbstractVerificationsReportHtml(students, settings, guideMap) {
+            let approved = 0;
+            let rejected = 0;
+            let pending = 0;
+            let revision = 0;
+            let draft = 0;
+            const rows = [];
+
+            students.forEach(s => {
+                const ta = ensureTitleAbstract(s.seminar);
+                const status = normalizePaperStatus(ta.status);
+
+                if (!hasTitleAbstractSubmission(ta) && status === 'draft') {
+                    draft += 1;
+                    return;
+                }
+
+                if (status === 'approved') approved += 1;
+                else if (status === 'rejected') rejected += 1;
+                else if (status === 'needs_revision') revision += 1;
+                else pending += 1;
+
+                rows.push({ s, ta, status });
+            });
+
+            rows.sort((a, b) => a.s.name.localeCompare(b.s.name));
+
+            const tableRows = rows.length
+                ? rows.map((r, idx) => {
+                    const decisionLabel = r.status === 'needs_revision' ? 'Needs edit' : statusBadge(r.status);
+                    return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 10px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ta.title || '—')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb; max-width: 240px;">${escapeHtml((r.ta.abstract || '').length > 120 ? `${r.ta.abstract.slice(0, 120)}…` : (r.ta.abstract || '—'))}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(decisionLabel)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ta.guideFeedback || '—')}</td>
+                    </tr>`;
+                }).join('')
+                : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No title &amp; abstract submissions found.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${approved}</div><div style="font-size: 11px; color: #047857;">Approved</div></div>
+                        <div style="padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #dc2626;">${rejected}</div><div style="font-size: 11px; color: #b91c1c;">Rejected</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${pending}</div><div style="font-size: 11px; color: #1d4ed8;">Pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${revision}</div><div style="font-size: 11px; color: #b45309;">Needs edit</div></div>
+                    </div>
+                    <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 12px 0 0 0;">
+                        Submissions in report: ${rows.length}${draft ? ` · Not submitted yet: ${draft}` : ''}
+                    </p>
+                </div>
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">Title &amp; Abstract Verifications</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Title</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Abstract</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Decision</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Guide Title & Abstract Verifications Report', body);
+        },
+
+        buildSeminarPptStatusReportHtml(students, settings, guideMap) {
+            let uploaded = 0;
+            let approved = 0;
+            let rejected = 0;
+            let pending = 0;
+            let revision = 0;
+            const notUploaded = [];
+            const rows = [];
+
+            students.forEach(s => {
+                const ppt = ensureSeminarPpt(s.seminar);
+                const status = normalizePaperStatus(ppt.status);
+                const locked = getLockedTopic(s.seminar);
+                const hasUpload = hasPptSubmission(ppt);
+
+                if (!hasUpload) {
+                    notUploaded.push({ s, locked });
+                    return;
+                }
+
+                uploaded += 1;
+                if (status === 'approved') approved += 1;
+                else if (status === 'rejected') rejected += 1;
+                else if (status === 'needs_revision') revision += 1;
+                else pending += 1;
+
+                rows.push({ s, ppt, status, locked });
+            });
+
+            notUploaded.sort((a, b) => a.s.name.localeCompare(b.s.name));
+            rows.sort((a, b) => a.s.name.localeCompare(b.s.name));
+
+            const notUploadedRows = notUploaded.length
+                ? notUploaded.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.locked?.title || 'Not locked')}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="4" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have uploaded a PPT link.</td></tr>`;
+
+            const tableRows = rows.length
+                ? rows.map((r, idx) => {
+                    const decisionLabel = r.status === 'needs_revision' ? 'Needs edit' : statusBadge(r.status);
+                    return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 10px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.name)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.s.ktuid)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ppt.title || 'Presentation')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(decisionLabel)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${r.ppt.submittedAt ? escapeHtml(new Date(r.ppt.submittedAt).toLocaleDateString('en-IN')) : '—'}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ppt.guideFeedback || '—')}</td>
+                    </tr>`;
+                }).join('')
+                : `<tr><td colspan="7" style="padding: 16px; text-align: center; color: #6b7280;">No PPT uploads found.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+                        <div style="padding: 12px; background: #f8fafc; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #1f2937;">${uploaded}</div><div style="font-size: 11px; color: #4b5563;">Uploaded</div></div>
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${approved}</div><div style="font-size: 11px; color: #047857;">Approved</div></div>
+                        <div style="padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #dc2626;">${rejected}</div><div style="font-size: 11px; color: #b91c1c;">Rejected</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${pending}</div><div style="font-size: 11px; color: #1d4ed8;">Pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${revision}</div><div style="font-size: 11px; color: #b45309;">Needs edit</div></div>
+                    </div>
+                    <p style="font-family: 'Lato', sans-serif; font-size: 12px; color: #6b7280; margin: 12px 0 0 0;">Not uploaded yet: ${notUploaded.length}</p>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-after: always;">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with no PPT upload</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a; width: 8%;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a; width: 18%;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Final topic</th>
+                            </tr>
+                        </thead>
+                        <tbody>${notUploadedRows}</tbody>
+                    </table>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">PPT Upload Status</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">PPT title</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Status</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Submitted</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('PPT Upload Status Report', body);
+        },
+
+        async generateSeminarTitleAbstractSubmissionsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarTitleAbstractSubmissionsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Title & Abstract Submissions Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating title & abstract submissions report. Please allow popups and try again.');
+            }
+        },
+
+        async generateSeminarTitleAbstractVerificationsReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarTitleAbstractVerificationsReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Guide Title & Abstract Verifications Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating title & abstract verifications report. Please allow popups and try again.');
+            }
+        },
+
+        async generateSeminarPptStatusReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarPptStatusReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'PPT Upload Status Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating PPT upload status report. Please allow popups and try again.');
             }
         }
     };

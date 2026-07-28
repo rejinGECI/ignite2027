@@ -12,7 +12,7 @@ import {
     isPaperPendingReview,
     ensureTitleAbstract,
     ensureSeminarPpt
-} from '../utils/seminarConfig.js?v=ppt1';
+} from '../utils/seminarConfig.js?v=rej1';
 
 export function createGuideSeminarModule(app) {
     return {
@@ -387,23 +387,25 @@ export function createGuideSeminarModule(app) {
                         <p class="seminar-topic-feedback"><i class="fas fa-comment"></i> ${escapeHtml(ppt.guideFeedback)}</p>
                     ` : ''}
                     <div class="seminar-guide-actions">
-                        ${status !== 'approved' && status !== 'needs_revision' ? `
+                        ${status === 'submitted' ? `
                             <button type="button" class="btn btn-sm btn-primary" onclick="app.guideApprovePpt('${escapeHtml(student.id)}')">
                                 <i class="fas fa-check"></i> Approve
                             </button>
-                        ` : ''}
-                        ${status !== 'rejected' && status !== 'needs_revision' ? `
                             <button type="button" class="btn btn-sm btn-danger" onclick="app.guideRejectPpt('${escapeHtml(student.id)}')">
                                 <i class="fas fa-times"></i> Reject
                             </button>
-                        ` : ''}
-                        ${status !== 'needs_revision' ? `
                             <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenPptEdit('${escapeHtml(student.id)}')">
                                 <i class="fas fa-undo"></i> Revert to student
                             </button>
-                        ` : `
+                        ` : ''}
+                        ${status === 'approved' ? `
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenPptEdit('${escapeHtml(student.id)}')">
+                                <i class="fas fa-undo"></i> Revert to student
+                            </button>
+                        ` : ''}
+                        ${status === 'needs_revision' || status === 'rejected' ? `
                             <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to update and resubmit the PPT link.</p>
-                        `}
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -441,23 +443,25 @@ export function createGuideSeminarModule(app) {
                         <p class="seminar-topic-feedback"><i class="fas fa-comment"></i> ${escapeHtml(ta.guideFeedback)}</p>
                     ` : ''}
                     <div class="seminar-guide-actions">
-                        ${status !== 'approved' && status !== 'needs_revision' ? `
+                        ${status === 'submitted' ? `
                             <button type="button" class="btn btn-sm btn-primary" onclick="app.guideApproveTitleAbstract('${escapeHtml(student.id)}')">
                                 <i class="fas fa-check"></i> Approve
                             </button>
-                        ` : ''}
-                        ${status !== 'rejected' && status !== 'needs_revision' ? `
                             <button type="button" class="btn btn-sm btn-danger" onclick="app.guideRejectTitleAbstract('${escapeHtml(student.id)}')">
                                 <i class="fas fa-times"></i> Reject
                             </button>
-                        ` : ''}
-                        ${status !== 'needs_revision' ? `
                             <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenTitleAbstractEdit('${escapeHtml(student.id)}')">
                                 <i class="fas fa-undo"></i> Open for edit
                             </button>
-                        ` : `
-                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to edit and resubmit.</p>
-                        `}
+                        ` : ''}
+                        ${status === 'approved' ? `
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenTitleAbstractEdit('${escapeHtml(student.id)}')">
+                                <i class="fas fa-undo"></i> Open for edit
+                            </button>
+                        ` : ''}
+                        ${status === 'needs_revision' || status === 'rejected' ? `
+                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to update and resubmit.</p>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -770,6 +774,7 @@ export function createGuideSeminarModule(app) {
                 ta.guideFeedback = reason;
                 ta.reviewedAt = new Date().toISOString();
             });
+            alert('Rejected. Student can update and resubmit the title & abstract.');
         },
 
         async guideOpenTitleAbstractEdit(studentId) {
@@ -805,6 +810,7 @@ export function createGuideSeminarModule(app) {
                 ppt.guideFeedback = reason;
                 ppt.reviewedAt = new Date().toISOString();
             });
+            alert('Rejected. Student can update and resubmit the PPT link.');
         },
 
         async guideOpenPptEdit(studentId) {

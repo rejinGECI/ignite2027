@@ -231,6 +231,12 @@ export function isPaperEditable(status) {
     return s === 'needs_revision' || s === 'draft';
 }
 
+/** Student may update & resubmit after reject or when guide opens for edit. */
+export function isSeminarSubmissionEditable(status) {
+    const s = normalizePaperStatus(status);
+    return s === 'needs_revision' || s === 'rejected' || s === 'draft';
+}
+
 export function isPaperPendingReview(status) {
     const s = normalizePaperStatus(status);
     return s === 'submitted';
