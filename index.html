@@ -934,7 +934,7 @@ Bob Johnson,GHI789</pre>
                 <div class="seminar-admin-tabs">
                     <button type="button" class="seminar-admin-tab active" data-tab="overview">Overview</button>
                     <button type="button" class="seminar-admin-tab" data-tab="allotment">Allotment</button>
-                    <button type="button" class="seminar-admin-tab" data-tab="schedule">Schedule &amp; Slots</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="schedule">Schedule &amp; Presentation</button>
                     <button type="button" class="seminar-admin-tab" data-tab="scoring">Scoring</button>
                     <button type="button" class="seminar-admin-tab" data-tab="students">Students</button>
                 </div>
@@ -960,32 +960,48 @@ Bob Johnson,GHI789</pre>
                         <div id="seminar-guide-allotment-summary"></div>
                     </div>
                     <div class="admin-card" style="margin-top: 1rem;">
-                        <h3><i class="fas fa-random"></i> Random presentation slots</h3>
-                        <p class="form-hint">Assigns presentation slots to students at random. Save slots in Schedule tab first.</p>
-                        <button type="button" class="btn btn-primary" onclick="app.randomAllotSeminarPresentations()">
-                            <i class="fas fa-random"></i> Allot presentation slots
-                        </button>
+                        <h3><i class="fas fa-info-circle"></i> Presentation slots</h3>
+                        <p class="form-hint">Presentation slot schedule is managed under <strong>Schedule &amp; Presentation</strong> (students per slot). Dated slot CRUD is deferred to presentation management.</p>
                     </div>
                 </div>
 
                 <div id="seminar-admin-schedule" class="seminar-admin-panel">
                     <div class="admin-card">
-                        <h3><i class="fas fa-calendar-alt"></i> Tentative schedule</h3>
+                        <h3><i class="fas fa-calendar-alt"></i> Tentative module schedule</h3>
+                        <p class="form-hint">Informational deadline dates for seminar stages (not tied to presentation slots).</p>
                         <div id="seminar-admin-schedule-form"></div>
                         <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;">
                             <button type="button" class="btn btn-primary" onclick="app.saveSeminarSchedule()">Save schedule</button>
                             <button type="button" class="btn btn-secondary" onclick="app.generateSeminarScheduleReport()">
-                                <i class="fas fa-file-pdf"></i> Download schedule report (PDF)
+                                <i class="fas fa-file-pdf"></i> Download tentative schedule report (PDF)
                             </button>
                         </div>
                     </div>
+
                     <div class="admin-card" style="margin-top: 1rem;">
-                        <h3><i class="fas fa-clock"></i> Presentation slots</h3>
-                        <div id="slot-rows-seminar-slots" class="forge-lab-custom-slots">
-                            <p class="form-hint forge-lab-no-slots-msg">No presentation slots yet.</p>
+                        <h3><i class="fas fa-th-list"></i> Schedule management</h3>
+                        <p class="form-hint">
+                            Each click creates <strong>one</strong> slot (no dates) and randomly assigns that many
+                            unassigned students. Click again whenever you need the next slot.
+                        </p>
+                        <div class="form-group" style="max-width: 280px;">
+                            <label><strong>Students in this slot</strong></label>
+                            <input type="number" id="seminar-students-per-slot" class="form-input" min="1" max="200" value="5">
                         </div>
-                        <button type="button" class="btn btn-secondary" style="margin-top: 0.75rem;" onclick="app.addSeminarSlotRow()">Add slot</button>
-                        <button type="button" class="btn btn-primary" style="margin-top: 0.75rem; margin-left: 0.5rem;" onclick="app.saveSeminarPresentationSlots()">Save slots</button>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button type="button" class="btn btn-primary" onclick="app.generateSeminarPresentationSchedule()">
+                                <i class="fas fa-plus"></i> Generate next slot
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarPresentationSlotReport()">
+                                <i class="fas fa-file-pdf"></i> Download students-per-slot report (PDF)
+                            </button>
+                        </div>
+                        <div id="seminar-presentation-schedule-summary" style="margin-top: 1rem;"></div>
+                    </div>
+
+                    <div class="admin-card" style="margin-top: 1rem; opacity: 0.85;">
+                        <h3><i class="fas fa-chalkboard-teacher"></i> Presentation management</h3>
+                        <p class="form-hint">Coming next — evaluation, questioners, and live presentation controls will appear here.</p>
                     </div>
                 </div>
 
@@ -2982,7 +2998,7 @@ Bob Johnson,GHI789</pre>
 
     <!-- PptxGenJS for PPT generation - Load before app.js -->
     <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs/dist/pptxgen.bundle.js"></script>
-    <script type="module" src="./app.js?v=rej1"></script>
+    <script type="module" src="./app.js?v=sched2"></script>
     <script>
         // Password visibility toggle function
         function togglePasswordVisibility() {

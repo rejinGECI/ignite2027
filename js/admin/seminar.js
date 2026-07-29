@@ -25,8 +25,10 @@ import {
     updateFairnessAfterPick,
     sumParamScores,
     equallyAllotGuidesToStudents,
-    buildSeminarGuideAllotmentGroups
-} from '../utils/seminarConfig.js?v=rej1';
+    buildSeminarGuideAllotmentGroups,
+    appendPresentationSlot,
+    buildPresentationSlotGroups
+} from '../utils/seminarConfig.js?v=sched2';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -89,6 +91,7 @@ export function createAdminSeminarModule(app) {
             this.renderSeminarSlots(settings);
             this.renderSeminarScoringParams(settings);
             this.renderSeminarScheduleForm(settings);
+            await this.renderPresentationScheduleSummary(settings);
             this.bindSeminarAdminTabs();
             this.setupSeminarAdminSearch();
         },
@@ -745,35 +748,68 @@ export function createAdminSeminarModule(app) {
         },
 
         async randomAllotSeminarPresentations() {
+            // Legacy entry point — schedule is generated under Schedule & Presentation
+            await this.generateSeminarPresentationSchedule();
+        },
+
+        async generateSeminarPresentationSchedule() {
+            const capacityInput = document.getElementById('seminar-students-per-slot');
+            const capacity = parseInt(capacityInput?.value, 10);
+            if (!capacity || capacity < 1) {
+                alert('Enter a valid number of students per slot (at least 1).');
+                return;
+            }
+
             const settings = await this.getSeminarSettings();
-            const slots = settings.presentationSlots || [];
-            if (!slots.length) { alert('Add presentation slots first.'); return; }
-
             const students = await this.fetchSeminarStudents();
-            if (!students.length) { alert('No students.'); return; }
-            if (!confirm(`Randomly assign ${slots.length} slot(s) to ${students.length} students?`)) return;
+            if (!students.length) { alert('No students found.'); return; }
 
-            const shuffledStudents = [...students].sort(() => Math.random() - 0.5);
-            const shuffledSlots = [...slots].sort(() => Math.random() - 0.5);
-            const presentationAssignments = {};
-            const presentations = [];
-            const now = new Date().toISOString();
+            const existingSlots = settings.presentationSlots || [];
+            const presentationAssignments = { ...(settings.presentationAssignments || {}) };
+            const assignedIds = new Set(Object.keys(presentationAssignments));
+            const unassigned = students.filter(s => !assignedIds.has(s.id));
 
-            for (let i = 0; i < shuffledStudents.length; i++) {
-                const slot = shuffledSlots[i % shuffledSlots.length];
-                const sid = shuffledStudents[i].id;
-                presentationAssignments[sid] = slot.id;
+            if (!unassigned.length) {
+                alert('All students already have a presentation slot.');
+                return;
+            }
+
+            const takeCount = Math.min(capacity, unassigned.length);
+            const nextLabel = `Slot ${existingSlots.length + 1}`;
+            if (!confirm(
+                `Generate ${nextLabel} with ${takeCount} student${takeCount === 1 ? '' : 's'} ` +
+                `(${unassigned.length} still unassigned)?\n\nExisting slots are kept.`
+            )) return;
+
+            const { slot, assignedStudents } = appendPresentationSlot(
+                unassigned,
+                capacity,
+                existingSlots
+            );
+            if (!slot || !assignedStudents.length) {
+                alert('Could not create a slot.');
+                return;
+            }
+
+            const presentations = [...(settings.presentations || [])];
+            let index = presentations.length;
+            const now = Date.now();
+
+            for (const student of assignedStudents) {
+                presentationAssignments[student.id] = slot.id;
                 presentations.push({
-                    id: `pres_${sid}_${Date.now()}`,
-                    studentId: sid,
+                    id: `pres_${student.id}_${now}_${index}`,
+                    studentId: student.id,
                     slotId: slot.id,
                     status: 'scheduled',
                     questionerIds: [],
                     questionerScores: {},
                     presenterScores: {},
-                    presentationIndex: i
+                    presentationIndex: index
                 });
-                const ref = doc(window.firebaseDb, 'userData', sid);
+                index += 1;
+
+                const ref = doc(window.firebaseDb, 'userData', student.id);
                 const snap = await getDoc(ref);
                 const data = snap.exists() ? snap.data() : {};
                 if (!data.seminar) data.seminar = getDefaultSeminar();
@@ -782,13 +818,152 @@ export function createAdminSeminarModule(app) {
             }
 
             await this.saveSeminarSettings({
+                presentationSlots: [...existingSlots, slot],
                 presentationAssignments,
                 presentations,
-                presentationAllottedAt: now,
-                questionFairness: {}
+                presentationAllottedAt: new Date().toISOString(),
+                presentationSlotCapacity: capacity
             });
-            alert('Presentation slots randomly assigned.');
+
+            const remaining = unassigned.length - assignedStudents.length;
+            alert(
+                `${slot.label} created with ${assignedStudents.length} student(s).` +
+                (remaining ? ` ${remaining} student(s) still unassigned.` : ' All students are now assigned.')
+            );
             await this.loadSeminarAdmin();
+        },
+
+        async renderPresentationScheduleSummary(settings) {
+            const el = document.getElementById('seminar-presentation-schedule-summary');
+            if (!el) return;
+
+            const capacityInput = document.getElementById('seminar-students-per-slot');
+            if (capacityInput && settings.presentationSlotCapacity) {
+                capacityInput.value = settings.presentationSlotCapacity;
+            }
+
+            const slots = settings.presentationSlots || [];
+            const assignments = settings.presentationAssignments || {};
+            const students = await this.fetchSeminarStudents();
+            const assignedCount = Object.keys(assignments).length;
+            const unassignedCount = Math.max(0, students.length - assignedCount);
+
+            if (!slots.length) {
+                el.innerHTML = `
+                    <p class="form-hint">No presentation slots yet.
+                    ${students.length ? `${students.length} student(s) available to assign.` : ''}</p>
+                `;
+                return;
+            }
+
+            const groups = buildPresentationSlotGroups(students, slots, assignments);
+
+            el.innerHTML = `
+                <div class="seminar-guide-summary" style="margin-bottom: 0.75rem;">
+                    <div class="seminar-guide-stat">
+                        <strong>${slots.length}</strong>
+                        <span>Slots</span>
+                    </div>
+                    <div class="seminar-guide-stat">
+                        <strong>${assignedCount}</strong>
+                        <span>Students assigned</span>
+                    </div>
+                    <div class="seminar-guide-stat">
+                        <strong>${unassignedCount}</strong>
+                        <span>Still unassigned</span>
+                    </div>
+                </div>
+                <div class="seminar-topics-list">
+                    ${groups.map(g => `
+                        <div class="seminar-paper-card">
+                            <div class="seminar-topic-card-header">
+                                <strong>${escapeHtml(g.slotLabel)}</strong>
+                                <span class="badge">${g.students.length} student${g.students.length === 1 ? '' : 's'}</span>
+                            </div>
+                            ${g.students.length
+                                ? `<p class="form-hint" style="margin:0.35rem 0 0;">${g.students.map(s => escapeHtml(s.name)).join(', ')}</p>`
+                                : '<p class="form-hint" style="margin:0.35rem 0 0;">No students assigned</p>'}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        },
+
+        buildSeminarPresentationSlotReportHtml(groups, capacity) {
+            const totalStudents = groups.reduce((n, g) => n + g.students.length, 0);
+            const sections = groups.map(g => {
+                const rows = g.students.length
+                    ? g.students.map((s, idx) => `
+                        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                            <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(s.name)}</td>
+                            <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(s.ktuid || '—')}</td>
+                        </tr>
+                    `).join('')
+                    : `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px;">No students in this slot</td></tr>`;
+
+                return `
+                    <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06); page-break-inside: avoid;">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 6px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">
+                            ${escapeHtml(g.slotLabel)}
+                            <span style="font-weight: 500; color: #6b7280; font-size: 13px;"> · ${g.students.length} student${g.students.length === 1 ? '' : 's'}</span>
+                        </h3>
+                        <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb; width: 8%;">#</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                    <th style="padding: 8px 12px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb; width: 28%;">KTU ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+
+            const summary = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; gap: 8px;">
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Slots:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${groups.length}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Students assigned:</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${totalStudents}</span>
+                        </div>
+                        <div style="display: flex; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #059669;">
+                            <span style="font-family: 'Montserrat', sans-serif; font-weight: 600; color: #4b5563; min-width: 200px; font-size: 13px;">Students per slot (capacity):</span>
+                            <span style="font-family: 'Lato', sans-serif; font-weight: 600; color: #1f2937; font-size: 13px;">${capacity || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return this.seminarReportShell('Presentation Slot Schedule Report', summary + sections);
+        },
+
+        async generateSeminarPresentationSlotReport() {
+            try {
+                const settings = await this.getSeminarSettings();
+                const slots = settings.presentationSlots || [];
+                if (!slots.length) {
+                    alert('Generate a presentation schedule first.');
+                    return;
+                }
+                const students = await this.fetchSeminarStudents();
+                const groups = buildPresentationSlotGroups(students, slots, settings.presentationAssignments || {});
+                const html = this.buildSeminarPresentationSlotReportHtml(
+                    groups,
+                    settings.presentationSlotCapacity
+                );
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Presentation Slot Schedule Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating slot report. Please allow popups and try again.');
+            }
         },
 
         async renderSeminarAdminOverview(settings) {

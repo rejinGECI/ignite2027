@@ -372,3 +372,52 @@ export function buildSeminarGuideAllotmentGroups(students, guides, guideAssignme
     groups.forEach(g => g.students.sort((a, b) => a.name.localeCompare(b.name)));
     return groups;
 }
+
+/**
+ * Create one date-free presentation slot and assign up to `studentsPerSlot`
+ * students from the provided (typically unassigned) list.
+ */
+export function appendPresentationSlot(unassignedStudents, studentsPerSlot, existingSlots = []) {
+    const capacity = Math.max(1, parseInt(studentsPerSlot, 10) || 1);
+    const available = [...(unassignedStudents || [])];
+    if (!available.length) {
+        return { slot: null, assignedStudents: [], capacity };
+    }
+
+    const takeCount = Math.min(capacity, available.length);
+    const shuffled = available.sort(() => Math.random() - 0.5);
+    const assignedStudents = shuffled.slice(0, takeCount);
+    const nextNumber = (existingSlots?.length || 0) + 1;
+    const slot = {
+        id: `pslot_${Date.now()}_${nextNumber}`,
+        label: `Slot ${nextNumber}`,
+        capacity: takeCount,
+        date: '',
+        startTime: '',
+        endTime: ''
+    };
+
+    return { slot, assignedStudents, capacity };
+}
+
+/** Group students by presentation slot for summary / reports. */
+export function buildPresentationSlotGroups(students, slots, presentationAssignments) {
+    const groups = (slots || []).map((slot, idx) => ({
+        slotId: slot.id,
+        slotLabel: slot.label || `Slot ${idx + 1}`,
+        capacity: slot.capacity || null,
+        students: []
+    }));
+    const groupMap = Object.fromEntries(groups.map(g => [g.slotId, g]));
+
+    for (const student of students) {
+        const slotId = presentationAssignments?.[student.id]
+            || student.seminar?.presentationSlotId;
+        if (slotId && groupMap[slotId]) {
+            groupMap[slotId].students.push(student);
+        }
+    }
+
+    groups.forEach(g => g.students.sort((a, b) => a.name.localeCompare(b.name)));
+    return groups;
+}
