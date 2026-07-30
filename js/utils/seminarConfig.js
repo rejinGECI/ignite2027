@@ -59,6 +59,8 @@ export function getDefaultSeminar() {
         topics: [],
         lockedTopicId: null,
         topicsLockedAt: null,
+        // Stays true after first final-topic lock so papers/title/PPT remain open if guide unlocks topics for edit
+        postTopicWorkflowOpen: false,
         // Legacy single-topic field kept for older data; prefer topics[]
         topic: {
             title: '',
@@ -97,6 +99,7 @@ export function ensureSeminarTopics(seminar) {
     if (!seminar.topics) seminar.topics = [];
     if (seminar.lockedTopicId === undefined) seminar.lockedTopicId = null;
     if (seminar.topicsLockedAt === undefined) seminar.topicsLockedAt = null;
+    if (seminar.postTopicWorkflowOpen === undefined) seminar.postTopicWorkflowOpen = false;
 
     if (!seminar.topics.length && seminar.topic?.title) {
         const legacyStatus = seminar.topic.status;
@@ -143,6 +146,20 @@ export function getSeminarDisplayTopic(seminar) {
 
 export function isSeminarTopicsLocked(seminar) {
     return Boolean(seminar?.lockedTopicId);
+}
+
+/**
+ * Papers / title-abstract / PPT open after the first final-topic lock.
+ * Remains open if the guide later unlocks topics for editing.
+ */
+export function isSeminarPostTopicOpen(seminar) {
+    if (!seminar) return false;
+    if (seminar.lockedTopicId || seminar.postTopicWorkflowOpen) return true;
+    // Backfill: students unlocked before postTopicWorkflowOpen existed
+    if ((seminar.papers || []).length > 0) return true;
+    if (hasTitleAbstractSubmission(seminar.titleAbstract)) return true;
+    if (hasPptSubmission(seminar.ppt)) return true;
+    return false;
 }
 
 export function formatTime12h(time24) {
@@ -227,8 +244,7 @@ export function normalizePaperStatus(status) {
 }
 
 export function isPaperEditable(status) {
-    const s = normalizePaperStatus(status);
-    return s === 'needs_revision' || s === 'draft';
+    return isSeminarSubmissionEditable(status);
 }
 
 /** Student may update & resubmit after reject or when guide opens for edit. */

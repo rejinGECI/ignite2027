@@ -28,7 +28,7 @@ import {
     buildSeminarGuideAllotmentGroups,
     appendPresentationSlot,
     buildPresentationSlotGroups
-} from '../utils/seminarConfig.js?v=sched2';
+} from '../utils/seminarConfig.js?v=unlock1';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',

@@ -8,6 +8,7 @@ import {
     ensureSeminarTopics,
     getLockedTopic,
     isSeminarTopicsLocked,
+    isSeminarPostTopicOpen,
     formatPresentationSlot,
     formatSlotDate,
     formatRemainingDays,
@@ -22,7 +23,7 @@ import {
     hasTitleAbstractSubmission,
     ensureSeminarPpt,
     hasPptSubmission
-} from '../utils/seminarConfig.js?v=rej1';
+} from '../utils/seminarConfig.js?v=unlock1';
 
 export function createSeminarModule(app) {
     return {
@@ -35,6 +36,16 @@ export function createSeminarModule(app) {
             if (!s.papers) s.papers = [];
             if (!s.totals) s.totals = { presentationMarks: 0, questionMarks: 0 };
             if (!s.questionHistory) s.questionHistory = [];
+            if (s.postTopicWorkflowOpen === undefined) s.postTopicWorkflowOpen = false;
+            // Soft-migrate: keep papers/title/PPT open after prior lock or existing submissions
+            if (!s.postTopicWorkflowOpen && (
+                s.lockedTopicId
+                || s.papers.length > 0
+                || hasTitleAbstractSubmission(s.titleAbstract)
+                || hasPptSubmission(s.ppt)
+            )) {
+                s.postTopicWorkflowOpen = true;
+            }
             return s;
         },
 
@@ -94,6 +105,7 @@ export function createSeminarModule(app) {
 
             const topics = ensureSeminarTopics(seminar);
             const locked = isSeminarTopicsLocked(seminar);
+            const postTopicOpen = isSeminarPostTopicOpen(seminar);
             const lockedTopic = getLockedTopic(seminar);
             const topicHintDate = settings?.schedule?.topicSubmissionToGuide;
 
@@ -115,12 +127,14 @@ export function createSeminarModule(app) {
 
             const topicsHtml = topics.length
                 ? topics.map((t, idx) => {
-                    if (t.status === 'needs_revision' && !locked) {
+                    if ((t.status === 'needs_revision' || t.status === 'rejected') && !locked) {
+                        const badgeLabel = t.status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
+                        const badgeClass = t.status === 'rejected' ? 'rejected' : 'needs_revision';
                         return `
-                            <div class="seminar-topic-card seminar-topic-status-needs_revision" data-topic-id="${escapeHtml(t.id)}">
+                            <div class="seminar-topic-card seminar-topic-status-${escapeHtml(badgeClass)}" data-topic-id="${escapeHtml(t.id)}">
                                 <div class="seminar-topic-card-header">
                                     <strong>${idx + 1}. Edit topic</strong>
-                                    <span class="badge badge-needs_revision">Needs edit</span>
+                                    <span class="badge badge-${escapeHtml(badgeClass)}">${escapeHtml(badgeLabel)}</span>
                                 </div>
                                 ${t.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(t.guideFeedback)}</p>` : ''}
                                 <div class="seminar-edit-topic-form">
@@ -180,7 +194,7 @@ export function createSeminarModule(app) {
                 ? papers.map((p, idx) => this.renderStudentPaperCard(p, idx)).join('')
                 : '<p class="form-hint">No reference papers yet. Add paper / article / resource links for guide review.</p>';
 
-            const addPaperForm = locked
+            const addPaperForm = postTopicOpen
                 ? `
                     <div class="seminar-add-paper-form">
                         <div class="form-group">
@@ -209,11 +223,11 @@ export function createSeminarModule(app) {
 
             const titleAbstract = ensureTitleAbstract(seminar);
             const titleAbstractHintDate = settings?.schedule?.titleAbstractSubmission;
-            const titleAbstractHtml = this.renderStudentTitleAbstract(titleAbstract, locked, lockedTopic);
+            const titleAbstractHtml = this.renderStudentTitleAbstract(titleAbstract, postTopicOpen, lockedTopic, seminar);
 
             const ppt = ensureSeminarPpt(seminar);
             const pptHintDate = settings?.schedule?.pptSubmission;
-            const pptHtml = this.renderStudentPpt(ppt, locked);
+            const pptHtml = this.renderStudentPpt(ppt, postTopicOpen);
 
             el.innerHTML = `
                 <div class="seminar-student-page">
@@ -336,8 +350,8 @@ export function createSeminarModule(app) {
             `;
         },
 
-        renderStudentPpt(ppt, locked) {
-            if (!locked) {
+        renderStudentPpt(ppt, postTopicOpen) {
+            if (!postTopicOpen) {
                 return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> PPT upload opens after your guide locks a final topic.</p>`;
             }
 
@@ -402,13 +416,13 @@ export function createSeminarModule(app) {
                 </div>`;
         },
 
-        renderStudentTitleAbstract(ta, locked, lockedTopic) {
-            if (!locked) {
+        renderStudentTitleAbstract(ta, postTopicOpen, lockedTopic, seminar) {
+            if (!postTopicOpen) {
                 return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> Title and abstract open after your guide locks a final topic.</p>`;
             }
 
             const status = normalizePaperStatus(ta.status);
-            const suggestedTitle = lockedTopic?.title || '';
+            const suggestedTitle = lockedTopic?.title || seminar?.topic?.title || '';
 
             if (status === 'needs_revision' || status === 'rejected') {
                 const badgeLabel = status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
@@ -476,11 +490,17 @@ export function createSeminarModule(app) {
             const editable = isPaperEditable(status);
 
             if (editable) {
+                const badgeLabel = status === 'rejected'
+                    ? 'Rejected — update & resubmit'
+                    : status === 'draft'
+                        ? 'Draft'
+                        : 'Open for upload';
+                const badgeClass = status === 'rejected' ? 'rejected' : 'needs_revision';
                 return `
-                    <div class="seminar-paper-card seminar-topic-status-needs_revision" data-paper-id="${escapeHtml(paper.id)}">
+                    <div class="seminar-paper-card seminar-topic-status-${escapeHtml(badgeClass)}" data-paper-id="${escapeHtml(paper.id)}">
                         <div class="seminar-topic-card-header">
                             <strong>${idx + 1}. Update reference link</strong>
-                            <span class="badge badge-needs_revision">Open for upload</span>
+                            <span class="badge badge-${escapeHtml(badgeClass)}">${escapeHtml(badgeLabel)}</span>
                         </div>
                         ${paper.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(paper.guideFeedback)}</p>` : ''}
                         <div class="seminar-edit-paper-form">
@@ -593,7 +613,7 @@ export function createSeminarModule(app) {
             ensureSeminarTopics(seminar);
             const topic = seminar.topics.find(t => t.id === topicId);
             if (!topic) { alert('Topic not found.'); return; }
-            if (topic.status !== 'needs_revision') {
+            if (topic.status !== 'needs_revision' && topic.status !== 'rejected') {
                 alert('This topic is not open for editing.');
                 return;
             }
@@ -626,7 +646,7 @@ export function createSeminarModule(app) {
             if (!data) return;
             const seminar = this.ensureSeminar(data);
 
-            if (!isSeminarTopicsLocked(seminar)) {
+            if (!isSeminarPostTopicOpen(seminar)) {
                 alert('Reference papers unlock after your guide locks a final topic.');
                 await this.loadSeminar();
                 return;
@@ -676,7 +696,7 @@ export function createSeminarModule(app) {
             const paper = seminar.papers.find(p => p.id === paperId);
             if (!paper) { alert('Paper not found.'); return; }
             if (!isPaperEditable(paper.status)) {
-                alert('This link is not open for upload. Ask your guide to open it for a new upload.');
+                alert('This link is not open for editing. If it was rejected, refresh the page; otherwise ask your guide to open it for a new upload.');
                 return;
             }
 
@@ -702,7 +722,7 @@ export function createSeminarModule(app) {
             if (!data) return;
             const seminar = this.ensureSeminar(data);
 
-            if (!isSeminarTopicsLocked(seminar)) {
+            if (!isSeminarPostTopicOpen(seminar)) {
                 alert('Title and abstract unlock after your guide locks a final topic.');
                 await this.loadSeminar();
                 return;
@@ -770,7 +790,7 @@ export function createSeminarModule(app) {
             if (!data) return;
             const seminar = this.ensureSeminar(data);
 
-            if (!isSeminarTopicsLocked(seminar)) {
+            if (!isSeminarPostTopicOpen(seminar)) {
                 alert('PPT upload unlocks after your guide locks a final topic.');
                 await this.loadSeminar();
                 return;

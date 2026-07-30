@@ -12,7 +12,7 @@ import {
     isPaperPendingReview,
     ensureTitleAbstract,
     ensureSeminarPpt
-} from '../utils/seminarConfig.js?v=rej1';
+} from '../utils/seminarConfig.js?v=unlock1';
 
 export function createGuideSeminarModule(app) {
     return {
@@ -503,12 +503,12 @@ export function createGuideSeminarModule(app) {
                                 <i class="fas fa-times"></i> Reject
                             </button>
                         ` : ''}
-                        ${status !== 'needs_revision' ? `
+                        ${status !== 'needs_revision' && status !== 'rejected' ? `
                             <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenPaperUpload('${escapeHtml(student.id)}','${escapeHtml(paper.id)}')">
                                 <i class="fas fa-upload"></i> Open for new upload
                             </button>
                         ` : `
-                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to upload a new link.</p>
+                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to ${status === 'rejected' ? 'update & resubmit' : 'upload a new link'}.</p>
                         `}
                     </div>
                 </div>
@@ -625,6 +625,7 @@ export function createGuideSeminarModule(app) {
             topic.guideFeedback = reason;
             topic.reviewedAt = new Date().toISOString();
             await setDoc(ref, { seminar: data.seminar }, { merge: true });
+            alert('Rejected. Student can update and resubmit this topic.');
             await this.loadGuideSeminar();
         },
 
@@ -647,9 +648,10 @@ export function createGuideSeminarModule(app) {
                 alert('Only an approved topic can be locked as final.');
                 return;
             }
-            // Enforce single lock
+            // Enforce single lock; keep post-topic stages open even if unlocked later
             data.seminar.lockedTopicId = topicId;
             data.seminar.topicsLockedAt = new Date().toISOString();
+            data.seminar.postTopicWorkflowOpen = true;
             data.seminar.topic = {
                 title: topic.title,
                 abstract: topic.description || '',
@@ -663,7 +665,7 @@ export function createGuideSeminarModule(app) {
         },
 
         async guideUnlockSeminarTopics(studentId) {
-            if (!confirm('Unlock topics for this student? They will be able to add topics again, and you can lock a different final topic later.')) {
+            if (!confirm('Unlock topics for this student? They will be able to add/edit topics again. Reference papers, title/abstract, and PPT stay available if already unlocked.')) {
                 return;
             }
             const ref = doc(window.firebaseDb, 'userData', studentId);
@@ -671,6 +673,10 @@ export function createGuideSeminarModule(app) {
             const data = snap.exists() ? snap.data() : {};
             if (!data.seminar) data.seminar = getDefaultSeminar();
             ensureSeminarTopics(data.seminar);
+            // Keep post-topic workflow open so papers / title / PPT remain usable
+            if (data.seminar.lockedTopicId) {
+                data.seminar.postTopicWorkflowOpen = true;
+            }
             data.seminar.lockedTopicId = null;
             data.seminar.topicsLockedAt = null;
             if (data.seminar.topic) {
@@ -694,6 +700,7 @@ export function createGuideSeminarModule(app) {
 
             // If this was the locked final topic, unlock so student can edit
             if (data.seminar.lockedTopicId === topicId) {
+                data.seminar.postTopicWorkflowOpen = true;
                 data.seminar.lockedTopicId = null;
                 data.seminar.topicsLockedAt = null;
             }
@@ -738,6 +745,7 @@ export function createGuideSeminarModule(app) {
                 p.guideFeedback = reason;
                 p.reviewedAt = new Date().toISOString();
             });
+            alert('Rejected. Student can update the link and resubmit.');
         },
 
         async guideOpenPaperUpload(studentId, paperId) {
