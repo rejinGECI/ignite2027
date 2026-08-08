@@ -1284,20 +1284,21 @@ body.mobile-menu-open {
 /* Dashboard */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.875rem;
     margin-bottom: 2rem;
 }
 
 .stat-card {
     background: var(--card-bg);
     border-radius: 12px;
-    padding: 1.5rem;
+    padding: 1rem 1.15rem;
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 0.75rem;
     box-shadow: var(--shadow);
     transition: transform 0.2s, box-shadow 0.2s;
+    min-width: 0;
 }
 
 .stat-card:hover {
@@ -1306,13 +1307,14 @@ body.mobile-menu-open {
 }
 
 .stat-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 12px;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
+    font-size: 0.95rem;
     color: white;
 }
 
@@ -1332,16 +1334,28 @@ body.mobile-menu-open {
     background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
 
+.stat-content {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
 .stat-content h3 {
-    font-size: 2rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 .stat-content p {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    margin: 0;
+    white-space: nowrap;
 }
 
 .reading-stats-cards {
@@ -4005,18 +4019,18 @@ textarea:not(:placeholder-shown)::placeholder {
     }
 
     .stat-card {
-        padding: 1.25rem;
-        gap: 1rem;
+        padding: 1rem 1.25rem;
+        gap: 0.75rem;
     }
 
     .stat-icon {
-        width: 50px;
-        height: 50px;
-        font-size: 1.25rem;
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
     }
 
     .stat-content h3 {
-        font-size: 1.75rem;
+        font-size: 1.35rem;
     }
 
     /* Timer Section */
