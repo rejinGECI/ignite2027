@@ -5,11 +5,16 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
     SEMINAR_SCHEDULE_FIELDS,
+    SEMINAR_SCORING_CATEGORIES,
     DEFAULT_PRESENTER_PARAMS,
     DEFAULT_QUESTIONER_PARAMS,
     getDefaultSeminarSettings,
     getDefaultSeminar,
+    getSyllabusScoringParams,
+    normalizeScoringParams,
+    categoryParamTotal,
     ensureSeminarTopics,
+    ensureSeminarEvaluation,
     getLockedTopic,
     getSeminarDisplayTopic,
     formatPresentationSlot,
@@ -27,8 +32,12 @@ import {
     equallyAllotGuidesToStudents,
     buildSeminarGuideAllotmentGroups,
     appendPresentationSlot,
-    buildPresentationSlotGroups
-} from '../utils/seminarConfig.js?v=unlock1';
+    buildPresentationSlotGroups,
+    canMarkSeminarCategory,
+    resolveSeminarGuideId,
+    buildEvaluatorMeta,
+    computeSeminarGrandTotal
+} from '../utils/seminarConfig.js?v=eval5';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -56,16 +65,16 @@ export function createAdminSeminarModule(app) {
                             (data.schedule || {})[f.key] || ''
                         ])
                     ),
-                    scoringParams: {
-                        presenter: data.scoringParams?.presenter?.length ? data.scoringParams.presenter : defaults.scoringParams.presenter,
-                        questioner: data.scoringParams?.questioner?.length ? data.scoringParams.questioner : defaults.scoringParams.questioner
-                    },
+                    scoringParams: normalizeScoringParams(data.scoringParams),
                     guideAssignments: data.guideAssignments || {},
                     presentationAssignments: data.presentationAssignments || {},
                     presentationSlots: data.presentationSlots || [],
                     presentations: data.presentations || [],
                     questionFairness: data.questionFairness || {},
-                    questionSettings: data.questionSettings || defaults.questionSettings
+                    questionSettings: {
+                        ...defaults.questionSettings,
+                        ...(data.questionSettings || {})
+                    }
                 };
             }
             return getDefaultSeminarSettings();
@@ -78,6 +87,7 @@ export function createAdminSeminarModule(app) {
                 updatedAt: new Date().toISOString(),
                 updatedBy: app.currentUser?.uid || null
             }, { merge: true });
+            app._seminarSettingsCache = null;
         },
 
         async loadSeminarAdmin() {
@@ -92,8 +102,88 @@ export function createAdminSeminarModule(app) {
             this.renderSeminarScoringParams(settings);
             this.renderSeminarScheduleForm(settings);
             await this.renderPresentationScheduleSummary(settings);
+            await this.refreshSeminarEvaluationList();
             this.bindSeminarAdminTabs();
             this.setupSeminarAdminSearch();
+            this.setupSeminarEvalSearch();
+        },
+
+        showSeminarAdminTab(tabId) {
+            document.querySelectorAll('.seminar-admin-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === tabId);
+            });
+            document.querySelectorAll('.seminar-admin-panel').forEach(p => {
+                p.classList.toggle('active', p.id === `seminar-admin-${tabId}`);
+            });
+            if (tabId === 'evaluation') this.refreshSeminarEvaluationList();
+        },
+
+        setupSeminarEvalSearch() {
+            const searchInput = document.getElementById('search-seminar-eval');
+            if (!searchInput || searchInput.dataset.bound) return;
+            searchInput.dataset.bound = 'true';
+            searchInput.addEventListener('input', () => {
+                const term = searchInput.value.toLowerCase().trim();
+                document.querySelectorAll('#seminar-admin-eval-list .seminar-eval-shortcut-row').forEach(row => {
+                    const name = row.dataset.name || '';
+                    const ktuid = row.dataset.ktuid || '';
+                    row.style.display = (!term || name.includes(term) || ktuid.includes(term)) ? '' : 'none';
+                });
+            });
+        },
+
+        async refreshSeminarEvaluationList() {
+            const el = document.getElementById('seminar-admin-eval-list');
+            if (!el) return;
+            el.innerHTML = '<p class="form-hint">Loading students…</p>';
+            try {
+                const settings = await this.getSeminarSettings();
+                const students = await this.fetchSeminarStudents();
+                const guides = await this.fetchGuides();
+                const guideMap = Object.fromEntries(guides.map(g => [g.id, g.name || g.email || 'Guide']));
+                const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+                const fairness = settings.questionFairness || {};
+
+                if (!students.length) {
+                    el.innerHTML = '<p class="form-hint">No students found.</p>';
+                    return;
+                }
+
+                students.sort((a, b) => a.name.localeCompare(b.name));
+                el.innerHTML = students.map(s => {
+                    const t = s.seminar?.totals || {};
+                    const grand = computeSeminarGrandTotal(t, maxP);
+                    const times = fairness[s.id]?.times || 0;
+                    const gid = s.seminar?.guideId || settings.guideAssignments?.[s.id];
+                    const absent = s.seminar?.evaluation?.isAbsent
+                        ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>'
+                        : '';
+                    return `
+                        <div class="seminar-eval-shortcut-row"
+                            data-name="${escapeHtml((s.name || '').toLowerCase())}"
+                            data-ktuid="${escapeHtml((s.ktuid || '').toLowerCase())}">
+                            <div>
+                                <strong>${escapeHtml(s.name)}</strong>
+                                <small>(${escapeHtml(s.ktuid)})</small>
+                                ${absent}
+                                <div class="form-hint" style="margin:0.15rem 0 0;">
+                                    Guide: ${gid ? escapeHtml(guideMap[gid] || gid) : '—'} ·
+                                    Audience Q ×${times} ·
+                                    G ${t.guideMarks || 0} · C ${t.coordinatorMarks || 0} ·
+                                    P ${t.presentationMarks || 0} · R ${t.reportMarks || 0} ·
+                                    Part ${Math.min(t.questionMarks || 0, maxP)}
+                                </div>
+                            </div>
+                            <span><strong>${grand}</strong>/100</span>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">
+                                <i class="fas fa-clipboard-check"></i> Evaluate
+                            </button>
+                        </div>`;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+                el.innerHTML = '<p class="form-hint">Failed to load evaluation list.</p>';
+            }
         },
 
         setupSeminarAdminSearch() {
@@ -124,12 +214,7 @@ export function createAdminSeminarModule(app) {
                 if (tab.dataset.bound) return;
                 tab.dataset.bound = 'true';
                 tab.addEventListener('click', () => {
-                    const id = tab.dataset.tab;
-                    document.querySelectorAll('.seminar-admin-tab').forEach(t => t.classList.remove('active'));
-                    document.querySelectorAll('.seminar-admin-panel').forEach(p => p.classList.remove('active'));
-                    tab.classList.add('active');
-                    const panel = document.getElementById(`seminar-admin-${id}`);
-                    if (panel) panel.classList.add('active');
+                    this.showSeminarAdminTab(tab.dataset.tab);
                 });
             });
         },
@@ -342,24 +427,95 @@ export function createAdminSeminarModule(app) {
             }
         },
 
-        renderSeminarScoringParams(settings) {
-            const presEl = document.getElementById('seminar-scoring-presenter');
-            const qEl = document.getElementById('seminar-scoring-questioner');
-            const qCount = document.getElementById('seminar-questions-per-pres');
-            if (qCount) qCount.value = settings.questionSettings?.questionsPerPresentation ?? 3;
+        getSeminarActor() {
+            if (app.isAdmin) {
+                return {
+                    uid: app.currentUser?.uid || 'admin',
+                    name: app.currentUser?.displayName || app.currentUser?.email || 'Admin',
+                    role: 'admin'
+                };
+            }
+            if (app.isGuide) {
+                try {
+                    const session = JSON.parse(sessionStorage.getItem('guideSession') || '{}');
+                    return {
+                        uid: session.uid || app.currentUser?.uid || null,
+                        name: session.name || session.email || 'Faculty',
+                        role: 'guide'
+                    };
+                } catch (e) {
+                    return { uid: null, name: 'Faculty', role: 'guide' };
+                }
+            }
+            return null;
+        },
 
-            const renderParams = (params, container) => {
+        renderSeminarScoringParams(settings) {
+            const qCount = document.getElementById('seminar-questions-per-pres');
+            const maxPart = document.getElementById('seminar-max-participation');
+            if (qCount) qCount.value = settings.questionSettings?.questionsPerPresentation ?? 2;
+            if (maxPart) maxPart.value = settings.questionSettings?.maxParticipationMarks ?? 10;
+
+            const info = document.getElementById('seminar-scoring-syllabus-info');
+            if (info) {
+                const sp = settings.scoringParams;
+                const g = categoryParamTotal(sp.guide);
+                const c = categoryParamTotal(sp.coordinator);
+                const p = categoryParamTotal(sp.presentation);
+                const r = categoryParamTotal(sp.report);
+                const qMax = settings.questionSettings?.maxParticipationMarks ?? 10;
+                const total = g + c + p + r + qMax;
+                info.innerHTML = `
+                    <p class="form-hint" style="margin:0;">
+                        <strong>Current CIE total:</strong> ${total}
+                        (Guide ${g} + Coordinator ${c} + Presentation ${p} + Report ${r} + Participation cap ${qMax}).
+                        Syllabus target: <strong>100</strong>, pass mark <strong>50</strong>.
+                    </p>`;
+            }
+
+            SEMINAR_SCORING_CATEGORIES.forEach(cat => {
+                if (cat.key === 'questioner') return; // rendered separately with Q settings
+                const container = document.getElementById(`seminar-scoring-${cat.key}`);
                 if (!container) return;
+                const params = settings.scoringParams[cat.key] || [];
                 container.innerHTML = params.map((p, i) => `
                     <div class="seminar-param-row" data-param-id="${escapeHtml(p.id)}">
                         <input type="text" class="form-input seminar-param-label" data-idx="${i}" value="${escapeHtml(p.label)}" placeholder="Parameter name">
-                        <input type="number" class="form-input seminar-param-max" data-idx="${i}" min="1" max="100" value="${p.maxMarks}" style="width:80px;">
+                        <input type="number" class="form-input seminar-param-max" data-idx="${i}" min="0" max="100" value="${p.maxMarks}" style="width:80px;">
                         <input type="text" class="form-input seminar-param-desc" data-idx="${i}" value="${escapeHtml(p.description || '')}" placeholder="Description">
+                        <button type="button" class="btn btn-sm btn-danger" title="Remove" onclick="this.closest('.seminar-param-row').remove()"><i class="fas fa-times"></i></button>
+                    </div>
+                `).join('') || '<p class="form-hint">No parameters — add one below.</p>';
+            });
+
+            const qEl = document.getElementById('seminar-scoring-questioner');
+            if (qEl) {
+                const params = settings.scoringParams.questioner || [];
+                qEl.innerHTML = params.map((p, i) => `
+                    <div class="seminar-param-row" data-param-id="${escapeHtml(p.id)}">
+                        <input type="text" class="form-input seminar-param-label" data-idx="${i}" value="${escapeHtml(p.label)}" placeholder="Parameter name">
+                        <input type="number" class="form-input seminar-param-max" data-idx="${i}" min="0" max="100" value="${p.maxMarks}" style="width:80px;">
+                        <input type="text" class="form-input seminar-param-desc" data-idx="${i}" value="${escapeHtml(p.description || '')}" placeholder="Description">
+                        <button type="button" class="btn btn-sm btn-danger" title="Remove" onclick="this.closest('.seminar-param-row').remove()"><i class="fas fa-times"></i></button>
                     </div>
                 `).join('');
-            };
-            renderParams(settings.scoringParams.presenter, presEl);
-            renderParams(settings.scoringParams.questioner, qEl);
+            }
+        },
+
+        addSeminarScoringParam(categoryKey) {
+            const container = document.getElementById(`seminar-scoring-${categoryKey}`);
+            if (!container) return;
+            const hint = container.querySelector('.form-hint');
+            if (hint) hint.remove();
+            const id = `p_${Date.now()}`;
+            container.insertAdjacentHTML('beforeend', `
+                <div class="seminar-param-row" data-param-id="${id}">
+                    <input type="text" class="form-input seminar-param-label" value="" placeholder="Parameter name">
+                    <input type="number" class="form-input seminar-param-max" min="0" max="100" value="5" style="width:80px;">
+                    <input type="text" class="form-input seminar-param-desc" value="" placeholder="Description">
+                    <button type="button" class="btn btn-sm btn-danger" title="Remove" onclick="this.closest('.seminar-param-row').remove()"><i class="fas fa-times"></i></button>
+                </div>
+            `);
         },
 
         collectScoringParams(container) {
@@ -368,20 +524,138 @@ export function createAdminSeminarModule(app) {
             return [...rows].map((row, i) => ({
                 id: row.dataset.paramId || `p_${i}`,
                 label: row.querySelector('.seminar-param-label')?.value.trim() || `Param ${i + 1}`,
-                maxMarks: parseInt(row.querySelector('.seminar-param-max')?.value, 10) || 5,
+                maxMarks: parseInt(row.querySelector('.seminar-param-max')?.value, 10) || 0,
                 description: row.querySelector('.seminar-param-desc')?.value.trim() || ''
             }));
         },
 
         async saveSeminarScoringParams() {
-            const presenter = this.collectScoringParams(document.getElementById('seminar-scoring-presenter'));
+            const guide = this.collectScoringParams(document.getElementById('seminar-scoring-guide'));
+            const coordinator = this.collectScoringParams(document.getElementById('seminar-scoring-coordinator'));
+            const presentation = this.collectScoringParams(document.getElementById('seminar-scoring-presentation'));
+            const report = this.collectScoringParams(document.getElementById('seminar-scoring-report'));
             const questioner = this.collectScoringParams(document.getElementById('seminar-scoring-questioner'));
-            const questionsPerPresentation = parseInt(document.getElementById('seminar-questions-per-pres')?.value, 10) || 3;
+            const questionsPerPresentation = parseInt(document.getElementById('seminar-questions-per-pres')?.value, 10) || 2;
+            const maxParticipationMarks = parseInt(document.getElementById('seminar-max-participation')?.value, 10) || 10;
             await this.saveSeminarSettings({
-                scoringParams: { presenter, questioner },
-                questionSettings: { questionsPerPresentation }
+                scoringParams: {
+                    guide, coordinator, presentation, report, questioner,
+                    presenter: presentation
+                },
+                questionSettings: { questionsPerPresentation, maxParticipationMarks }
             });
             alert('Scoring parameters saved.');
+            await this.loadSeminarAdmin();
+        },
+
+        async resetSeminarScoringToSyllabus() {
+            if (!confirm('Reset all mark components to ITQ413 syllabus defaults (Guide 20 + Coordinator 20 + Presentation 30 + Report 20 + Participation 10 = 100)?')) return;
+            const scoringParams = getSyllabusScoringParams();
+            await this.saveSeminarSettings({
+                scoringParams,
+                questionSettings: { questionsPerPresentation: 2, maxParticipationMarks: 10 }
+            });
+            alert('Restored syllabus CIE mark split.');
+            await this.loadSeminarAdmin();
+        },
+
+        async clearDummySeminarEvaluations() {
+            if (!confirm('Clear ALL dummy/test seminar marks (component scores, audience Q scores, fairness counters tied only to dummy entries)? Real (non-dummy) marks are kept.')) return;
+
+            const settings = await this.getSeminarSettings();
+            const students = await this.fetchSeminarStudents();
+            let clearedComponents = 0;
+            let clearedQuestions = 0;
+
+            for (const s of students) {
+                const ref = doc(window.firebaseDb, 'userData', s.id);
+                const snap = await getDoc(ref);
+                const data = snap.exists() ? snap.data() : {};
+                if (!data.seminar) continue;
+                ensureSeminarEvaluation(data.seminar);
+                const evalObj = data.seminar.evaluation;
+                let changed = false;
+
+                if (evalObj.isAbsent && evalObj.absentMarkedBy?.isDummy) {
+                    evalObj.isAbsent = false;
+                    evalObj.absentReason = '';
+                    evalObj.absentMarkedBy = null;
+                    evalObj.absentAt = null;
+                    changed = true;
+                }
+
+                for (const key of Object.keys(evalObj.components || {})) {
+                    if (evalObj.components[key]?.markedBy?.isDummy || evalObj.components[key]?.isDummy) {
+                        delete evalObj.components[key];
+                        clearedComponents++;
+                        changed = true;
+                    }
+                }
+                evalObj.markHistory = (evalObj.markHistory || []).filter(h => !h.isDummy && !h.markedBy?.isDummy);
+
+                const sp = settings.scoringParams;
+                data.seminar.totals = data.seminar.totals || {};
+                data.seminar.totals.guideMarks = sumParamScores(evalObj.components.guide?.scores, sp.guide);
+                data.seminar.totals.coordinatorMarks = sumParamScores(evalObj.components.coordinator?.scores, sp.coordinator);
+                data.seminar.totals.presentationMarks = sumParamScores(evalObj.components.presentation?.scores, sp.presentation);
+                data.seminar.totals.reportMarks = sumParamScores(evalObj.components.report?.scores, sp.report);
+
+                if (changed) {
+                    await setDoc(ref, { seminar: data.seminar }, { merge: true });
+                }
+            }
+
+            const presentations = (settings.presentations || []).map(pres => {
+                const next = { ...pres, questionerScores: { ...(pres.questionerScores || {}) }, questionerMeta: { ...(pres.questionerMeta || {}) } };
+                const meta = next.questionerMeta || {};
+                for (const qid of Object.keys(meta)) {
+                    if (meta[qid]?.isDummy || meta[qid]?.markedBy?.isDummy) {
+                        delete next.questionerScores[qid];
+                        delete next.questionerMeta[qid];
+                        next.questionerIds = (next.questionerIds || []).filter(id => id !== qid);
+                        clearedQuestions++;
+                    }
+                }
+                // Also clear score blobs flagged via _isDummy on scores object
+                for (const qid of Object.keys(next.questionerScores || {})) {
+                    if (next.questionerScores[qid]?._isDummy) {
+                        delete next.questionerScores[qid];
+                        delete next.questionerMeta[qid];
+                        next.questionerIds = (next.questionerIds || []).filter(id => id !== qid);
+                        clearedQuestions++;
+                    }
+                }
+                if (pres.presenterScores?._isDummy || pres.evaluationMeta?.isDummy) {
+                    next.presenterScores = {};
+                    if (next.evaluationMeta) delete next.evaluationMeta;
+                }
+                return next;
+            });
+
+            // Rebuild fairness from remaining non-dummy questioner picks
+            let fairness = {};
+            presentations.forEach((pres, idx) => {
+                const ids = pres.questionerIds || [];
+                if (ids.length) fairness = updateFairnessAfterPick(fairness, ids, pres.presentationIndex ?? idx);
+            });
+
+            await this.saveSeminarSettings({ presentations, questionFairness: fairness });
+            await this.recalculateSeminarQuestionTotals(settings, presentations);
+
+            // Refresh grand totals after Q recalc
+            for (const s of students) {
+                const ref = doc(window.firebaseDb, 'userData', s.id);
+                const snap = await getDoc(ref);
+                if (!snap.exists()) continue;
+                const data = snap.data();
+                if (!data.seminar) continue;
+                ensureSeminarEvaluation(data.seminar);
+                const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+                data.seminar.totals.grandTotal = computeSeminarGrandTotal(data.seminar.totals, maxP);
+                await setDoc(ref, { seminar: data.seminar }, { merge: true });
+            }
+
+            alert(`Dummy data cleared.\nComponent entries removed: ${clearedComponents}\nAudience Q entries removed: ${clearedQuestions}`);
             await this.loadSeminarAdmin();
         },
 
@@ -451,29 +725,114 @@ export function createAdminSeminarModule(app) {
             await this.loadSeminarAdmin();
         },
 
-        async fetchSeminarStudents() {
+        async fetchSeminarStudents({ force = false } = {}) {
+            const cache = app._seminarStudentsCache;
+            if (!force && cache?.students?.length && (Date.now() - (cache.at || 0)) < 120000) {
+                return cache.students;
+            }
+
             const usersSnap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'student')));
-            const students = [];
-            for (const userDoc of usersSnap.docs) {
+            const students = await Promise.all(usersSnap.docs.map(async (userDoc) => {
                 const u = userDoc.data();
                 const dataSnap = await getDoc(doc(window.firebaseDb, 'userData', userDoc.id));
                 const userData = dataSnap.exists() ? dataSnap.data() : {};
                 const seminar = userData.seminar || getDefaultSeminar();
                 ensureSeminarTopics(seminar);
-                students.push({
+                ensureSeminarEvaluation(seminar);
+                return {
                     id: userDoc.id,
                     name: u.name || u.username || 'Unknown',
                     ktuid: u.username || '',
                     seminar,
                     userData
-                });
-            }
+                };
+            }));
+
+            app._seminarStudentsCache = { students, at: Date.now() };
+            // Lightweight roster for modal (names only)
+            app._seminarRosterCache = {
+                at: Date.now(),
+                byId: Object.fromEntries(students.map(s => [s.id, { id: s.id, name: s.name, ktuid: s.ktuid }]))
+            };
             return students;
         },
 
-        async fetchGuides() {
+        invalidateSeminarCaches() {
+            app._seminarStudentsCache = null;
+            app._seminarGuidesCache = null;
+            app._seminarSettingsCache = null;
+        },
+
+        async fetchOneSeminarStudent(studentId) {
+            const userSnap = await getDoc(doc(window.firebaseDb, 'users', studentId));
+            const dataSnap = await getDoc(doc(window.firebaseDb, 'userData', studentId));
+            const u = userSnap.exists() ? userSnap.data() : {};
+            const userData = dataSnap.exists() ? dataSnap.data() : {};
+            const seminar = userData.seminar || getDefaultSeminar();
+            ensureSeminarTopics(seminar);
+            ensureSeminarEvaluation(seminar);
+            const student = {
+                id: studentId,
+                name: u.name || u.username || 'Unknown',
+                ktuid: u.username || '',
+                seminar,
+                userData
+            };
+            // Keep cache entry fresh for this student
+            if (app._seminarStudentsCache?.students) {
+                const idx = app._seminarStudentsCache.students.findIndex(s => s.id === studentId);
+                if (idx >= 0) app._seminarStudentsCache.students[idx] = student;
+            }
+            return student;
+        },
+
+        async getSeminarSettingsCached({ force = false } = {}) {
+            const cache = app._seminarSettingsCache;
+            if (!force && cache?.settings && (Date.now() - (cache.at || 0)) < 60000) {
+                return cache.settings;
+            }
+            const settings = await this.getSeminarSettings();
+            app._seminarSettingsCache = { settings, at: Date.now() };
+            return settings;
+        },
+
+        async fetchGuides({ force = false } = {}) {
+            const cache = app._seminarGuidesCache;
+            if (!force && cache?.guides && (Date.now() - (cache.at || 0)) < 300000) {
+                return cache.guides;
+            }
             const snap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'guide')));
-            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const guides = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            app._seminarGuidesCache = { guides, at: Date.now() };
+            return guides;
+        },
+
+        getSeminarRoster() {
+            if (app._seminarRosterCache?.byId) return app._seminarRosterCache.byId;
+            if (app._seminarStudentsCache?.students) {
+                return Object.fromEntries(
+                    app._seminarStudentsCache.students.map(s => [s.id, { id: s.id, name: s.name, ktuid: s.ktuid }])
+                );
+            }
+            return {};
+        },
+
+        async ensureSeminarRoster() {
+            let roster = this.getSeminarRoster();
+            if (Object.keys(roster).length) return roster;
+            // Build roster from users only (no per-student userData) — fast
+            const usersSnap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'student')));
+            roster = {};
+            usersSnap.docs.forEach(d => {
+                const u = d.data();
+                roster[d.id] = {
+                    id: d.id,
+                    name: u.name || u.username || 'Unknown',
+                    ktuid: u.username || ''
+                };
+            });
+            app._seminarRosterCache = { byId: roster, at: Date.now() };
+            return roster;
         },
 
         async randomAllotSeminarGuides() {
@@ -853,6 +1212,7 @@ export function createAdminSeminarModule(app) {
                     <p class="form-hint">No presentation slots yet.
                     ${students.length ? `${students.length} student(s) available to assign.` : ''}</p>
                 `;
+                this.renderSeminarEvalShortcuts(settings, students);
                 return;
             }
 
@@ -886,6 +1246,30 @@ export function createAdminSeminarModule(app) {
                         </div>
                     `).join('')}
                 </div>
+            `;
+            this.renderSeminarEvalShortcuts(settings, students);
+        },
+
+        renderSeminarEvalShortcuts(settings, students) {
+            const el = document.getElementById('seminar-presentation-eval-summary');
+            if (!el) return;
+            const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+            const fairness = settings.questionFairness || {};
+            const neverAsked = students.filter(s => !(fairness[s.id]?.times)).length;
+            const list = students.slice(0, 40).map(s => {
+                const t = s.seminar?.totals || {};
+                const grand = computeSeminarGrandTotal(t, maxP);
+                const times = fairness[s.id]?.times || 0;
+                return `
+                    <div class="seminar-eval-shortcut-row">
+                        <span>${escapeHtml(s.name)} <small>(Q×${times})</small></span>
+                        <span><strong>${grand}</strong>/100</span>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">Evaluate</button>
+                    </div>`;
+            }).join('');
+            el.innerHTML = `
+                <p class="form-hint">${neverAsked} student(s) have never been called for audience Q (fairness prefers them).</p>
+                <div class="seminar-eval-shortcut-list">${list || '<p class="form-hint">No students.</p>'}</div>
             `;
         },
 
@@ -1008,114 +1392,413 @@ export function createAdminSeminarModule(app) {
             el.innerHTML = students.map(s => {
                 const sem = s.seminar;
                 ensureSeminarTopics(sem);
+                ensureSeminarEvaluation(sem);
                 const gid = sem.guideId || settings.guideAssignments[s.id];
                 const slotId = sem.presentationSlotId || settings.presentationAssignments[s.id];
                 const slot = slotMap[slotId];
                 const pres = (settings.presentations || []).find(p => p.studentId === s.id);
-                const presScore = pres ? sumParamScores(pres.presenterScores, settings.scoringParams.presenter) : 0;
-                const qScore = sem.totals?.questionMarks || 0;
+                const t = sem.totals || {};
+                const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+                const grand = computeSeminarGrandTotal(t, maxP);
                 const locked = getLockedTopic(sem);
                 const displayTopic = getSeminarDisplayTopic(sem);
                 const topicCount = (sem.topics || []).length;
-                const approvedCount = (sem.topics || []).filter(t => t.status === 'approved').length;
+                const approvedCount = (sem.topics || []).filter(tpc => tpc.status === 'approved').length;
                 const topicLabel = locked
                     ? locked.title
                     : (displayTopic?.title || '—');
                 const topicStatus = locked
                     ? 'Locked (final)'
                     : (topicCount ? `${topicCount} submitted, ${approvedCount} approved` : 'No topics');
+                const absentBadge = sem.evaluation?.isAbsent
+                    ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>'
+                    : '';
 
                 return `
                     <div class="forge-lab-admin-student-card" data-name="${escapeHtml(s.name.toLowerCase())}" data-ktuid="${escapeHtml(s.ktuid.toLowerCase())}">
-                        <h4>${escapeHtml(s.name)} <small>(${escapeHtml(s.ktuid)})</small></h4>
+                        <h4>${escapeHtml(s.name)} <small>(${escapeHtml(s.ktuid)})</small> ${absentBadge}</h4>
                         <p><strong>Guide:</strong> ${gid ? escapeHtml(guideMap[gid] || gid) : '—'}</p>
                         <p><strong>Topic:</strong> ${escapeHtml(topicLabel)} <span class="badge">${escapeHtml(topicStatus)}</span></p>
                         <p><strong>Papers:</strong> ${(sem.papers || []).length} · <strong>Presentation:</strong> ${slot ? escapeHtml(formatPresentationSlot(slot)) : '—'}</p>
-                        <p><strong>Scores:</strong> Presentation ${presScore} + Questions ${qScore} = <strong>${presScore + qScore}</strong></p>
-                        ${pres ? `
-                            <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">
-                                <i class="fas fa-clipboard-check"></i> ${pres.status === 'completed' ? 'View / edit scores' : 'Evaluate presentation'}
-                            </button>
-                        ` : ''}
+                        <p class="seminar-score-breakdown">
+                            <strong>CIE:</strong>
+                            Guide ${t.guideMarks || 0} · Coord ${t.coordinatorMarks || 0} ·
+                            Pres ${t.presentationMarks || 0} · Report ${t.reportMarks || 0} ·
+                            Participation ${Math.min(t.questionMarks || 0, maxP)}
+                            = <strong>${grand}/100</strong>
+                        </p>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">
+                            <i class="fas fa-clipboard-check"></i> ${pres?.status === 'completed' || grand > 0 ? 'View / edit marks' : 'Evaluate'}
+                        </button>
                     </div>`;
             }).join('');
         },
 
+        renderSeminarEvalComponentFields(categoryKey, params, existingScores, actor, studentGuideId, disabled) {
+            const canMark = canMarkSeminarCategory(categoryKey, actor, studentGuideId);
+            const locked = disabled || !canMark;
+            return (params || []).map(p => {
+                const max = parseFloat(p.maxMarks) || 0;
+                let val = existingScores?.[p.id];
+                if (val !== undefined && val !== null && val !== '' && parseFloat(val) > max) {
+                    val = max;
+                }
+                return `
+                <div class="form-group">
+                    <label>${escapeHtml(p.label)} (max ${max})</label>
+                    <input type="number" class="form-input seminar-comp-score seminar-mark-input" data-category="${categoryKey}" data-param="${p.id}"
+                        min="0" max="${max}" step="0.5"
+                        value="${val ?? ''}" ${locked ? 'disabled' : ''}
+                        oninput="app.clampSeminarMarkInput(this)">
+                </div>`;
+            }).join('');
+        },
+
+        clampSeminarMarkInput(inp) {
+            if (!inp) return true;
+            const min = inp.min !== '' ? parseFloat(inp.min) : 0;
+            const max = inp.max !== '' ? parseFloat(inp.max) : Infinity;
+            if (inp.value === '' || inp.value == null) {
+                inp.classList.remove('seminar-mark-invalid');
+                return true;
+            }
+            let v = parseFloat(inp.value);
+            if (isNaN(v)) {
+                inp.value = '';
+                inp.classList.remove('seminar-mark-invalid');
+                return true;
+            }
+            if (v < min) v = min;
+            if (v > max) v = max;
+            const stepped = Math.round(v * 2) / 2;
+            if (parseFloat(inp.value) !== stepped) {
+                inp.value = stepped;
+            }
+            inp.classList.remove('seminar-mark-invalid');
+            return true;
+        },
+
+        validateSeminarEvalMarks() {
+            const inputs = document.querySelectorAll('#seminar-eval-body .seminar-mark-input, #seminar-eval-body .seminar-q-score');
+            const errors = [];
+            inputs.forEach(inp => {
+                if (inp.disabled) return;
+                if (inp.value === '' || inp.value == null) {
+                    inp.classList.remove('seminar-mark-invalid');
+                    return;
+                }
+                const v = parseFloat(inp.value);
+                const min = inp.min !== '' ? parseFloat(inp.min) : 0;
+                const max = inp.max !== '' ? parseFloat(inp.max) : Infinity;
+                if (isNaN(v) || v < min || v > max) {
+                    inp.classList.add('seminar-mark-invalid');
+                    const label = inp.closest('.form-group')?.querySelector('label')?.textContent
+                        || inp.previousElementSibling?.textContent
+                        || inp.dataset.param
+                        || 'Mark';
+                    errors.push(`${label.trim()}: must be between ${min} and ${max}`);
+                    this.clampSeminarMarkInput(inp);
+                } else {
+                    inp.classList.remove('seminar-mark-invalid');
+                }
+            });
+            return errors;
+        },
+
+        renderSeminarQuestionerBlock(qid, qsName, qParams, scores = {}, meta = {}, isNew = false) {
+            const fields = (qParams || []).map(p => {
+                const max = parseFloat(p.maxMarks) || 0;
+                let val = scores?.[p.id];
+                if (val !== undefined && val !== null && val !== '' && parseFloat(val) > max) val = max;
+                return `
+                    <label>${escapeHtml(p.label)} (max ${max})</label>
+                    <input type="number" class="form-input seminar-q-score seminar-mark-input" data-qid="${qid}" data-param="${p.id}"
+                        min="0" max="${max}" step="0.5" value="${val ?? ''}"
+                        oninput="app.clampSeminarMarkInput(this)">
+                `;
+            }).join('');
+            const absentQ = meta?.isAbsent ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>' : '';
+            return `
+                <div class="seminar-q-eval-block" data-qid="${qid}" data-new="${isNew ? '1' : '0'}">
+                    <div class="seminar-q-eval-head">
+                        <strong>${escapeHtml(qsName || qid)}</strong>
+                        ${isNew ? '<span class="badge">New</span>' : ''}
+                        ${absentQ}
+                        <label class="seminar-inline-check"><input type="checkbox" class="seminar-q-absent" data-qid="${qid}" ${meta?.isAbsent ? 'checked' : ''}> Mark absent</label>
+                        <button type="button" class="btn btn-sm btn-danger seminar-cancel-q-btn" title="Cancel this call"
+                            onclick="app.cancelSeminarQuestionerCall('${escapeHtml(qid)}')">
+                            <i class="fas fa-times"></i> Cancel call
+                        </button>
+                    </div>
+                    ${fields}
+                    ${meta?.markedBy ? `<p class="form-hint">Marked by ${escapeHtml(meta.markedBy.name || '')}${meta.isDummy ? ' (dummy)' : ''}</p>` : ''}
+                </div>`;
+        },
+
+        cancelSeminarQuestionerCall(qid) {
+            if (!qid) return;
+            if (!confirm('Cancel this audience question call? Marks for this student on this presentation will be removed.')) return;
+
+            const block = document.querySelector(`.seminar-q-eval-block[data-qid="${qid}"]`);
+            const wasNew = block?.dataset.new === '1' || (app._seminarEvalPicked || []).includes(qid);
+
+            if (block) block.remove();
+
+            app._seminarEvalPicked = (app._seminarEvalPicked || []).filter(id => id !== qid);
+            app._seminarEvalRemoved = [...new Set([...(app._seminarEvalRemoved || []), qid])];
+
+            const container = document.getElementById('seminar-eval-questioners');
+            if (container && !container.querySelector('.seminar-q-eval-block')) {
+                container.innerHTML = '<p class="form-hint">No audience questioners called yet.</p>';
+            }
+
+            const pickBtn = document.getElementById('seminar-pick-q-btn');
+            if (pickBtn) pickBtn.disabled = false;
+
+            const banner = document.getElementById('seminar-picked-names');
+            if (banner && wasNew) {
+                // Refresh banner text from remaining new picks
+                const remaining = app._seminarEvalPicked || [];
+                if (!remaining.length) {
+                    banner.style.display = 'none';
+                    banner.innerHTML = '';
+                }
+            }
+        },
+
         async openSeminarEvaluation(studentId) {
-            const settings = await this.getSeminarSettings();
-            const students = await this.fetchSeminarStudents();
-            const student = students.find(s => s.id === studentId);
-            if (!student) return;
-            const pres = (settings.presentations || []).find(p => p.studentId === studentId);
-            if (!pres) { alert('No presentation record for this student.'); return; }
+            if (!app.isAdmin && !app.isGuide) return;
+            const actor = this.getSeminarActor();
 
             const modal = document.getElementById('seminar-eval-modal');
             const body = document.getElementById('seminar-eval-body');
             if (!modal || !body) return;
 
-            const allIds = students.map(s => s.id).filter(id => id !== studentId);
-            const already = pres.questionerIds || [];
-            const need = (settings.questionSettings?.questionsPerPresentation || 3) - already.length;
-            const eligible = allIds.filter(id => !already.includes(id));
-
-            const presenterFields = (settings.scoringParams.presenter || []).map(p => `
-                <div class="form-group">
-                    <label>${escapeHtml(p.label)} (max ${p.maxMarks})</label>
-                    <input type="number" class="form-input seminar-pres-score" data-param="${p.id}" min="0" max="${p.maxMarks}"
-                        value="${pres.presenterScores?.[p.id] ?? ''}">
-                </div>
-            `).join('');
-
-            const questionerSection = already.map((qid, idx) => {
-                const qs = students.find(s => s.id === qid);
-                const qParams = settings.scoringParams.questioner || [];
-                const fields = qParams.map(p => `
-                    <label>${escapeHtml(p.label)} (max ${p.maxMarks})</label>
-                    <input type="number" class="form-input seminar-q-score" data-qid="${qid}" data-param="${p.id}"
-                        min="0" max="${p.maxMarks}" value="${pres.questionerScores?.[qid]?.[p.id] ?? ''}">
-                `).join('');
-                return `<div class="seminar-q-eval-block"><strong>${escapeHtml(qs?.name || qid)}</strong>${fields}</div>`;
-            }).join('');
-
-            body.innerHTML = `
-                <input type="hidden" id="seminar-eval-student-id" value="${escapeHtml(studentId)}">
-                <input type="hidden" id="seminar-eval-pres-id" value="${escapeHtml(pres.id)}">
-                <h4>Presenter: ${escapeHtml(student.name)}</h4>
-                <p><strong>Topic:</strong> ${escapeHtml(getSeminarDisplayTopic(student.seminar)?.title || '—')}</p>
-                <h5>Presenter scores</h5>${presenterFields}
-                <h5 style="margin-top:1rem;">Question askers</h5>
-                <div id="seminar-eval-questioners">${questionerSection || '<p class="form-hint">No questioners picked yet.</p>'}</div>
-                ${need > 0 && eligible.length ? `
-                    <button type="button" class="btn btn-secondary" onclick="app.pickSeminarQuestioners()">
-                        <i class="fas fa-random"></i> Pick ${need} questioner(s) fairly
-                    </button>
-                    <div id="seminar-picked-names" class="form-hint"></div>
-                ` : ''}
-                <div style="margin-top:1rem;">
-                    <button type="button" class="btn btn-primary" onclick="app.saveSeminarEvaluation()">Save scores</button>
-                    <button type="button" class="btn btn-secondary" onclick="app.closeSeminarEvalModal()">Cancel</button>
-                </div>
-            `;
-            app._seminarEvalPicked = [];
+            // Open immediately so the click feels responsive
             modal.style.display = 'flex';
+            body.innerHTML = `
+                <div class="seminar-eval-loading" style="padding:2rem; text-align:center;">
+                    <p><i class="fas fa-spinner fa-spin"></i> Loading evaluation…</p>
+                </div>`;
+
+            try {
+                const [settings, student, guides, roster] = await Promise.all([
+                    this.getSeminarSettingsCached(),
+                    this.fetchOneSeminarStudent(studentId),
+                    this.fetchGuides(),
+                    this.ensureSeminarRoster()
+                ]);
+
+                if (!student) {
+                    body.innerHTML = '<p class="form-hint">Student not found.</p>';
+                    return;
+                }
+
+                ensureSeminarEvaluation(student.seminar);
+                const evalObj = student.seminar.evaluation;
+                let pres = (settings.presentations || []).find(p => p.studentId === studentId);
+
+                // Auto-create a presentation record if missing so faculty can still mark CIE components
+                if (!pres) {
+                    const presentations = [...(settings.presentations || [])];
+                    pres = {
+                        id: `pres_${studentId}_${Date.now()}`,
+                        studentId,
+                        slotId: student.seminar.presentationSlotId || settings.presentationAssignments?.[studentId] || null,
+                        status: 'scheduled',
+                        questionerIds: [],
+                        questionerScores: {},
+                        questionerMeta: {},
+                        presenterScores: {},
+                        presentationIndex: presentations.length
+                    };
+                    presentations.push(pres);
+                    await this.saveSeminarSettings({ presentations });
+                    settings.presentations = presentations;
+                    app._seminarSettingsCache = { settings, at: Date.now() };
+                }
+
+                const studentGuideId = resolveSeminarGuideId(student.seminar, settings, studentId);
+                const assignedGuideName = studentGuideId
+                    ? (guides.find(g => g.id === studentGuideId)?.name || guides.find(g => g.id === studentGuideId)?.email || studentGuideId)
+                    : null;
+                const sp = settings.scoringParams;
+                const qPer = settings.questionSettings?.questionsPerPresentation || 2;
+                const maxPart = settings.questionSettings?.maxParticipationMarks ?? 10;
+                const already = pres.questionerIds || [];
+                const need = Math.max(0, qPer - already.length);
+                const otherStudentIds = Object.keys(roster).filter(id => id !== studentId);
+
+                const markedByLine = (comp) => {
+                    if (!comp?.markedBy) return '';
+                    const m = comp.markedBy;
+                    return `<p class="form-hint seminar-marked-by">Last marked by <strong>${escapeHtml(m.name || m.uid)}</strong> (${escapeHtml(m.role || '')})${m.isDummy || comp.isDummy ? ' · <em>dummy</em>' : ''} · ${m.at ? new Date(m.at).toLocaleString() : (comp.markedAt ? new Date(comp.markedAt).toLocaleString() : '')}</p>`;
+                };
+
+                const catBlock = (key, title, hint) => {
+                    if (!canMarkSeminarCategory(key, actor, studentGuideId)) return '';
+                    const cat = SEMINAR_SCORING_CATEGORIES.find(c => c.key === key);
+                    const comp = evalObj.components?.[key];
+                    let scores = comp?.scores;
+                    if (key === 'presentation' && !scores && pres.presenterScores) scores = pres.presenterScores;
+                    return `
+                        <div class="seminar-eval-category">
+                            <h5>${escapeHtml(title)} <small>(max ${categoryParamTotal(sp[key])})</small></h5>
+                            <p class="form-hint">${escapeHtml(hint || cat?.whoMarks || '')}</p>
+                            ${this.renderSeminarEvalComponentFields(key, sp[key], scores, actor, studentGuideId, evalObj.isAbsent)}
+                            ${markedByLine(comp)}
+                        </div>
+                    `;
+                };
+
+                const editableBlocks = [
+                    catBlock('guide', 'Seminar Guide (20)', assignedGuideName
+                        ? `Assigned guide: ${assignedGuideName}`
+                        : 'Assigned seminar guide marks'),
+                    catBlock('coordinator', 'Seminar Coordinator (20)', 'Diary & attendance'),
+                    catBlock('presentation', 'Presentation — IEC (30)', 'Clarity, interactions, slides'),
+                    catBlock('report', 'Report — IEC (20)', 'Technical report quality')
+                ].filter(Boolean).join('');
+
+                const canMarkAudience = canMarkSeminarCategory('questioner', actor, studentGuideId);
+                const t = student.seminar.totals || {};
+                const otherSummary = `
+                    <p class="form-hint seminar-eval-other-summary">
+                        Current CIE (all components): Guide ${t.guideMarks || 0} · Coord ${t.coordinatorMarks || 0} ·
+                        Pres ${t.presentationMarks || 0} · Report ${t.reportMarks || 0} ·
+                        Participation ${Math.min(t.questionMarks || 0, maxPart)} ·
+                        <strong>Total ${computeSeminarGrandTotal(t, maxPart)}/100</strong>
+                    </p>
+                `;
+
+                const questionerBlocks = already.map(qid => {
+                    const qs = roster[qid];
+                    return this.renderSeminarQuestionerBlock(
+                        qid,
+                        qs?.name || qid,
+                        sp.questioner || [],
+                        pres.questionerScores?.[qid] || {},
+                        pres.questionerMeta?.[qid] || {},
+                        false
+                    );
+                }).join('');
+
+                const neverAsked = otherStudentIds.filter(id => !(settings.questionFairness?.[id]?.times)).length;
+                const otherStudents = otherStudentIds.length;
+
+                body.innerHTML = `
+                    <input type="hidden" id="seminar-eval-student-id" value="${escapeHtml(studentId)}">
+                    <input type="hidden" id="seminar-eval-pres-id" value="${escapeHtml(pres.id)}">
+                    <div class="seminar-eval-header">
+                        <div>
+                            <h3 style="margin:0;">Evaluate: ${escapeHtml(student.name)}</h3>
+                            <p class="form-hint" style="margin:0.25rem 0 0;">${escapeHtml(student.ktuid)} · Topic: ${escapeHtml(getSeminarDisplayTopic(student.seminar)?.title || '—')}</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.closeSeminarEvalModal()"><i class="fas fa-times"></i></button>
+                    </div>
+
+                    <div class="seminar-eval-flags">
+                        <label class="seminar-inline-check">
+                            <input type="checkbox" id="seminar-eval-absent" ${evalObj.isAbsent ? 'checked' : ''}>
+                            Mark presenter <strong>Absent</strong> (zeros presentation session; other CIE components still editable)
+                        </label>
+                        <label class="seminar-inline-check">
+                            <input type="checkbox" id="seminar-eval-dummy">
+                            Save as <strong>dummy / test</strong> marks (can be cleared later from Scoring tab)
+                        </label>
+                    </div>
+                    <div class="form-group" id="seminar-absent-reason-wrap" style="${evalObj.isAbsent ? '' : 'display:none;'}">
+                        <label>Absent reason (optional)</label>
+                        <input type="text" id="seminar-eval-absent-reason" class="form-input" value="${escapeHtml(evalObj.absentReason || '')}">
+                    </div>
+
+                    ${otherSummary}
+
+                    <div class="seminar-eval-grid">
+                        ${editableBlocks || '<p class="form-hint">No CIE components available for your role on this student.</p>'}
+                    </div>
+
+                    ${canMarkAudience ? `
+                    <div class="seminar-eval-audience">
+                        <h5><i class="fas fa-random"></i> Audience questions (Overall participation, cap ${maxPart})</h5>
+                        <p class="form-hint">Syllabus: Overall participation is based on involvement during other students' presentations. Fair pick prefers students never asked yet — <strong>${neverAsked} of ${otherStudents}</strong> other students still at 0 (excludes the presenter).</p>
+                        <div id="seminar-eval-questioners">${questionerBlocks || '<p class="form-hint">No audience questioners called yet.</p>'}</div>
+                        <div class="seminar-eval-audience-actions">
+                            <button type="button" class="btn btn-secondary" id="seminar-pick-q-btn" onclick="app.pickSeminarQuestioners()" ${need <= 0 ? 'disabled' : ''}>
+                                <i class="fas fa-random"></i> Call random student${need > 1 ? `s (${need})` : ''}
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.pickSeminarQuestioners(1)" ${already.length >= otherStudents ? 'disabled' : ''}>
+                                Call one more
+                            </button>
+                        </div>
+                        <div id="seminar-picked-names" class="seminar-callout-banner" style="display:none;"></div>
+                    </div>
+                    ` : ''}
+
+                    <div class="seminar-eval-footer">
+                        <button type="button" class="btn btn-primary" onclick="app.saveSeminarEvaluation()">
+                            <i class="fas fa-save"></i> Save marks
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="app.closeSeminarEvalModal()">Cancel</button>
+                    </div>
+                `;
+
+                app._seminarEvalPicked = [];
+                app._seminarEvalRemoved = [];
+                const absentCb = document.getElementById('seminar-eval-absent');
+                if (absentCb) {
+                    absentCb.addEventListener('change', () => {
+                        const wrap = document.getElementById('seminar-absent-reason-wrap');
+                        if (wrap) wrap.style.display = absentCb.checked ? '' : 'none';
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+                body.innerHTML = `
+                    <p class="form-hint">Failed to load evaluation. ${escapeHtml(err?.message || '')}</p>
+                    <button type="button" class="btn btn-secondary" onclick="app.closeSeminarEvalModal()">Close</button>`;
+            }
         },
 
-        async pickSeminarQuestioners() {
+        async pickSeminarQuestioners(forceCount) {
+            if (forceCount && typeof forceCount === 'object') forceCount = undefined;
+
             const studentId = document.getElementById('seminar-eval-student-id')?.value;
             const presId = document.getElementById('seminar-eval-pres-id')?.value;
-            const settings = await this.getSeminarSettings();
+            const [settings, roster] = await Promise.all([
+                this.getSeminarSettingsCached(),
+                this.ensureSeminarRoster()
+            ]);
             const pres = settings.presentations.find(p => p.id === presId);
-            const students = await this.fetchSeminarStudents();
-            const allIds = students.map(s => s.id).filter(id => id !== studentId);
-            const already = [...(pres?.questionerIds || []), ...(app._seminarEvalPicked || [])];
-            const need = (settings.questionSettings?.questionsPerPresentation || 3) - already.length;
+            const allIds = Object.keys(roster).filter(id => id !== studentId);
+            const removed = new Set(app._seminarEvalRemoved || []);
+            const already = [
+                ...(pres?.questionerIds || []).filter(id => !removed.has(id)),
+                ...(app._seminarEvalPicked || [])
+            ];
+            const qPer = settings.questionSettings?.questionsPerPresentation || 2;
+            const need = forceCount != null
+                ? Math.min(Number(forceCount) || 1, Math.max(0, allIds.length - already.length))
+                : Math.max(0, qPer - already.length);
+            if (need <= 0) {
+                alert('No more questioner slots for this presentation (or everyone already called).');
+                return;
+            }
             const eligible = allIds.filter(id => !already.includes(id));
             const picked = pickFairQuestioners(eligible, settings.questionFairness, pres?.presentationIndex ?? 0, need);
             app._seminarEvalPicked = [...(app._seminarEvalPicked || []), ...picked];
+            app._seminarEvalRemoved = (app._seminarEvalRemoved || []).filter(id => !picked.includes(id));
 
-            const names = picked.map(id => students.find(s => s.id === id)?.name || id).join(', ');
+            const names = picked.map(id => {
+                const s = roster[id];
+                const times = settings.questionFairness?.[id]?.times || 0;
+                return `${s?.name || id} (${times === 0 ? 'first chance' : `${times} prior`})`;
+            });
             const el = document.getElementById('seminar-picked-names');
-            if (el) el.innerHTML = `<strong>Call on:</strong> ${escapeHtml(names)}`;
+            if (el) {
+                el.style.display = 'block';
+                el.innerHTML = `<strong>Call on now:</strong> ${escapeHtml(names.join(', '))}`;
+            }
 
             const container = document.getElementById('seminar-eval-questioners');
             const qParams = settings.scoringParams.questioner || [];
@@ -1123,91 +1806,271 @@ export function createAdminSeminarModule(app) {
                 const empty = container.querySelector('.form-hint');
                 if (empty && !container.querySelector('.seminar-q-eval-block')) empty.remove();
                 picked.forEach(qid => {
-                    if (container.querySelector(`.seminar-q-score[data-qid="${qid}"]`)) return;
-                    const qs = students.find(s => s.id === qid);
-                    const fields = qParams.map(p => `
-                        <label>${escapeHtml(p.label)} (max ${p.maxMarks})</label>
-                        <input type="number" class="form-input seminar-q-score" data-qid="${qid}" data-param="${p.id}"
-                            min="0" max="${p.maxMarks}" value="">
-                    `).join('');
+                    if (container.querySelector(`.seminar-q-eval-block[data-qid="${qid}"]`)) return;
+                    const qs = roster[qid];
                     container.insertAdjacentHTML('beforeend',
-                        `<div class="seminar-q-eval-block"><strong>${escapeHtml(qs?.name || qid)}</strong> <span class="badge">New</span>${fields}</div>`
+                        this.renderSeminarQuestionerBlock(qid, qs?.name || qid, qParams, {}, {}, true)
                     );
                 });
             }
 
-            const stillNeed = (settings.questionSettings?.questionsPerPresentation || 3) - already.length - picked.length;
-            const pickBtn = document.querySelector('#seminar-eval-body button[onclick="app.pickSeminarQuestioners()"]');
-            if (pickBtn && stillNeed <= 0) pickBtn.style.display = 'none';
+            const stillNeed = qPer - already.length - picked.length;
+            const pickBtn = document.getElementById('seminar-pick-q-btn');
+            if (pickBtn && stillNeed <= 0 && forceCount == null) pickBtn.disabled = true;
         },
 
         closeSeminarEvalModal() {
             const modal = document.getElementById('seminar-eval-modal');
             if (modal) modal.style.display = 'none';
             app._seminarEvalPicked = [];
+            app._seminarEvalRemoved = [];
         },
 
         async saveSeminarEvaluation() {
+            const actor = this.getSeminarActor();
+            if (!actor) { alert('Not authorized.'); return; }
+
+            document.querySelectorAll('#seminar-eval-body .seminar-mark-input, #seminar-eval-body .seminar-q-score')
+                .forEach(inp => this.clampSeminarMarkInput(inp));
+            const validationErrors = this.validateSeminarEvalMarks();
+            if (validationErrors.length) {
+                alert('Fix invalid marks (must be within min/max):\n\n' + validationErrors.slice(0, 8).join('\n'));
+                return;
+            }
+
             const studentId = document.getElementById('seminar-eval-student-id')?.value;
             const presId = document.getElementById('seminar-eval-pres-id')?.value;
-            const settings = await this.getSeminarSettings();
+            const isDummy = Boolean(document.getElementById('seminar-eval-dummy')?.checked);
+            const isAbsent = Boolean(document.getElementById('seminar-eval-absent')?.checked);
+            const absentReason = document.getElementById('seminar-eval-absent-reason')?.value.trim() || '';
+
+            const settings = await this.getSeminarSettingsCached({ force: true });
             const presIdx = settings.presentations.findIndex(p => p.id === presId);
             if (presIdx < 0) return;
 
-            const pres = { ...settings.presentations[presIdx] };
-            pres.presenterScores = {};
-            document.querySelectorAll('.seminar-pres-score').forEach(inp => {
-                pres.presenterScores[inp.dataset.param] = parseFloat(inp.value) || 0;
-            });
+            const student = await this.fetchOneSeminarStudent(studentId);
+            const studentGuideId = resolveSeminarGuideId(student?.seminar, settings, studentId);
+            const sp = settings.scoringParams;
+            const maxPart = settings.questionSettings?.maxParticipationMarks ?? 10;
+            const meta = buildEvaluatorMeta(actor, isDummy);
 
-            if (!pres.questionerScores) pres.questionerScores = {};
-            const newPickers = app._seminarEvalPicked || [];
-            pres.questionerIds = [...new Set([...(pres.questionerIds || []), ...newPickers])];
-
-            document.querySelectorAll('.seminar-q-score').forEach(inp => {
-                const qid = inp.dataset.qid;
-                if (!pres.questionerScores[qid]) pres.questionerScores[qid] = {};
-                pres.questionerScores[qid][inp.dataset.param] = parseFloat(inp.value) || 0;
-            });
-
-            for (const qid of newPickers) {
-                if (!pres.questionerScores[qid]) pres.questionerScores[qid] = {};
-            }
-
-            const qPerPres = settings.questionSettings?.questionsPerPresentation || 3;
-            if (pres.questionerIds.length >= qPerPres) {
-                pres.status = 'completed';
-            }
-            pres.evaluatedAt = new Date().toISOString();
-
-            const presentations = [...settings.presentations];
-            presentations[presIdx] = pres;
-
-            let fairness = settings.questionFairness || {};
-            if (newPickers.length) {
-                fairness = updateFairnessAfterPick(fairness, newPickers, pres.presentationIndex ?? presIdx);
-            }
-
-            const presenterTotal = sumParamScores(pres.presenterScores, settings.scoringParams.presenter);
             const presenterRef = doc(window.firebaseDb, 'userData', studentId);
             const presenterSnap = await getDoc(presenterRef);
             const presenterData = presenterSnap.exists() ? presenterSnap.data() : {};
             if (!presenterData.seminar) presenterData.seminar = getDefaultSeminar();
-            presenterData.seminar.totals = presenterData.seminar.totals || {};
-            presenterData.seminar.totals.presentationMarks = presenterTotal;
-            await setDoc(presenterRef, { seminar: presenterData.seminar }, { merge: true });
+            ensureSeminarEvaluation(presenterData.seminar);
+            const evalObj = presenterData.seminar.evaluation;
 
-            await this.recalculateSeminarQuestionTotals(settings, presentations);
+            if (isAbsent) {
+                evalObj.isAbsent = true;
+                evalObj.absentReason = absentReason;
+                evalObj.absentMarkedBy = meta;
+                evalObj.absentAt = meta.at;
+            } else if (evalObj.isAbsent) {
+                evalObj.isAbsent = false;
+                evalObj.absentReason = '';
+                evalObj.absentMarkedBy = null;
+                evalObj.absentAt = null;
+            }
+
+            const categories = ['guide', 'coordinator', 'presentation', 'report'];
+            for (const cat of categories) {
+                if (!canMarkSeminarCategory(cat, actor, studentGuideId)) continue;
+                const inputs = document.querySelectorAll(`.seminar-comp-score[data-category="${cat}"]:not([disabled])`);
+                if (!inputs.length) continue;
+                const scores = {};
+                let any = false;
+                inputs.forEach(inp => {
+                    if (inp.value === '' || inp.value == null) return;
+                    scores[inp.dataset.param] = parseFloat(inp.value) || 0;
+                    any = true;
+                });
+                if (!any && !evalObj.components[cat]) continue;
+                if (!any) continue;
+
+                evalObj.components[cat] = {
+                    scores,
+                    markedBy: meta,
+                    markedAt: meta.at,
+                    isDummy
+                };
+                evalObj.markHistory = evalObj.markHistory || [];
+                evalObj.markHistory.push({
+                    component: cat,
+                    scores: { ...scores },
+                    markedBy: meta,
+                    markedAt: meta.at,
+                    isDummy,
+                    action: 'save'
+                });
+            }
+
+            const totals = presenterData.seminar.totals || {};
+            totals.guideMarks = sumParamScores(evalObj.components.guide?.scores, sp.guide);
+            totals.coordinatorMarks = sumParamScores(evalObj.components.coordinator?.scores, sp.coordinator);
+            totals.presentationMarks = sumParamScores(evalObj.components.presentation?.scores, sp.presentation);
+            totals.reportMarks = sumParamScores(evalObj.components.report?.scores, sp.report);
+
+            const pres = { ...settings.presentations[presIdx] };
+            pres.presenterScores = { ...(evalObj.components.presentation?.scores || {}) };
+            if (isDummy) {
+                pres.presenterScores._isDummy = true;
+                pres.evaluationMeta = meta;
+            }
+            if (!pres.questionerScores) pres.questionerScores = {};
+            if (!pres.questionerMeta) pres.questionerMeta = {};
+
+            const removed = [...new Set(app._seminarEvalRemoved || [])];
+            const newPickers = (app._seminarEvalPicked || []).filter(id => !removed.includes(id));
+            pres.questionerIds = [...new Set([...(pres.questionerIds || []), ...newPickers])]
+                .filter(id => !removed.includes(id));
+
+            for (const qid of removed) {
+                delete pres.questionerScores[qid];
+                delete pres.questionerMeta[qid];
+            }
+
+            const clampScore = (raw, paramId, params) => {
+                const p = (params || []).find(x => x.id === paramId);
+                const max = parseFloat(p?.maxMarks);
+                let v = parseFloat(raw);
+                if (isNaN(v)) return 0;
+                if (!isNaN(max) && v > max) v = max;
+                if (v < 0) v = 0;
+                return v;
+            };
+
+            for (const cat of ['guide', 'coordinator', 'presentation', 'report']) {
+                const comp = evalObj.components[cat];
+                if (!comp?.scores) continue;
+                Object.keys(comp.scores).forEach(pid => {
+                    comp.scores[pid] = clampScore(comp.scores[pid], pid, sp[cat]);
+                });
+            }
+            totals.guideMarks = sumParamScores(evalObj.components.guide?.scores, sp.guide);
+            totals.coordinatorMarks = sumParamScores(evalObj.components.coordinator?.scores, sp.coordinator);
+            totals.presentationMarks = sumParamScores(evalObj.components.presentation?.scores, sp.presentation);
+            totals.reportMarks = sumParamScores(evalObj.components.report?.scores, sp.report);
+            if (evalObj.components.presentation?.scores) {
+                pres.presenterScores = { ...evalObj.components.presentation.scores };
+                if (isDummy) {
+                    pres.presenterScores._isDummy = true;
+                    pres.evaluationMeta = meta;
+                }
+            }
+
+            document.querySelectorAll('.seminar-q-score').forEach(inp => {
+                const qid = inp.dataset.qid;
+                if (removed.includes(qid)) return;
+                if (!pres.questionerScores[qid]) {
+                    pres.questionerScores[qid] = {};
+                }
+                if (inp.value !== '') {
+                    pres.questionerScores[qid][inp.dataset.param] = clampScore(inp.value, inp.dataset.param, sp.questioner);
+                }
+            });
+
+            document.querySelectorAll('.seminar-q-absent').forEach(cb => {
+                const qid = cb.dataset.qid;
+                if (removed.includes(qid)) return;
+                const prev = pres.questionerMeta[qid] || {};
+                pres.questionerMeta[qid] = {
+                    ...prev,
+                    isAbsent: cb.checked,
+                    markedBy: meta,
+                    isDummy: prev.isDummy || isDummy,
+                    at: meta.at
+                };
+                if (cb.checked) {
+                    const qParams = sp.questioner || [];
+                    if (!pres.questionerScores[qid]) {
+                       pres.questionerScores[qid] = {};
+                    }
+                    qParams.forEach(p => {
+                      pres.questionerScores[qid][p.id] = 0;
+                    });
+                }
+            });
+
+            for (const qid of newPickers) {
+                if (!pres.questionerScores[qid]) {
+                  pres.questionerScores[qid] = {};
+                }
+                if (!pres.questionerMeta[qid]) {
+                  pres.questionerMeta[qid] = { markedBy: meta, isDummy, at: meta.at };
+                } else {
+                  pres.questionerMeta[qid] = {
+                        ...pres.questionerMeta[qid],
+                        markedBy: meta,
+                        isDummy: pres.questionerMeta[qid].isDummy || isDummy,
+                        at: meta.at
+                    };
+                }
+                if (isDummy) {
+                  pres.questionerScores[qid]._isDummy = true;
+                }
+            }
+
+            for (const qid of Object.keys(pres.questionerScores)) {
+                if (removed.includes(qid)) continue;
+                if (!pres.questionerMeta[qid]) {
+                  pres.questionerMeta[qid] = { markedBy: meta, isDummy, at: meta.at };
+                }
+            }
+
+            const qPerPres = settings.questionSettings?.questionsPerPresentation || 2;
+            if (pres.questionerIds.length >= qPerPres || (evalObj.components.presentation && Object.keys(evalObj.components.presentation.scores || {}).length)) {
+            pres.status = isAbsent ? 'absent' : 'completed';
+            }
+            pres.evaluatedAt = meta.at;
+
+            const presentations = [...settings.presentations];
+            presentations[presIdx] = pres;
+
+            let fairness = { ...(settings.questionFairness || {}) };
+            if (newPickers.length) {
+                fairness = updateFairnessAfterPick(fairness, newPickers, pres.presentationIndex ?? presIdx);
+            }
+            for (const qid of removed) {
+                if (!fairness[qid]) continue;
+                const prevF = fairness[qid];
+                const times = Math.max(0, (prevF.times || 1) - 1);
+                if (times === 0) delete fairness[qid];
+                else fairness[qid] = { ...prevF, times };
+            }
 
             await this.saveSeminarSettings({ presentations, questionFairness: fairness });
+            await this.recalculateSeminarQuestionTotals(settings, presentations);
+
+
+            // Re-read question marks after recalc
+            const refreshed = await getDoc(presenterRef);
+            const refreshedData = refreshed.exists() ? refreshed.data() : presenterData;
+            if (!refreshedData.seminar) refreshedData.seminar = presenterData.seminar;
+            ensureSeminarEvaluation(refreshedData.seminar);
+            refreshedData.seminar.evaluation = evalObj;
+            refreshedData.seminar.totals = {
+                ...refreshedData.seminar.totals,
+                guideMarks: totals.guideMarks,
+                coordinatorMarks: totals.coordinatorMarks,
+                presentationMarks: totals.presentationMarks,
+                reportMarks: totals.reportMarks
+            };
+            refreshedData.seminar.totals.grandTotal = computeSeminarGrandTotal(refreshedData.seminar.totals, maxPart);
+            await setDoc(presenterRef, { seminar: refreshedData.seminar }, { merge: true });
+
             this.closeSeminarEvalModal();
-            alert('Evaluation saved.');
-            await this.loadSeminarAdmin();
+            this.invalidateSeminarCaches();
+            alert(isDummy ? 'Dummy evaluation saved (can be cleared from Scoring tab).' : 'Evaluation saved.');
+            if (app.isAdmin) await this.loadSeminarAdmin();
+            else if (typeof this.loadGuideSeminar === 'function') await this.loadGuideSeminar();
+            else if (typeof app.loadGuideSeminar === 'function') await app.loadGuideSeminar();
         },
 
         async recalculateSeminarQuestionTotals(settings, presentations) {
             const students = await this.fetchSeminarStudents();
             const qParams = settings.scoringParams.questioner || [];
+            const maxPart = settings.questionSettings?.maxParticipationMarks ?? 10;
             const evaluatedAt = new Date().toISOString();
 
             for (const s of students) {
@@ -1216,22 +2079,38 @@ export function createAdminSeminarModule(app) {
                 for (const pres of presentations) {
                     const scores = pres.questionerScores?.[s.id];
                     if (!scores || !Object.keys(scores).length) continue;
-                    const marks = sumParamScores(scores, qParams);
-                    if (marks <= 0) continue;
+                    const meta = pres.questionerMeta?.[s.id];
+                    if (meta?.isAbsent) {
+                        history.push({
+                            presentationId: pres.id,
+                            presenterId: pres.studentId,
+                            marks: 0,
+                            isAbsent: true,
+                            at: pres.evaluatedAt || evaluatedAt
+                        });
+                        continue;
+                    }
+                    const clean = { ...scores };
+                    delete clean._isDummy;
+                    const marks = sumParamScores(clean, qParams);
                     total += marks;
                     history.push({
                         presentationId: pres.id,
                         presenterId: pres.studentId,
                         marks,
+                        isDummy: Boolean(scores._isDummy || meta?.isDummy),
                         at: pres.evaluatedAt || evaluatedAt
                     });
                 }
+                total = Math.min(total, maxPart);
                 const ref = doc(window.firebaseDb, 'userData', s.id);
                 const snap = await getDoc(ref);
                 const data = snap.exists() ? snap.data() : {};
                 if (!data.seminar) data.seminar = getDefaultSeminar();
-                data.seminar.totals = data.seminar.totals || { presentationMarks: 0, questionMarks: 0 };
+                ensureSeminarEvaluation(data.seminar);
+                data.seminar.totals = data.seminar.totals || {};
                 data.seminar.totals.questionMarks = total;
+                data.seminar.totals.grandTotal = computeSeminarGrandTotal(data.seminar.totals, maxPart);
                 data.seminar.questionHistory = history;
                 await setDoc(ref, { seminar: data.seminar }, { merge: true });
             }
@@ -1242,25 +2121,38 @@ export function createAdminSeminarModule(app) {
             const students = await this.fetchSeminarStudents();
             const guides = await this.fetchGuides();
             const guideMap = Object.fromEntries(guides.map(g => [g.id, g.name]));
+            const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
 
-            let csv = 'Name,KTU ID,Guide,Topic,Topic Status,Papers,Presentation Slot,Presentation Score,Question Score,Total\n';
+            let csv = 'Name,KTU ID,Guide,Topic,Topic Status,Papers,Slot,Guide Marks,Coordinator Marks,Presentation Marks,Report Marks,Participation Marks,Grand Total,Absent,Last Markers\n';
             for (const s of students) {
                 const sem = s.seminar;
+                ensureSeminarEvaluation(sem);
                 const gid = sem.guideId || settings.guideAssignments[s.id];
                 const slotId = sem.presentationSlotId || settings.presentationAssignments[s.id];
                 const slot = (settings.presentationSlots || []).find(sl => sl.id === slotId);
-                const pres = (settings.presentations || []).find(p => p.studentId === s.id);
-                const pScore = pres ? sumParamScores(pres.presenterScores, settings.scoringParams.presenter) : 0;
-                const qScore = sem.totals?.questionMarks || 0;
+                const t = sem.totals || {};
+                const grand = computeSeminarGrandTotal(t, maxP);
                 const displayTopic = getSeminarDisplayTopic(sem);
                 const locked = getLockedTopic(sem);
+                const comps = sem.evaluation?.components || {};
+                const markers = ['guide', 'coordinator', 'presentation', 'report']
+                    .map(k => comps[k]?.markedBy?.name ? `${k}:${comps[k].markedBy.name}` : '')
+                    .filter(Boolean)
+                    .join('; ');
                 const row = [
                     s.name, s.ktuid, guideMap[gid] || '',
                     (displayTopic?.title || '').replace(/,/g, ';'),
                     locked ? 'locked' : (displayTopic?.status || ''),
                     (sem.papers || []).length,
                     slot ? formatPresentationSlot(slot).replace(/,/g, ';') : '',
-                    pScore, qScore, pScore + qScore
+                    t.guideMarks || 0,
+                    t.coordinatorMarks || 0,
+                    t.presentationMarks || 0,
+                    t.reportMarks || 0,
+                    Math.min(t.questionMarks || 0, maxP),
+                    grand,
+                    sem.evaluation?.isAbsent ? 'Yes' : 'No',
+                    markers.replace(/,/g, ';')
                 ];
                 csv += row.map(c => `"${c}"`).join(',') + '\n';
             }
@@ -1268,7 +2160,7 @@ export function createAdminSeminarModule(app) {
             const blob = new Blob([csv], { type: 'text/csv' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `seminar-report-${new Date().toISOString().split('T')[0]}.csv`;
+            a.download = `seminar-cie-report-${new Date().toISOString().split('T')[0]}.csv`;
             a.click();
         },
 

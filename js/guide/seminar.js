@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'https://
 import {
     getDefaultSeminar,
     ensureSeminarTopics,
+    ensureSeminarEvaluation,
     getLockedTopic,
     isSeminarTopicsLocked,
     statusBadge,
@@ -11,8 +12,9 @@ import {
     normalizePaperStatus,
     isPaperPendingReview,
     ensureTitleAbstract,
-    ensureSeminarPpt
-} from '../utils/seminarConfig.js?v=unlock1';
+    ensureSeminarPpt,
+    computeSeminarGrandTotal
+} from '../utils/seminarConfig.js?v=eval9';
 
 export function createGuideSeminarModule(app) {
     return {
@@ -63,35 +65,68 @@ export function createGuideSeminarModule(app) {
             const el = document.getElementById('guide-seminar-content');
             if (!el) return;
 
+            if (!guideId) {
+                el.innerHTML = '<p class="error-message">Guide session not found. Please log out and log in again.</p>';
+                return;
+            }
+
             el.innerHTML = '<div class="loading-state">Loading assigned students...</div>';
 
             try {
-                const settingsSnap = await getDoc(doc(window.firebaseDb, 'settings', 'seminar'));
-                const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+                let settings = {};
+                try {
+                    const settingsSnap = await getDoc(doc(window.firebaseDb, 'settings', 'seminar'));
+                    settings = settingsSnap.exists() ? settingsSnap.data() : {};
+                } catch (e) {
+                    console.warn('Could not read settings/seminar', e);
+                }
                 const assignments = settings.guideAssignments || {};
 
+                // Prefer assigned student IDs from allotment (avoids reading every student doc)
+                const assignedIds = Object.entries(assignments)
+                    .filter(([, gid]) => gid === guideId)
+                    .map(([uid]) => uid);
+
                 const students = [];
-                const usersSnap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'student')));
+                const loadErrors = [];
 
-                for (const userDoc of usersSnap.docs) {
-                    const uid = userDoc.id;
-                    const dataSnap = await getDoc(doc(window.firebaseDb, 'userData', uid));
-                    const userData = dataSnap.exists() ? dataSnap.data() : {};
-                    const seminar = userData.seminar || getDefaultSeminar();
-                    ensureSeminarTopics(seminar);
-                    ensureTitleAbstract(seminar);
-                    ensureSeminarPpt(seminar);
-                    const assignedGuide = seminar.guideId || assignments[uid];
-                    if (assignedGuide !== guideId) continue;
+                const loadOne = async (uid, userHint = null) => {
+                    try {
+                        let u = userHint;
+                        if (!u) {
+                            const userSnap = await getDoc(doc(window.firebaseDb, 'users', uid));
+                            if (!userSnap.exists()) return;
+                            u = userSnap.data();
+                            if (u.role && u.role !== 'student') return;
+                        }
+                        const dataSnap = await getDoc(doc(window.firebaseDb, 'userData', uid));
+                        const userData = dataSnap.exists() ? dataSnap.data() : {};
+                        const seminar = userData.seminar || getDefaultSeminar();
+                        ensureSeminarTopics(seminar);
+                        ensureTitleAbstract(seminar);
+                        ensureSeminarPpt(seminar);
+                        ensureSeminarEvaluation(seminar);
+                        const assignedGuide = seminar.guideId || assignments[uid];
+                        if (assignedGuide !== guideId) return;
+                        students.push({
+                            id: uid,
+                            name: u.name || u.username || 'Student',
+                            ktuid: u.username || '',
+                            seminar,
+                            userData
+                        });
+                    } catch (e) {
+                        console.warn('Skip student', uid, e);
+                        loadErrors.push(uid);
+                    }
+                };
 
-                    const u = userDoc.data();
-                    students.push({
-                        id: uid,
-                        name: u.name || u.username || 'Student',
-                        ktuid: u.username || '',
-                        seminar,
-                        userData
-                    });
+                if (assignedIds.length) {
+                    await Promise.all(assignedIds.map(uid => loadOne(uid)));
+                } else {
+                    // Fallback: scan students, but never fail the whole page on one denied read
+                    const usersSnap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'student')));
+                    await Promise.all(usersSnap.docs.map(userDoc => loadOne(userDoc.id, userDoc.data())));
                 }
 
                 students.sort((a, b) => {
@@ -103,27 +138,18 @@ export function createGuideSeminarModule(app) {
                 });
 
                 app._guideSeminarStudents = students;
-
-                if (!students.length) {
-                    el.innerHTML = `
-                        <div class="seminar-guide-empty">
-                            <i class="fas fa-user-graduate"></i>
-                            <h3>No students assigned yet</h3>
-                            <p>When admin allots guides, your students will appear here with their submitted topics.</p>
-                        </div>`;
-                    return;
-                }
-
                 this.renderGuideSeminarPage(students);
             } catch (err) {
                 console.error(err);
-                el.innerHTML = '<p class="error-message">Failed to load seminar students.</p>';
+                el.innerHTML = `<p class="error-message">Failed to load seminar students.${err?.message ? ` (${escapeHtml(err.message)})` : ''}</p>`;
             }
         },
 
         renderGuideSeminarPage(students) {
             const el = document.getElementById('guide-seminar-content');
             if (!el) return;
+            const guideId = this.getGuideId();
+            const activeTab = app._guideSeminarTab === 'evaluation' ? 'evaluation' : 'mentees';
 
             const stats = students.reduce((acc, s) => {
                 const st = this.getStudentTopicStats(s.seminar);
@@ -138,60 +164,205 @@ export function createGuideSeminarModule(app) {
                 return acc;
             }, { students: 0, pending: 0, locked: 0, awaiting: 0, noTopics: 0, papersPending: 0, abstractPending: 0, pptPending: 0 });
 
+            const menteeList = students.length
+                ? students.map(s => this.renderGuideStudentCard(s)).join('')
+                : `<div class="seminar-guide-empty" style="padding:1.5rem;">
+                        <i class="fas fa-user-graduate"></i>
+                        <h3>No mentees assigned yet</h3>
+                        <p>When admin allots you as guide, your students appear here. Use the <strong>CIE evaluation</strong> tab for IEC presentation marks on any student.</p>
+                   </div>`;
+
             el.innerHTML = `
                 <div class="seminar-guide-page">
-                    <div class="seminar-guide-summary">
-                        <div class="seminar-guide-stat">
-                            <strong>${stats.students}</strong>
-                            <span>Students</span>
+                    <div class="seminar-admin-tabs seminar-guide-tabs" role="tablist">
+                        <button type="button" class="seminar-admin-tab ${activeTab === 'mentees' ? 'active' : ''}" data-guide-tab="mentees">
+                            <i class="fas fa-user-graduate"></i> Mentees
+                            <span class="badge">${stats.students}</span>
+                        </button>
+                        <button type="button" class="seminar-admin-tab ${activeTab === 'evaluation' ? 'active' : ''}" data-guide-tab="evaluation">
+                            <i class="fas fa-clipboard-check"></i> CIE evaluation
+                        </button>
+                    </div>
+
+                    <div id="guide-seminar-panel-mentees" class="seminar-guide-panel ${activeTab === 'mentees' ? 'active' : ''}" ${activeTab === 'mentees' ? '' : 'hidden'}>
+                        <div class="seminar-guide-summary">
+                            <div class="seminar-guide-stat">
+                                <strong>${stats.students}</strong>
+                                <span>Mentees</span>
+                            </div>
+                            <div class="seminar-guide-stat ${stats.pending ? 'stat-warn' : ''}">
+                                <strong>${stats.pending}</strong>
+                                <span>Topics to review</span>
+                            </div>
+                            <div class="seminar-guide-stat ${stats.papersPending ? 'stat-warn' : ''}">
+                                <strong>${stats.papersPending}</strong>
+                                <span>Papers to review</span>
+                            </div>
+                            <div class="seminar-guide-stat ${stats.abstractPending ? 'stat-warn' : ''}">
+                                <strong>${stats.abstractPending}</strong>
+                                <span>Abstracts to review</span>
+                            </div>
+                            <div class="seminar-guide-stat ${stats.pptPending ? 'stat-warn' : ''}">
+                                <strong>${stats.pptPending}</strong>
+                                <span>PPTs to review</span>
+                            </div>
                         </div>
-                        <div class="seminar-guide-stat ${stats.pending ? 'stat-warn' : ''}">
-                            <strong>${stats.pending}</strong>
-                            <span>Topics to review</span>
+
+                        <div class="seminar-guide-toolbar">
+                            <input type="search" id="guide-seminar-search" class="form-input search-input"
+                                placeholder="Search mentee by name or KTU ID..." style="flex:1; max-width:360px;">
+                            <select id="guide-seminar-filter" class="form-input" style="max-width:240px;">
+                                <option value="all">All mentees</option>
+                                <option value="pending">Topics need review</option>
+                                <option value="papers">Papers need review</option>
+                                <option value="abstract">Abstracts need review</option>
+                                <option value="ppt">PPTs need review</option>
+                                <option value="ready">Ready to lock</option>
+                                <option value="locked">Locked</option>
+                                <option value="none">No topics yet</option>
+                            </select>
                         </div>
-                        <div class="seminar-guide-stat ${stats.papersPending ? 'stat-warn' : ''}">
-                            <strong>${stats.papersPending}</strong>
-                            <span>Papers to review</span>
-                        </div>
-                        <div class="seminar-guide-stat ${stats.abstractPending ? 'stat-warn' : ''}">
-                            <strong>${stats.abstractPending}</strong>
-                            <span>Abstracts to review</span>
-                        </div>
-                        <div class="seminar-guide-stat ${stats.pptPending ? 'stat-warn' : ''}">
-                            <strong>${stats.pptPending}</strong>
-                            <span>PPTs to review</span>
+
+                        <p class="seminar-guide-howto">
+                            <i class="fas fa-info-circle"></i>
+                            Review topics → lock one final topic. Then verify <strong>papers</strong>,
+                            <strong>title &amp; abstract</strong>, and <strong>PPT</strong>:
+                            Approve, Reject, or Open for edit. Guide CIE marks (background &amp; relevance) are entered from the CIE evaluation tab for your mentees.
+                        </p>
+
+                        <div id="guide-seminar-students" class="seminar-guide-students">
+                            ${menteeList}
                         </div>
                     </div>
 
-                    <div class="seminar-guide-toolbar">
-                        <input type="search" id="guide-seminar-search" class="form-input search-input"
-                            placeholder="Search student by name or KTU ID..." style="flex:1; max-width:360px;">
-                        <select id="guide-seminar-filter" class="form-input" style="max-width:240px;">
-                            <option value="all">All students</option>
-                            <option value="pending">Topics need review</option>
-                            <option value="papers">Papers need review</option>
-                            <option value="abstract">Abstracts need review</option>
-                            <option value="ppt">PPTs need review</option>
-                            <option value="ready">Ready to lock</option>
-                            <option value="locked">Locked</option>
-                            <option value="none">No topics yet</option>
-                        </select>
-                    </div>
-
-                    <p class="seminar-guide-howto">
-                        <i class="fas fa-info-circle"></i>
-                        Review topics → lock one final topic. Then verify <strong>papers</strong>,
-                        <strong>title &amp; abstract</strong>, and <strong>PPT</strong>:
-                        Approve, Reject, or Open for edit / revert to student.
-                    </p>
-
-                    <div id="guide-seminar-students" class="seminar-guide-students">
-                        ${students.map(s => this.renderGuideStudentCard(s)).join('')}
+                    <div id="guide-seminar-panel-evaluation" class="seminar-guide-panel ${activeTab === 'evaluation' ? 'active' : ''}" ${activeTab === 'evaluation' ? '' : 'hidden'}>
+                        <div class="seminar-guide-eval-panel admin-card">
+                            <h3 style="margin-top:0;"><i class="fas fa-clipboard-check"></i> CIE evaluation (IEC)</h3>
+                            <p class="form-hint">
+                                Mark <strong>Presentation</strong> and <strong>audience questions</strong> for any student.
+                                <strong>Guide marks</strong> only for your mentees. Coordinator &amp; Report marks are admin-only.
+                            </p>
+                            <input type="search" id="guide-seminar-eval-search" class="form-input search-input"
+                                placeholder="Search student by name or KTU ID..." style="max-width:420px; margin-bottom:0.75rem;">
+                            <div id="guide-seminar-eval-list" class="seminar-eval-shortcut-list">
+                                <p class="form-hint">Loading cohort…</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
 
+            this.bindGuideSeminarTabs();
             this.bindGuideSeminarFilters();
+            this.bindGuideSeminarEvalSearch();
+            this.loadGuideSeminarEvalList(guideId);
+        },
+
+        bindGuideSeminarTabs() {
+            document.querySelectorAll('.seminar-guide-tabs [data-guide-tab]').forEach(tab => {
+                if (tab.dataset.bound) return;
+                tab.dataset.bound = 'true';
+                tab.addEventListener('click', () => {
+                    const id = tab.dataset.guideTab;
+                    app._guideSeminarTab = id;
+                    document.querySelectorAll('.seminar-guide-tabs [data-guide-tab]').forEach(t => {
+                        t.classList.toggle('active', t.dataset.guideTab === id);
+                    });
+                    document.querySelectorAll('.seminar-guide-panel').forEach(p => {
+                        const match = p.id === `guide-seminar-panel-${id}`;
+                        p.classList.toggle('active', match);
+                        if (match) p.removeAttribute('hidden');
+                        else p.setAttribute('hidden', '');
+                    });
+                });
+            });
+        },
+
+        bindGuideSeminarEvalSearch() {
+            const search = document.getElementById('guide-seminar-eval-search');
+            if (!search || search.dataset.bound) return;
+            search.dataset.bound = 'true';
+            search.addEventListener('input', () => {
+                const term = search.value.toLowerCase().trim();
+                document.querySelectorAll('#guide-seminar-eval-list .seminar-eval-shortcut-row').forEach(row => {
+                    const name = row.dataset.name || '';
+                    const ktuid = row.dataset.ktuid || '';
+                    row.style.display = (!term || name.includes(term) || ktuid.includes(term)) ? '' : 'none';
+                });
+            });
+        },
+
+        async loadGuideSeminarEvalList(guideId) {
+            const el = document.getElementById('guide-seminar-eval-list');
+            if (!el) return;
+            try {
+                let settings = {};
+                try {
+                    if (typeof app.getSeminarSettings === 'function') {
+                        settings = await app.getSeminarSettings();
+                    } else {
+                        const snap = await getDoc(doc(window.firebaseDb, 'settings', 'seminar'));
+                        settings = snap.exists() ? snap.data() : {};
+                    }
+                } catch (e) {
+                    console.warn('Could not load seminar settings for eval list', e);
+                }
+
+                const usersSnap = await getDocs(query(collection(window.firebaseDb, 'users'), where('role', '==', 'student')));
+                const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+                const fairness = settings.questionFairness || {};
+                const assignments = settings.guideAssignments || {};
+
+                const rows = await Promise.all(usersSnap.docs.map(async (userDoc) => {
+                    const u = userDoc.data();
+                    const id = userDoc.id;
+                    let seminar = getDefaultSeminar();
+                    try {
+                        const dataSnap = await getDoc(doc(window.firebaseDb, 'userData', id));
+                        if (dataSnap.exists()) {
+                            seminar = dataSnap.data().seminar || getDefaultSeminar();
+                        }
+                    } catch (e) {
+                        seminar = getDefaultSeminar();
+                    }
+                    try { ensureSeminarEvaluation(seminar); } catch (e) { /* ignore */ }
+                    const t = seminar.totals || {};
+                    const grand = computeSeminarGrandTotal(t, maxP);
+                    const times = fairness[id]?.times || 0;
+                    const isMine = (seminar.guideId || assignments[id]) === guideId;
+                    return {
+                        id,
+                        name: u.name || u.username || 'Student',
+                        ktuid: u.username || '',
+                        grand,
+                        times,
+                        isMine,
+                        isAbsent: seminar.evaluation?.isAbsent
+                    };
+                }));
+
+                rows.sort((a, b) => {
+                    if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+                    return a.name.localeCompare(b.name);
+                });
+                el.innerHTML = rows.map(s => `
+                    <div class="seminar-eval-shortcut-row"
+                        data-name="${escapeHtml((s.name || '').toLowerCase())}"
+                        data-ktuid="${escapeHtml((s.ktuid || '').toLowerCase())}">
+                        <span>
+                            ${escapeHtml(s.name)}
+                            ${s.isMine ? '<span class="badge">Your mentee</span>' : ''}
+                            ${s.isAbsent ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>' : ''}
+                            <small>(audience Q ×${s.times})</small>
+                        </span>
+                        <span><strong>${s.grand}</strong>/100</span>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">Evaluate</button>
+                    </div>
+                `).join('') || '<p class="form-hint">No students found.</p>';
+            } catch (err) {
+                console.error(err);
+                el.innerHTML = `<p class="form-hint">Could not load evaluation list.${err?.message ? ` (${escapeHtml(err.message)})` : ''}</p>`;
+            }
         },
 
         bindGuideSeminarFilters() {
@@ -318,6 +489,9 @@ export function createGuideSeminarModule(app) {
                         <span><strong>${st.rejected}</strong> rejected</span>
                         ${st.revision ? `<span><strong>${st.revision}</strong> with student for edit</span>` : ''}
                         <span><strong>${st.papersPending}</strong> papers pending</span>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(student.id)}')">
+                            <i class="fas fa-clipboard-check"></i> Evaluate CIE
+                        </button>
                     </div>
 
                     ${st.lockedTopic ? `

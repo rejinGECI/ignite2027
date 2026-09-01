@@ -6,6 +6,7 @@ import {
     MIN_SEMINAR_TOPICS,
     getDefaultSeminar,
     ensureSeminarTopics,
+    ensureSeminarEvaluation,
     getLockedTopic,
     isSeminarTopicsLocked,
     isSeminarPostTopicOpen,
@@ -22,8 +23,9 @@ import {
     ensureTitleAbstract,
     hasTitleAbstractSubmission,
     ensureSeminarPpt,
-    hasPptSubmission
-} from '../utils/seminarConfig.js?v=unlock1';
+    hasPptSubmission,
+    computeSeminarGrandTotal
+} from '../utils/seminarConfig.js?v=eval5';
 
 export function createSeminarModule(app) {
     return {
@@ -33,8 +35,8 @@ export function createSeminarModule(app) {
             ensureSeminarTopics(s);
             ensureTitleAbstract(s);
             ensureSeminarPpt(s);
+            ensureSeminarEvaluation(s);
             if (!s.papers) s.papers = [];
-            if (!s.totals) s.totals = { presentationMarks: 0, questionMarks: 0 };
             if (!s.questionHistory) s.questionHistory = [];
             if (s.postTopicWorkflowOpen === undefined) s.postTopicWorkflowOpen = false;
             // Soft-migrate: keep papers/title/PPT open after prior lock or existing submissions
@@ -164,11 +166,14 @@ export function createSeminarModule(app) {
                 }).join('')
                 : '<p class="form-hint">No topics submitted yet. Add at least 5 seminar topics with a short description.</p>';
 
-            const presenterParams = settings?.scoringParams?.presenter || [];
-            const presScore = pres?.presenterScores ? sumParamScores(pres.presenterScores, presenterParams) : seminar.totals?.presentationMarks || 0;
-            const qScore = seminar.totals?.questionMarks || 0;
-            const totalScore = presScore + qScore;
+            const t = seminar.totals || {};
+            const maxP = settings?.questionSettings?.maxParticipationMarks ?? 10;
+            const qScore = Math.min(t.questionMarks || 0, maxP);
+            const grand = computeSeminarGrandTotal(t, maxP);
             const topicProgressPct = Math.min(100, Math.round((topics.length / MIN_SEMINAR_TOPICS) * 100));
+            const absentNote = seminar.evaluation?.isAbsent
+                ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Marked absent</span>'
+                : '';
 
             const addTopicForm = locked
                 ? `<p class="form-hint seminar-lock-notice"><i class="fas fa-lock"></i> Topics are locked. Your final topic is <strong>${escapeHtml(lockedTopic?.title || '—')}</strong>. You cannot add more topics.</p>`
@@ -242,11 +247,14 @@ export function createSeminarModule(app) {
                             ${pres ? `<span class="badge">${escapeHtml(statusBadge(pres.status))}</span>` : ''}
                         </div>
                         <div class="seminar-overview-item seminar-overview-scores">
-                            <span class="seminar-overview-label"><i class="fas fa-star"></i> Scores</span>
+                            <span class="seminar-overview-label"><i class="fas fa-star"></i> CIE marks ${absentNote}</span>
                             <div class="seminar-score-pills">
-                                <span>Presentation <strong>${presScore}</strong></span>
-                                <span>Questions <strong>${qScore}</strong></span>
-                                <span class="seminar-score-total">Total <strong>${totalScore}</strong></span>
+                                <span>Guide <strong>${t.guideMarks || 0}</strong></span>
+                                <span>Coord <strong>${t.coordinatorMarks || 0}</strong></span>
+                                <span>Pres <strong>${t.presentationMarks || 0}</strong></span>
+                                <span>Report <strong>${t.reportMarks || 0}</strong></span>
+                                <span>Participation <strong>${qScore}</strong></span>
+                                <span class="seminar-score-total">Total <strong>${grand}</strong>/100</span>
                             </div>
                         </div>
                     </div>

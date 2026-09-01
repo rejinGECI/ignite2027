@@ -15,40 +15,219 @@ export const SEMINAR_SCHEDULE_FIELDS = [
     { key: 'finalReportSubmission', label: 'Final report submission', step: 12 }
 ];
 
-export const DEFAULT_PRESENTER_PARAMS = [
-    { id: 'content', label: 'Content organisation & insights', maxMarks: 15, description: 'Logical flow, depth of analysis, key takeaways' },
-    { id: 'delivery', label: 'Presentation delivery', maxMarks: 10, description: 'Clarity, pace, confidence, audience engagement' },
-    { id: 'visuals', label: 'Slides & visual structure', maxMarks: 10, description: 'Slide design, diagrams, readability' },
-    { id: 'time', label: 'Time management', maxMarks: 5, description: 'Within allotted slot, balanced sections' }
+/**
+ * Syllabus (ITQ413 Seminar) CIE — Total 100, pass 50.
+ * Guide 20 + Coordinator 20 + Presentation IEC 40 (clarity/interactions/slides 30
+ * + overall participation via audience Q 10) + Report 20.
+ */
+export const SEMINAR_SCORING_CATEGORIES = [
+    {
+        key: 'guide',
+        label: 'Seminar Guide',
+        syllabusMax: 20,
+        whoMarks: 'Assigned seminar guide only (follows current guide allotment / reassignment)',
+        roles: ['guide'],
+        assignedGuideOnly: true
+    },
+    {
+        key: 'coordinator',
+        label: 'Seminar Coordinator',
+        syllabusMax: 20,
+        whoMarks: 'Admin only',
+        roles: ['admin'],
+        assignedGuideOnly: false
+    },
+    {
+        key: 'presentation',
+        label: 'Presentation (IEC)',
+        syllabusMax: 30,
+        whoMarks: 'Any faculty (IEC) or admin',
+        roles: ['guide', 'admin'],
+        assignedGuideOnly: false,
+        note: 'Clarity + Interactions + Slides. Overall participation (10) is awarded via audience questions.'
+    },
+    {
+        key: 'report',
+        label: 'Report (IEC)',
+        syllabusMax: 20,
+        whoMarks: 'Admin only',
+        roles: ['admin'],
+        assignedGuideOnly: false
+    },
+    {
+        key: 'questioner',
+        label: 'Overall participation (audience Q)',
+        syllabusMax: 10,
+        whoMarks: 'Any faculty during live presentations',
+        roles: ['guide', 'admin'],
+        assignedGuideOnly: false,
+        note: 'From syllabus Presentation→Overall participation: involvement during other students\' presentations.'
+    }
 ];
 
-export const DEFAULT_QUESTIONER_PARAMS = [
-    { id: 'relevance', label: 'Relevance to topic', maxMarks: 5, description: 'Question connects to the presentation theme' },
-    { id: 'depth', label: 'Depth of understanding', maxMarks: 5, description: 'Shows grasp of concepts, not surface-level' },
-    { id: 'clarity', label: 'Clarity of question', maxMarks: 3, description: 'Well-formed, specific, easy to understand' },
-    { id: 'engagement', label: 'Engagement & originality', maxMarks: 2, description: 'Thought-provoking, builds discussion' }
+export const DEFAULT_GUIDE_PARAMS = [
+    { id: 'background', label: 'Background Knowledge', maxMarks: 10, description: 'Guide assesses candidate background knowledge about the selected topic' },
+    { id: 'relevance', label: 'Relevance of paper/topic', maxMarks: 10, description: 'Relevance of the paper/topic selected' }
 ];
+
+export const DEFAULT_COORDINATOR_PARAMS = [
+    { id: 'diary', label: 'Seminar Diary', maxMarks: 10, description: 'Weekly seminar diary monitored and approved during meetings' },
+    { id: 'attendance', label: 'Attendance', maxMarks: 10, description: 'Attendance during seminar sessions' }
+];
+
+/** Own-presentation IEC items (Overall participation lives under questioner). */
+export const DEFAULT_PRESENTATION_PARAMS = [
+    { id: 'clarity', label: 'Clarity of presentation', maxMarks: 10, description: 'Clarity while presenting the academic document' },
+    { id: 'interactions', label: 'Interactions', maxMarks: 10, description: 'Ability to answer questions during the interactive session' },
+    { id: 'slides', label: 'Quality of the slides', maxMarks: 10, description: 'Quality and structure of presentation slides' }
+];
+
+export const DEFAULT_REPORT_PARAMS = [
+    { id: 'report_quality', label: 'Technical report', maxMarks: 20, description: 'Technical content, overall quality, templates followed, adequacy of references' }
+];
+
+/** Per audience-question call; totals capped by questionSettings.maxParticipationMarks (syllabus 10). */
+export const DEFAULT_QUESTIONER_PARAMS = [
+    { id: 'question_quality', label: 'Question quality & engagement', maxMarks: 5, description: 'Relevance, depth, and clarity of the audience question' }
+];
+
+/** @deprecated kept for older saved settings / UI that still say "presenter" */
+export const DEFAULT_PRESENTER_PARAMS = DEFAULT_PRESENTATION_PARAMS.map(p => ({ ...p }));
+
+export function getSyllabusScoringParams() {
+    return {
+        guide: DEFAULT_GUIDE_PARAMS.map(p => ({ ...p })),
+        coordinator: DEFAULT_COORDINATOR_PARAMS.map(p => ({ ...p })),
+        presentation: DEFAULT_PRESENTATION_PARAMS.map(p => ({ ...p })),
+        report: DEFAULT_REPORT_PARAMS.map(p => ({ ...p })),
+        questioner: DEFAULT_QUESTIONER_PARAMS.map(p => ({ ...p })),
+        // Alias for backward compatibility with older eval UI
+        presenter: DEFAULT_PRESENTATION_PARAMS.map(p => ({ ...p }))
+    };
+}
+
+export function normalizeScoringParams(raw = {}) {
+    const defaults = getSyllabusScoringParams();
+    const presentation = (raw.presentation?.length
+        ? raw.presentation
+        : (raw.presenter?.length ? raw.presenter : defaults.presentation));
+    return {
+        guide: raw.guide?.length ? raw.guide : defaults.guide,
+        coordinator: raw.coordinator?.length ? raw.coordinator : defaults.coordinator,
+        presentation,
+        report: raw.report?.length ? raw.report : defaults.report,
+        questioner: raw.questioner?.length ? raw.questioner : defaults.questioner,
+        presenter: presentation
+    };
+}
+
+export function categoryParamTotal(params = []) {
+    return params.reduce((s, p) => s + (parseFloat(p.maxMarks) || 0), 0);
+}
 
 export function getDefaultSeminarSettings() {
+    const scoringParams = getSyllabusScoringParams();
     return {
         enabled: true,
         schedule: Object.fromEntries(SEMINAR_SCHEDULE_FIELDS.map(f => [f.key, ''])),
-        scoringParams: {
-            presenter: DEFAULT_PRESENTER_PARAMS.map(p => ({ ...p })),
-            questioner: DEFAULT_QUESTIONER_PARAMS.map(p => ({ ...p }))
-        },
+        scoringParams,
         presentationSlots: [],
         guideAssignments: {},
         presentationAssignments: {},
         presentations: [],
         questionSettings: {
-            questionsPerPresentation: 3
+            questionsPerPresentation: 2,
+            maxParticipationMarks: 10
         },
         questionFairness: {},
         guideAllottedAt: null,
         presentationAllottedAt: null,
         updatedAt: null
     };
+}
+
+export function getDefaultSeminarEvaluation() {
+    return {
+        isAbsent: false,
+        absentReason: '',
+        absentMarkedBy: null,
+        absentAt: null,
+        components: {},
+        markHistory: []
+    };
+}
+
+export function ensureSeminarEvaluation(seminar) {
+    if (!seminar.evaluation || typeof seminar.evaluation !== 'object') {
+        seminar.evaluation = getDefaultSeminarEvaluation();
+    } else {
+        seminar.evaluation = { ...getDefaultSeminarEvaluation(), ...seminar.evaluation };
+        if (!seminar.evaluation.components) seminar.evaluation.components = {};
+        if (!Array.isArray(seminar.evaluation.markHistory)) seminar.evaluation.markHistory = [];
+    }
+    if (!seminar.totals) {
+        seminar.totals = {
+            guideMarks: 0,
+            coordinatorMarks: 0,
+            presentationMarks: 0,
+            reportMarks: 0,
+            questionMarks: 0,
+            grandTotal: 0
+        };
+    } else {
+        seminar.totals = {
+            guideMarks: seminar.totals.guideMarks || 0,
+            coordinatorMarks: seminar.totals.coordinatorMarks || 0,
+            presentationMarks: seminar.totals.presentationMarks || 0,
+            reportMarks: seminar.totals.reportMarks || 0,
+            questionMarks: seminar.totals.questionMarks || 0,
+            grandTotal: seminar.totals.grandTotal || 0
+        };
+    }
+    return seminar.evaluation;
+}
+
+/** Can this actor mark this scoring category for this student? */
+export function resolveSeminarGuideId(seminar, settings, studentId) {
+    const fromSettings = settings?.guideAssignments?.[studentId];
+    if (fromSettings) return fromSettings;
+    return seminar?.guideId || null;
+}
+
+export function canMarkSeminarCategory(categoryKey, actor, studentGuideId) {
+    const cat = SEMINAR_SCORING_CATEGORIES.find(c => c.key === categoryKey);
+    if (!cat || !actor) return false;
+    const role = actor.role;
+    if (!cat.roles.includes(role)) return false;
+    if (cat.assignedGuideOnly) {
+        // Only the currently assigned seminar guide (after any reassignment)
+        return role === 'guide' && Boolean(actor.uid && studentGuideId && actor.uid === studentGuideId);
+    }
+    return true;
+}
+
+export function buildEvaluatorMeta(actor, isDummy = false) {
+    return {
+        uid: actor?.uid || null,
+        name: actor?.name || actor?.email || 'Unknown',
+        role: actor?.role || 'unknown',
+        isDummy: Boolean(isDummy),
+        at: new Date().toISOString()
+    };
+}
+
+export function computeComponentTotal(component, params) {
+    if (!component?.scores || !params) return 0;
+    return params.reduce((s, p) => s + (parseFloat(component.scores[p.id]) || 0), 0);
+}
+
+export function computeSeminarGrandTotal(totals = {}, maxParticipationMarks = 10) {
+    const q = Math.min(parseFloat(totals.questionMarks) || 0, maxParticipationMarks);
+    return (parseFloat(totals.guideMarks) || 0)
+        + (parseFloat(totals.coordinatorMarks) || 0)
+        + (parseFloat(totals.presentationMarks) || 0)
+        + (parseFloat(totals.reportMarks) || 0)
+        + q;
 }
 
 export const MIN_SEMINAR_TOPICS = 5;
@@ -89,7 +268,22 @@ export function getDefaultSeminar() {
         draftReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         finalReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
         presentationSlotId: null,
-        totals: { presentationMarks: 0, questionMarks: 0 },
+        totals: {
+            guideMarks: 0,
+            coordinatorMarks: 0,
+            presentationMarks: 0,
+            reportMarks: 0,
+            questionMarks: 0,
+            grandTotal: 0
+        },
+        evaluation: {
+            isAbsent: false,
+            absentReason: '',
+            absentMarkedBy: null,
+            absentAt: null,
+            components: {},
+            markHistory: []
+        },
         questionHistory: []
     };
 }
