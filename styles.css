@@ -6872,3 +6872,197 @@ textarea:not(:placeholder-shown)::placeholder {
 }
 .seminar-faculty-student-list li { margin-bottom: 0.25rem; }
 .seminar-faculty-student-list small { color: var(--text-secondary); }
+
+.seminar-cons-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 0.85rem;
+}
+.seminar-cons-toolbar .search-input,
+.seminar-cons-toolbar .form-input {
+    max-width: 360px;
+    flex: 1;
+}
+.seminar-cons-toolbar select.form-input {
+    max-width: 220px;
+    flex: 0 0 200px;
+}
+#seminar-consolidated-stats.seminar-guide-summary {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.seminar-cons-stats {
+    margin-bottom: 1.15rem;
+}
+.seminar-cons-stats-legend {
+    margin: 0 0 0.85rem;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+.seminar-cons-stats-heading {
+    margin: 0.85rem 0 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.seminar-cons-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.65rem;
+}
+.seminar-cons-stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    text-align: left;
+    padding: 0.75rem 0.85rem 0.85rem;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    box-shadow: var(--shadow);
+}
+.seminar-cons-stat-card:hover:not(:disabled) {
+    border-color: var(--primary-color, #6366f1);
+}
+.seminar-cons-stat-card.is-active {
+    border-color: var(--primary-color, #6366f1);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.seminar-cons-stat-card:disabled {
+    cursor: default;
+    opacity: 1;
+}
+.seminar-cons-stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+.seminar-cons-stat-value small {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.seminar-cons-stat-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.seminar-cons-stat-hint {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+.seminar-cons-stat-bar {
+    display: block;
+    width: 100%;
+    height: 6px;
+    margin-top: 0.4rem;
+    background: #e5e7eb;
+    border-radius: 99px;
+    overflow: hidden;
+}
+.seminar-cons-stat-bar > span {
+    display: block;
+    height: 100%;
+    background: #6366f1;
+    border-radius: 99px;
+}
+.seminar-cons-stat-ok .seminar-cons-stat-value { color: #166534; }
+.seminar-cons-stat-ok .seminar-cons-stat-bar > span { background: #16a34a; }
+.seminar-cons-stat-info .seminar-cons-stat-value { color: #1d4ed8; }
+.seminar-cons-stat-info .seminar-cons-stat-bar > span { background: #2563eb; }
+.seminar-cons-stat-muted .seminar-cons-stat-value { color: #4b5563; }
+.seminar-cons-stat-muted .seminar-cons-stat-bar > span { background: #9ca3af; }
+.seminar-cons-stat-danger .seminar-cons-stat-value { color: #991b1b; }
+.seminar-cons-stat-danger .seminar-cons-stat-bar > span { background: #dc2626; }
+.seminar-cons-stat-dummy {
+    background: #fff7ed;
+}
+.seminar-cons-stat-dummy .seminar-cons-stat-value { color: #9a3412; }
+.seminar-cons-stat-dummy .seminar-cons-stat-bar > span { background: #ea580c; }
+.seminar-cons-wrap {
+    overflow: auto;
+    max-height: 70vh;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 10px;
+}
+.seminar-cons-table {
+    min-width: 1180px;
+    margin: 0;
+}
+.seminar-cons-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+.seminar-cons-table td,
+.seminar-cons-table th {
+    vertical-align: top;
+}
+.seminar-cons-marks strong,
+.seminar-cons-total strong {
+    color: var(--text-primary);
+}
+.seminar-cons-marks small,
+.seminar-cons-total small {
+    color: var(--text-secondary);
+    margin-left: 0.15rem;
+}
+.seminar-cons-marker {
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+.seminar-cons-marker-admin {
+    color: #1d4ed8;
+    font-weight: 600;
+}
+.seminar-eval-all-markers {
+    margin-top: 0.35rem;
+    padding: 0.35rem 0.5rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #e5e7eb);
+}
+.seminar-cons-topic {
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    max-width: 220px;
+}
+.seminar-cons-empty {
+    color: var(--text-secondary);
+}
+.seminar-cons-dummy {
+    background: #fff7ed;
+}
+.seminar-cons-total {
+    white-space: nowrap;
+}
+.seminar-cons-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.seminar-cons-badge-complete { background: #dcfce7; color: #166534; }
+.seminar-cons-badge-partial { background: #fef3c7; color: #92400e; }
+.seminar-cons-badge-pending { background: #e5e7eb; color: #374151; }
+.seminar-cons-badge-absent { background: #fee2e2; color: #991b1b; }
+.seminar-cons-eval-btn {
+    display: block;
+    margin-top: 0.4rem;
+}

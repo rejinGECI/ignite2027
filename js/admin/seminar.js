@@ -37,7 +37,7 @@ import {
     resolveSeminarGuideId,
     buildEvaluatorMeta,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval5';
+} from '../utils/seminarConfig.js?v=eval13';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -106,6 +106,7 @@ export function createAdminSeminarModule(app) {
             this.bindSeminarAdminTabs();
             this.setupSeminarAdminSearch();
             this.setupSeminarEvalSearch();
+            this.setupSeminarConsolidatedSearch();
         },
 
         showSeminarAdminTab(tabId) {
@@ -116,6 +117,7 @@ export function createAdminSeminarModule(app) {
                 p.classList.toggle('active', p.id === `seminar-admin-${tabId}`);
             });
             if (tabId === 'evaluation') this.refreshSeminarEvaluationList();
+            if (tabId === 'consolidated') this.renderSeminarConsolidatedMarks();
         },
 
         setupSeminarEvalSearch() {
@@ -585,7 +587,16 @@ export function createAdminSeminarModule(app) {
                 }
 
                 for (const key of Object.keys(evalObj.components || {})) {
-                    if (evalObj.components[key]?.markedBy?.isDummy || evalObj.components[key]?.isDummy) {
+                    const comp = evalObj.components[key];
+                    if (comp?.evaluators && typeof comp.evaluators === 'object') {
+                        for (const [id, ev] of Object.entries(comp.evaluators)) {
+                            if (ev?.isDummy || ev?.markedBy?.isDummy) {
+                                delete comp.evaluators[id];
+                                changed = true;
+                            }
+                        }
+                    }
+                    if (comp?.markedBy?.isDummy || comp?.isDummy) {
                         delete evalObj.components[key];
                         clearedComponents++;
                         changed = true;
@@ -629,6 +640,14 @@ export function createAdminSeminarModule(app) {
                     next.presenterScores = {};
                     if (next.evaluationMeta) delete next.evaluationMeta;
                 }
+                if (pres.presenterEvaluatorScores) {
+                    next.presenterEvaluatorScores = { ...pres.presenterEvaluatorScores };
+                    for (const [id, ev] of Object.entries(next.presenterEvaluatorScores)) {
+                        if (ev?.isDummy || ev?.markedBy?.isDummy || ev?.scores?._isDummy) {
+                            delete next.presenterEvaluatorScores[id];
+                        }
+                    }
+                }
                 return next;
             });
 
@@ -657,6 +676,113 @@ export function createAdminSeminarModule(app) {
 
             alert(`Dummy data cleared.\nComponent entries removed: ${clearedComponents}\nAudience Q entries removed: ${clearedQuestions}`);
             await this.loadSeminarAdmin();
+        },
+
+        stripSeminarDummyFlag(entry) {
+            if (!entry || typeof entry !== 'object') return false;
+            let changed = false;
+            if (entry.isDummy) {
+                entry.isDummy = false;
+                changed = true;
+            }
+            if (entry.markedBy?.isDummy) {
+                entry.markedBy = { ...entry.markedBy, isDummy: false };
+                changed = true;
+            }
+            if (entry.scores && Object.prototype.hasOwnProperty.call(entry.scores, '_isDummy')) {
+                delete entry.scores._isDummy;
+                changed = true;
+            }
+            return changed;
+        },
+
+        async promoteDummySeminarEvaluations() {
+            if (!confirm('Keep all dummy/test seminar marks and convert them to official CIE (remove the dummy flag and peach highlight)? Scores are not deleted.')) return;
+
+            const settings = await this.getSeminarSettings();
+            const students = await this.fetchSeminarStudents({ force: true });
+            let converted = 0;
+
+            for (const s of students) {
+                const ref = doc(window.firebaseDb, 'userData', s.id);
+                const snap = await getDoc(ref);
+                const data = snap.exists() ? snap.data() : {};
+                if (!data.seminar) continue;
+                ensureSeminarEvaluation(data.seminar);
+                const evalObj = data.seminar.evaluation;
+                let changed = false;
+
+                if (this.stripSeminarDummyFlag(evalObj.absentMarkedBy)) changed = true;
+
+                for (const key of Object.keys(evalObj.components || {})) {
+                    const comp = evalObj.components[key];
+                    if (this.stripSeminarDummyFlag(comp)) {
+                        converted += 1;
+                        changed = true;
+                    }
+                    if (comp?.evaluators && typeof comp.evaluators === 'object') {
+                        for (const ev of Object.values(comp.evaluators)) {
+                            if (this.stripSeminarDummyFlag(ev)) {
+                                converted += 1;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                (evalObj.markHistory || []).forEach(h => {
+                    if (this.stripSeminarDummyFlag(h)) changed = true;
+                });
+                (data.seminar.questionHistory || []).forEach(h => {
+                    if (this.stripSeminarDummyFlag(h)) changed = true;
+                });
+
+                if (changed) {
+                    const sp = settings.scoringParams;
+                    data.seminar.totals = data.seminar.totals || {};
+                    data.seminar.totals.guideMarks = sumParamScores(evalObj.components.guide?.scores, sp.guide);
+                    data.seminar.totals.coordinatorMarks = sumParamScores(evalObj.components.coordinator?.scores, sp.coordinator);
+                    data.seminar.totals.presentationMarks = sumParamScores(evalObj.components.presentation?.scores, sp.presentation);
+                    data.seminar.totals.reportMarks = sumParamScores(evalObj.components.report?.scores, sp.report);
+                    const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+                    data.seminar.totals.grandTotal = computeSeminarGrandTotal(data.seminar.totals, maxP);
+                    await setDoc(ref, { seminar: data.seminar }, { merge: true });
+                }
+            }
+
+            const presentations = (settings.presentations || []).map(pres => {
+                const next = {
+                    ...pres,
+                    questionerScores: { ...(pres.questionerScores || {}) },
+                    questionerMeta: { ...(pres.questionerMeta || {}) },
+                    presenterEvaluatorScores: { ...(pres.presenterEvaluatorScores || {}) }
+                };
+                if (this.stripSeminarDummyFlag(next.evaluationMeta)) converted += 1;
+                if (next.presenterScores?._isDummy) {
+                    delete next.presenterScores._isDummy;
+                    converted += 1;
+                }
+                for (const ev of Object.values(next.presenterEvaluatorScores)) {
+                    if (this.stripSeminarDummyFlag(ev)) converted += 1;
+                }
+                for (const meta of Object.values(next.questionerMeta)) {
+                    if (this.stripSeminarDummyFlag(meta)) converted += 1;
+                }
+                for (const scores of Object.values(next.questionerScores)) {
+                    if (scores?._isDummy) {
+                        delete scores._isDummy;
+                        converted += 1;
+                    }
+                }
+                return next;
+            });
+
+            await this.saveSeminarSettings({ presentations });
+            this.invalidateSeminarCaches();
+            alert(`Dummy flag removed. ${converted} dummy mark record(s) are now official CIE.`);
+            await this.loadSeminarAdmin();
+            if (typeof this.renderSeminarConsolidatedMarks === 'function') {
+                await this.renderSeminarConsolidatedMarks(true);
+            }
         },
 
         renderSeminarSlots(settings) {
@@ -1641,12 +1767,25 @@ export function createAdminSeminarModule(app) {
                     const comp = evalObj.components?.[key];
                     let scores = comp?.scores;
                     if (key === 'presentation' && !scores && pres.presenterScores) scores = pres.presenterScores;
+                    const extraEntries = [];
+                    if (key === 'presentation' && pres?.presenterEvaluatorScores) {
+                        extraEntries.push(...Object.values(pres.presenterEvaluatorScores));
+                    }
+                    const allEvaluators = this.collectSeminarComponentEvaluators(
+                        comp, evalObj.markHistory || [], key, sp[key], extraEntries
+                    );
+                    const evaluatorLines = allEvaluators.length
+                        ? `<div class="seminar-eval-all-markers">${allEvaluators.map(ev => {
+                            const adminCls = ev.markedBy?.role === 'admin' ? ' seminar-cons-marker-admin' : '';
+                            return `<div class="seminar-cons-marker${adminCls}">${escapeHtml(ev.label)}: <strong>${escapeHtml(String(ev.marks))}</strong></div>`;
+                        }).join('')}</div>`
+                        : markedByLine(comp);
                     return `
                         <div class="seminar-eval-category">
                             <h5>${escapeHtml(title)} <small>(max ${categoryParamTotal(sp[key])})</small></h5>
                             <p class="form-hint">${escapeHtml(hint || cat?.whoMarks || '')}</p>
                             ${this.renderSeminarEvalComponentFields(key, sp[key], scores, actor, studentGuideId, evalObj.isAbsent)}
-                            ${markedByLine(comp)}
+                            ${evaluatorLines}
                         </div>
                     `;
                 };
@@ -1704,8 +1843,11 @@ export function createAdminSeminarModule(app) {
                         </label>
                         <label class="seminar-inline-check">
                             <input type="checkbox" id="seminar-eval-dummy">
-                            Save as <strong>dummy / test</strong> marks (can be cleared later from Scoring tab)
+                            Save as <strong>dummy / test</strong> marks
                         </label>
+                        <p class="form-hint" style="margin:0.25rem 0 0;">
+                            Leave this unchecked for official CIE. If marks already show <em>[dummy]</em>, uncheck this and Save — or use <strong>Convert dummy to official</strong> on Consolidated marks.
+                        </p>
                     </div>
                     <div class="form-group" id="seminar-absent-reason-wrap" style="${evalObj.isAbsent ? '' : 'display:none;'}">
                         <label>Absent reason (optional)</label>
@@ -1888,11 +2030,22 @@ export function createAdminSeminarModule(app) {
                 if (!any && !evalObj.components[cat]) continue;
                 if (!any) continue;
 
+                const prevComp = evalObj.components[cat] || {};
+                const evaluatorId = this.seminarEvaluatorKey(meta);
                 evalObj.components[cat] = {
                     scores,
                     markedBy: meta,
                     markedAt: meta.at,
-                    isDummy
+                    isDummy,
+                    evaluators: {
+                        ...(prevComp.evaluators || {}),
+                        [evaluatorId]: {
+                            scores: { ...scores },
+                            markedBy: meta,
+                            markedAt: meta.at,
+                            isDummy
+                        }
+                    }
                 };
                 evalObj.markHistory = evalObj.markHistory || [];
                 evalObj.markHistory.push({
@@ -1913,6 +2066,19 @@ export function createAdminSeminarModule(app) {
 
             const pres = { ...settings.presentations[presIdx] };
             pres.presenterScores = { ...(evalObj.components.presentation?.scores || {}) };
+            if (!pres.presenterEvaluatorScores) pres.presenterEvaluatorScores = {};
+            if (evalObj.components.presentation?.scores) {
+                const evaluatorId = this.seminarEvaluatorKey(meta);
+                pres.presenterEvaluatorScores = {
+                    ...pres.presenterEvaluatorScores,
+                    [evaluatorId]: {
+                        scores: { ...evalObj.components.presentation.scores },
+                        markedBy: meta,
+                        markedAt: meta.at,
+                        isDummy
+                    }
+                };
+            }
             if (isDummy) {
                 pres.presenterScores._isDummy = true;
                 pres.evaluationMeta = meta;
@@ -1946,6 +2112,10 @@ export function createAdminSeminarModule(app) {
                 Object.keys(comp.scores).forEach(pid => {
                     comp.scores[pid] = clampScore(comp.scores[pid], pid, sp[cat]);
                 });
+                const eid = this.seminarEvaluatorKey(meta);
+                if (comp.evaluators?.[eid]) {
+                    comp.evaluators[eid].scores = { ...comp.scores };
+                }
             }
             totals.guideMarks = sumParamScores(evalObj.components.guide?.scores, sp.guide);
             totals.coordinatorMarks = sumParamScores(evalObj.components.coordinator?.scores, sp.coordinator);
@@ -1953,6 +2123,10 @@ export function createAdminSeminarModule(app) {
             totals.reportMarks = sumParamScores(evalObj.components.report?.scores, sp.report);
             if (evalObj.components.presentation?.scores) {
                 pres.presenterScores = { ...evalObj.components.presentation.scores };
+                const evaluatorId = this.seminarEvaluatorKey(meta);
+                if (pres.presenterEvaluatorScores?.[evaluatorId]) {
+                    pres.presenterEvaluatorScores[evaluatorId].scores = { ...evalObj.components.presentation.scores };
+                }
                 if (isDummy) {
                     pres.presenterScores._isDummy = true;
                     pres.evaluationMeta = meta;
@@ -2116,52 +2290,748 @@ export function createAdminSeminarModule(app) {
             }
         },
 
-        async generateSeminarReport() {
-            const settings = await this.getSeminarSettings();
-            const students = await this.fetchSeminarStudents();
-            const guides = await this.fetchGuides();
-            const guideMap = Object.fromEntries(guides.map(g => [g.id, g.name]));
-            const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+        seminarEvaluatorRoleLabel(role) {
+            if (role === 'admin') return 'Admin';
+            if (role === 'guide') return 'Faculty';
+            return role || '';
+        },
 
-            let csv = 'Name,KTU ID,Guide,Topic,Topic Status,Papers,Slot,Guide Marks,Coordinator Marks,Presentation Marks,Report Marks,Participation Marks,Grand Total,Absent,Last Markers\n';
-            for (const s of students) {
-                const sem = s.seminar;
+        seminarEvaluatorKey(markedBy) {
+            if (markedBy?.uid) return String(markedBy.uid);
+            if (markedBy?.role === 'admin') return '_admin';
+            const name = (markedBy?.name || '').replace(/[./#[\]*$]/g, '_').trim();
+            return name ? `_n_${name}` : '_unknown';
+        },
+
+        formatSeminarEvaluatorLabel(markedBy, isDummy = false) {
+            if (!markedBy) return '';
+            const name = markedBy.name || markedBy.uid || 'Unknown';
+            const role = this.seminarEvaluatorRoleLabel(markedBy.role);
+            const dummy = (isDummy || markedBy.isDummy) ? ' [dummy]' : '';
+            return role ? `${name} (${role})${dummy}` : `${name}${dummy}`;
+        },
+
+        seminarComponentHasScores(comp) {
+            if (!comp?.scores || typeof comp.scores !== 'object') return false;
+            return Object.keys(comp.scores).some(k => k !== '_isDummy' && comp.scores[k] !== '' && comp.scores[k] != null);
+        },
+
+        collectSeminarComponentEvaluators(comp, history = [], categoryKey, params = [], extraEntries = []) {
+            const byKey = new Map();
+            const add = (entry, fallbackId) => {
+                if (!entry) return;
+                const scores = { ...(entry.scores || {}) };
+                delete scores._isDummy;
+                const markedBy = entry.markedBy || null;
+                if (!this.seminarComponentHasScores({ scores }) && !markedBy) return;
+                if (!this.seminarComponentHasScores({ scores })) return;
+                const id = this.seminarEvaluatorKey(markedBy) || fallbackId || '_unknown';
+                const at = entry.markedAt || markedBy?.at || '';
+                const prev = byKey.get(id);
+                if (prev?.at && at && prev.at > at) return;
+                byKey.set(id, {
+                    id,
+                    scores,
+                    markedBy,
+                    isDummy: Boolean(entry.isDummy || markedBy?.isDummy),
+                    at,
+                    label: this.formatSeminarEvaluatorLabel(markedBy, entry.isDummy) || 'Unknown',
+                    marks: sumParamScores(scores, params),
+                    role: this.seminarEvaluatorRoleLabel(markedBy?.role)
+                });
+            };
+
+            (history || []).filter(h => h.component === categoryKey || (categoryKey === 'presentation' && h.component === 'presenter')).forEach(h => add(h));
+            if (comp?.evaluators && typeof comp.evaluators === 'object') {
+                Object.entries(comp.evaluators).forEach(([id, ev]) => add(ev, id));
+            }
+            add(comp);
+            (extraEntries || []).forEach(ev => add(ev));
+
+            return [...byKey.values()].sort((a, b) => {
+                const rank = (e) => (e.markedBy?.role === 'admin' ? 0 : 1);
+                if (rank(a) !== rank(b)) return rank(a) - rank(b);
+                return (a.label || '').localeCompare(b.label || '');
+            });
+        },
+
+        seminarCsvCell(value) {
+            const s = value == null ? '' : String(value);
+            if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+            return s;
+        },
+
+        getSeminarParticipationEvaluators(studentId, settings) {
+            const seen = new Map();
+            for (const pres of settings.presentations || []) {
+                const scores = pres.questionerScores?.[studentId];
+                const meta = pres.questionerMeta?.[studentId];
+                if (!scores && !meta) continue;
+                const markedBy = meta?.markedBy;
+                const key = markedBy?.uid || markedBy?.name || 'unknown';
+                if (!seen.has(key)) {
+                    seen.set(key, this.formatSeminarEvaluatorLabel(markedBy, meta?.isDummy || scores?._isDummy));
+                }
+            }
+            return [...seen.values()].filter(Boolean);
+        },
+
+        async collectSeminarConsolidatedData({ force = false } = {}) {
+            if (force) this.invalidateSeminarCaches();
+            const [settings, students, guides] = await Promise.all([
+                this.getSeminarSettings(),
+                this.fetchSeminarStudents({ force }),
+                this.fetchGuides({ force })
+            ]);
+            const guideMap = Object.fromEntries(guides.map(g => [g.id, g.name || g.email || 'Guide']));
+            const sp = settings.scoringParams || {};
+            const maxP = settings.questionSettings?.maxParticipationMarks ?? 10;
+            const maxes = {
+                guide: categoryParamTotal(sp.guide),
+                coordinator: categoryParamTotal(sp.coordinator),
+                presentation: categoryParamTotal(sp.presentation),
+                report: categoryParamTotal(sp.report),
+                participation: maxP
+            };
+            const sorted = [...students].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const rows = sorted.map((s, index) => {
+                const sem = s.seminar || getDefaultSeminar();
                 ensureSeminarEvaluation(sem);
-                const gid = sem.guideId || settings.guideAssignments[s.id];
-                const slotId = sem.presentationSlotId || settings.presentationAssignments[s.id];
-                const slot = (settings.presentationSlots || []).find(sl => sl.id === slotId);
                 const t = sem.totals || {};
-                const grand = computeSeminarGrandTotal(t, maxP);
+                const comps = sem.evaluation?.components || {};
+                const gid = sem.guideId || settings.guideAssignments?.[s.id];
+                const slotId = sem.presentationSlotId || settings.presentationAssignments?.[s.id];
+                const slot = (settings.presentationSlots || []).find(sl => sl.id === slotId);
                 const displayTopic = getSeminarDisplayTopic(sem);
                 const locked = getLockedTopic(sem);
-                const comps = sem.evaluation?.components || {};
-                const markers = ['guide', 'coordinator', 'presentation', 'report']
-                    .map(k => comps[k]?.markedBy?.name ? `${k}:${comps[k].markedBy.name}` : '')
-                    .filter(Boolean)
-                    .join('; ');
-                const row = [
-                    s.name, s.ktuid, guideMap[gid] || '',
-                    (displayTopic?.title || '').replace(/,/g, ';'),
-                    locked ? 'locked' : (displayTopic?.status || ''),
-                    (sem.papers || []).length,
-                    slot ? formatPresentationSlot(slot).replace(/,/g, ';') : '',
-                    t.guideMarks || 0,
-                    t.coordinatorMarks || 0,
-                    t.presentationMarks || 0,
-                    t.reportMarks || 0,
-                    Math.min(t.questionMarks || 0, maxP),
-                    grand,
-                    sem.evaluation?.isAbsent ? 'Yes' : 'No',
-                    markers.replace(/,/g, ';')
-                ];
-                csv += row.map(c => `"${c}"`).join(',') + '\n';
-            }
+                const grand = computeSeminarGrandTotal(t, maxP);
+                const catKeys = ['guide', 'coordinator', 'presentation', 'report'];
+                const categories = {};
+                let dummy = false;
+                let markedCount = 0;
+                const totalKeys = {
+                    guide: 'guideMarks',
+                    coordinator: 'coordinatorMarks',
+                    presentation: 'presentationMarks',
+                    report: 'reportMarks'
+                };
+                const history = sem.evaluation?.markHistory || [];
+                const presRec = (settings.presentations || []).find(p => p.studentId === s.id);
+                for (const key of catKeys) {
+                    const comp = comps[key] || (key === 'presentation' ? comps.presenter : null);
+                    const extraEntries = [];
+                    if (key === 'presentation' && presRec) {
+                        if (presRec.presenterEvaluatorScores) {
+                            extraEntries.push(...Object.values(presRec.presenterEvaluatorScores));
+                        }
+                        if (presRec.presenterScores && presRec.evaluationMeta) {
+                            extraEntries.push({
+                                scores: presRec.presenterScores,
+                                markedBy: presRec.evaluationMeta,
+                                markedAt: presRec.evaluatedAt || presRec.evaluationMeta?.at || '',
+                                isDummy: Boolean(presRec.presenterScores?._isDummy || presRec.evaluationMeta?.isDummy)
+                            });
+                        }
+                    }
+                    const evaluators = this.collectSeminarComponentEvaluators(
+                        comp, history, key, sp[key], extraEntries
+                    );
+                    const fromTotal = parseFloat(t[totalKeys[key]]);
+                    const hasComponent = this.seminarComponentHasScores(comp);
+                    const hasTotal = !isNaN(fromTotal) && fromTotal > 0;
+                    const has = evaluators.length > 0 || hasComponent || hasTotal;
+                    if (has) markedCount += 1;
+                    if (evaluators.some(ev => ev.isDummy) || comp?.isDummy || comp?.markedBy?.isDummy) dummy = true;
+                    let marks = '';
+                    if (has) {
+                        if (hasComponent || hasTotal) {
+                            marks = !isNaN(fromTotal) ? fromTotal : (sumParamScores(comp?.scores, sp[key]) || 0);
+                        } else {
+                            marks = evaluators[0]?.marks ?? 0;
+                        }
+                    }
+                    const marker = evaluators.length
+                        ? evaluators.map(ev => `${ev.label}: ${ev.marks}`).join('; ')
+                        : this.formatSeminarEvaluatorLabel(comp?.markedBy, comp?.isDummy);
+                    categories[key] = {
+                        marks,
+                        max: maxes[key],
+                        marker,
+                        role: this.seminarEvaluatorRoleLabel(comp?.markedBy?.role),
+                        name: comp?.markedBy?.name || '',
+                        scores: comp?.scores || {},
+                        has,
+                        dummy: Boolean(comp?.isDummy || comp?.markedBy?.isDummy || evaluators.some(ev => ev.isDummy)),
+                        at: comp?.markedAt || comp?.markedBy?.at || '',
+                        evaluators
+                    };
+                }
 
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `seminar-cie-report-${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
+                const partMarks = Math.min(parseFloat(t.questionMarks) || 0, maxP);
+                const partEvaluators = this.getSeminarParticipationEvaluators(s.id, settings);
+                const qTimes = settings.questionFairness?.[s.id]?.times || 0;
+                if ((sem.questionHistory || []).some(h => h.isDummy)) dummy = true;
+
+                let status = 'pending';
+                if (sem.evaluation?.isAbsent) status = 'absent';
+                else if (markedCount === catKeys.length) status = 'complete';
+                else if (markedCount > 0 || partMarks > 0) status = 'partial';
+
+                const statusLabel = {
+                    complete: 'CIE complete',
+                    partial: 'CIE in progress',
+                    pending: 'No CIE yet',
+                    absent: 'Absent'
+                }[status];
+
+                return {
+                    index: index + 1,
+                    id: s.id,
+                    name: s.name || '',
+                    ktuid: s.ktuid || '',
+                    guideName: gid ? (guideMap[gid] || gid) : '',
+                    topic: displayTopic?.title || '',
+                    topicStatus: locked ? 'locked' : (displayTopic?.status || ''),
+                    papers: (sem.papers || []).length,
+                    slot: slot ? formatPresentationSlot(slot) : '',
+                    absent: Boolean(sem.evaluation?.isAbsent),
+                    categories,
+                    participation: {
+                        marks: partMarks,
+                        max: maxP,
+                        markers: partEvaluators,
+                        times: qTimes
+                    },
+                    grand,
+                    maxTotal: 100,
+                    status,
+                    statusLabel,
+                    dummy,
+                    searchText: [
+                        s.name, s.ktuid, guideMap[gid], displayTopic?.title,
+                        categories.guide.marker, categories.coordinator.marker,
+                        categories.presentation.marker, categories.report.marker,
+                        partEvaluators.join(' ')
+                    ].join(' ').toLowerCase(),
+                    markHistory: sem.evaluation?.markHistory || []
+                };
+            });
+
+            const evaluatedRows = rows.filter(r => r.status === 'complete' || r.status === 'partial');
+            const stats = {
+                total: rows.length,
+                complete: rows.filter(r => r.status === 'complete').length,
+                partial: rows.filter(r => r.status === 'partial').length,
+                pending: rows.filter(r => r.status === 'pending').length,
+                absent: rows.filter(r => r.status === 'absent').length,
+                dummy: rows.filter(r => r.dummy).length,
+                byComponent: {
+                    guide: rows.filter(r => r.categories.guide.has).length,
+                    coordinator: rows.filter(r => r.categories.coordinator.has).length,
+                    presentation: rows.filter(r => r.categories.presentation.has).length,
+                    report: rows.filter(r => r.categories.report.has).length,
+                    participation: rows.filter(r => (parseFloat(r.participation?.marks) || 0) > 0).length
+                },
+                classAverage: rows.length
+                    ? Math.round((rows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / rows.length) * 10) / 10
+                    : 0,
+                markedAverage: evaluatedRows.length
+                    ? Math.round((evaluatedRows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / evaluatedRows.length) * 10) / 10
+                    : 0,
+                markedCount: evaluatedRows.length
+            };
+
+            return { settings, students: sorted, guides, guideMap, sp, maxes, rows, stats };
+        },
+
+        seminarConsolidatedStatusBadge(row) {
+            const cls = {
+                complete: 'seminar-cons-badge-complete',
+                partial: 'seminar-cons-badge-partial',
+                pending: 'seminar-cons-badge-pending',
+                absent: 'seminar-cons-badge-absent'
+            }[row.status] || '';
+            return `<span class="seminar-cons-badge ${cls}">${escapeHtml(row.statusLabel)}</span>`;
+        },
+
+        seminarConsolidatedMarksCell(cat) {
+            if (!cat?.has && (cat?.marks === '' || cat?.marks == null)) {
+                return `<td class="seminar-cons-empty">—</td>`;
+            }
+            const dummy = cat.dummy ? ' seminar-cons-dummy' : '';
+            const evaluators = cat.evaluators || [];
+            const lines = evaluators.length
+                ? evaluators.map(ev => {
+                    const adminCls = ev.markedBy?.role === 'admin' ? ' seminar-cons-marker-admin' : '';
+                    return `<div class="seminar-cons-marker${adminCls}">${escapeHtml(ev.label)}: <strong>${escapeHtml(String(ev.marks))}</strong></div>`;
+                }).join('')
+                : (cat.marker
+                    ? `<div class="seminar-cons-marker">${escapeHtml(cat.marker)}</div>`
+                    : '<div class="seminar-cons-marker">Evaluator not recorded</div>');
+            return `<td class="seminar-cons-marks${dummy}">
+                <strong>${escapeHtml(String(cat.marks))}</strong><small>/${escapeHtml(String(cat.max))}</small>
+                ${lines}
+            </td>`;
+        },
+
+        setupSeminarConsolidatedSearch() {
+            const searchInput = document.getElementById('search-seminar-consolidated');
+            if (!searchInput || searchInput.dataset.bound) return;
+            searchInput.dataset.bound = 'true';
+            searchInput.addEventListener('input', () => this.filterSeminarConsolidatedTable());
+        },
+
+        filterSeminarConsolidatedTable() {
+            const term = (document.getElementById('search-seminar-consolidated')?.value || '').toLowerCase().trim();
+            const filter = document.getElementById('filter-seminar-consolidated')?.value || '';
+            const componentFilters = ['guide', 'coordinator', 'presentation', 'report', 'participation'];
+            let visible = 0;
+            document.querySelectorAll('#seminar-consolidated-table tbody tr').forEach(row => {
+                const matchText = !term || (row.dataset.search || '').includes(term);
+                const matchFilter = !filter
+                    || row.dataset.status === filter
+                    || (filter === 'dummy' && row.dataset.dummy === '1')
+                    || (filter === 'evaluated' && (row.dataset.status === 'complete' || row.dataset.status === 'partial'))
+                    || (componentFilters.includes(filter) && row.dataset[filter] === '1');
+                const show = matchText && matchFilter;
+                row.style.display = show ? '' : 'none';
+                if (show) visible += 1;
+            });
+            const countEl = document.getElementById('seminar-consolidated-visible-count');
+            if (countEl) countEl.textContent = String(visible);
+            document.querySelectorAll('.seminar-cons-stat-card[data-filter]').forEach(card => {
+                card.classList.toggle('is-active', Boolean(filter) && (card.dataset.filter || '') === filter);
+            });
+        },
+
+        filterSeminarConsolidatedBy(filter) {
+            const sel = document.getElementById('filter-seminar-consolidated');
+            if (!sel) return;
+            sel.value = sel.value === filter ? '' : (filter || '');
+            this.filterSeminarConsolidatedTable();
+        },
+
+        seminarConsStatCard({ filter = '', value, label, hint, tone = 'neutral', ofTotal = null, suffix = '' }) {
+            const pct = ofTotal ? Math.min(100, Math.round((Number(value) / ofTotal) * 100)) : null;
+            const bar = pct != null
+                ? `<span class="seminar-cons-stat-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>`
+                : '';
+            return `
+                <button type="button" class="seminar-cons-stat-card seminar-cons-stat-${tone}"
+                    data-filter="${escapeHtml(filter)}"
+                    ${filter ? `onclick="app.filterSeminarConsolidatedBy('${escapeHtml(filter)}')"` : 'disabled'}
+                    title="${escapeHtml(hint || label)}">
+                    <span class="seminar-cons-stat-value">${escapeHtml(String(value))}${suffix ? `<small>${escapeHtml(suffix)}</small>` : ''}${ofTotal != null ? `<small> / ${ofTotal}</small>` : ''}</span>
+                    <span class="seminar-cons-stat-label">${escapeHtml(label)}</span>
+                    ${hint ? `<span class="seminar-cons-stat-hint">${escapeHtml(hint)}</span>` : ''}
+                    ${bar}
+                </button>`;
+        },
+
+        async renderSeminarConsolidatedMarks(force = false) {
+            if (force && typeof force === 'object') force = false;
+            const wrap = document.getElementById('seminar-consolidated-table-wrap');
+            const statsEl = document.getElementById('seminar-consolidated-stats');
+            if (!wrap) return;
+            wrap.innerHTML = '<p class="form-hint"><i class="fas fa-spinner fa-spin"></i> Loading consolidated marks…</p>';
+            try {
+                const data = await this.collectSeminarConsolidatedData({ force: Boolean(force) });
+                app._seminarConsolidatedCache = data;
+                const { rows, stats, maxes } = data;
+
+                if (statsEl) {
+                    const n = stats.total;
+                    const bc = stats.byComponent;
+                    statsEl.className = 'seminar-cons-stats';
+                    statsEl.innerHTML = `
+                        <p class="seminar-cons-stats-legend">
+                            CIE is out of 100: Guide ${maxes.guide} + Coordinator ${maxes.coordinator} + Presentation ${maxes.presentation} + Report ${maxes.report} + Participation ${maxes.participation}.
+                            A student is <strong>CIE complete</strong> when Guide, Coordinator, Presentation and Report are all entered.
+                            Click a card to list those students.
+                        </p>
+                        <h4 class="seminar-cons-stats-heading">Marks entered, by CIE part</h4>
+                        <div class="seminar-cons-stat-grid">
+                            ${this.seminarConsStatCard({ filter: 'guide', value: bc.guide, ofTotal: n, label: `Guide (${maxes.guide})`, hint: 'Assigned seminar guide has entered marks', tone: bc.guide === n ? 'ok' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'coordinator', value: bc.coordinator, ofTotal: n, label: `Coordinator (${maxes.coordinator})`, hint: 'Admin coordinator marks (diary & attendance)', tone: bc.coordinator === n ? 'ok' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'presentation', value: bc.presentation, ofTotal: n, label: `Presentation (${maxes.presentation})`, hint: 'IEC faculty or admin presentation marks', tone: bc.presentation === n ? 'ok' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'report', value: bc.report, ofTotal: n, label: `Report (${maxes.report})`, hint: 'Admin report marks', tone: bc.report === n ? 'ok' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'participation', value: bc.participation, ofTotal: n, label: `Participation (${maxes.participation})`, hint: 'Audience-question marks awarded', tone: 'neutral' })}
+                        </div>
+                        <h4 class="seminar-cons-stats-heading">How far CIE marking has got</h4>
+                        <div class="seminar-cons-stat-grid">
+                            ${this.seminarConsStatCard({ filter: 'complete', value: stats.complete, ofTotal: n, label: 'CIE complete', hint: 'Guide + Coordinator + Presentation + Report all entered', tone: 'ok' })}
+                            ${this.seminarConsStatCard({ filter: 'partial', value: stats.partial, ofTotal: n, label: 'CIE in progress', hint: 'At least one CIE part entered, others still empty', tone: stats.partial ? 'info' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'pending', value: stats.pending, ofTotal: n, label: 'No CIE yet', hint: 'No Guide, Coordinator, Presentation or Report marks', tone: stats.pending ? 'muted' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'absent', value: stats.absent, ofTotal: n, label: 'Marked absent', hint: 'Presenter marked absent for the session', tone: stats.absent ? 'danger' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'dummy', value: stats.dummy, ofTotal: n, label: 'Dummy / test', hint: 'Has dummy marks — convert to official or clear them', tone: stats.dummy ? 'dummy' : 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: 'evaluated', value: stats.markedAverage, suffix: ' /100', label: `Avg of ${stats.markedCount} with marks`, hint: 'Average CIE among students who have at least one part entered', tone: 'neutral' })}
+                            ${this.seminarConsStatCard({ filter: '', value: stats.classAverage, suffix: ' /100', label: `Class avg (all ${n})`, hint: 'Average over every student; unmarked students count as 0', tone: 'neutral' })}
+                        </div>
+                    `;
+                }
+
+                if (!rows.length) {
+                    wrap.innerHTML = '<p class="empty-state">No students found.</p>';
+                    return;
+                }
+
+                wrap.innerHTML = `
+                    <p class="form-hint" style="margin:0 0 0.5rem;">
+                        Showing <strong id="seminar-consolidated-visible-count">${rows.length}</strong> of ${rows.length}.
+                        Each component lists <strong>every evaluator</strong> who saved marks, including <strong>Admin</strong>.
+                        The large number is the current CIE value (last saved).
+                    </p>
+                    <table id="seminar-consolidated-table" class="forge-lab-admin-table seminar-cons-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Student</th>
+                                <th>KTU ID</th>
+                                <th>Assigned guide</th>
+                                <th>Guide (${maxes.guide})</th>
+                                <th>Coordinator (${maxes.coordinator})</th>
+                                <th>Presentation (${maxes.presentation})</th>
+                                <th>Report (${maxes.report})</th>
+                                <th>Participation (${maxes.participation})</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(row => {
+                                const partMarker = row.participation.markers.length
+                                    ? `<div class="seminar-cons-marker">${escapeHtml(row.participation.markers.join('; '))} · Q×${row.participation.times}</div>`
+                                    : `<div class="seminar-cons-marker">Q×${row.participation.times}</div>`;
+                                return `
+                                <tr data-status="${escapeHtml(row.status)}" data-dummy="${row.dummy ? '1' : '0'}"
+                                    data-guide="${row.categories.guide.has ? '1' : '0'}"
+                                    data-coordinator="${row.categories.coordinator.has ? '1' : '0'}"
+                                    data-presentation="${row.categories.presentation.has ? '1' : '0'}"
+                                    data-report="${row.categories.report.has ? '1' : '0'}"
+                                    data-participation="${(parseFloat(row.participation.marks) || 0) > 0 ? '1' : '0'}"
+                                    data-search="${escapeHtml(row.searchText)}">
+                                    <td>${row.index}</td>
+                                    <td>
+                                        <strong>${escapeHtml(row.name)}</strong>
+                                        ${row.dummy ? '<div class="seminar-cons-marker">Dummy / test</div>' : ''}
+                                        <div class="seminar-cons-topic">${escapeHtml(row.topic || '—')}</div>
+                                    </td>
+                                    <td>${escapeHtml(row.ktuid || '—')}</td>
+                                    <td>${escapeHtml(row.guideName || '—')}</td>
+                                    ${this.seminarConsolidatedMarksCell(row.categories.guide)}
+                                    ${this.seminarConsolidatedMarksCell(row.categories.coordinator)}
+                                    ${this.seminarConsolidatedMarksCell(row.categories.presentation)}
+                                    ${this.seminarConsolidatedMarksCell(row.categories.report)}
+                                    <td class="seminar-cons-marks">
+                                        <strong>${escapeHtml(String(row.participation.marks))}</strong><small>/${escapeHtml(String(row.participation.max))}</small>
+                                        ${partMarker}
+                                    </td>
+                                    <td class="seminar-cons-total"><strong>${escapeHtml(String(row.grand))}</strong><small>/100</small></td>
+                                    <td>
+                                        ${this.seminarConsolidatedStatusBadge(row)}
+                                        <button type="button" class="btn btn-sm btn-secondary seminar-cons-eval-btn" onclick="app.openSeminarEvaluation('${escapeHtml(row.id)}')">
+                                            Evaluate
+                                        </button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+                this.setupSeminarConsolidatedSearch();
+                this.filterSeminarConsolidatedTable();
+            } catch (err) {
+                console.error(err);
+                wrap.innerHTML = `<p class="error-message">Failed to load consolidated marks.${err?.message ? ` (${escapeHtml(err.message)})` : ''}</p>`;
+            }
+        },
+
+        seminarConsolidatedExcelAoa(data) {
+            const { rows, maxes, sp, stats } = data;
+            const generated = new Date().toLocaleString('en-IN');
+            const totalsSheet = [
+                ['DEPARTMENT OF INFORMATION TECHNOLOGY'],
+                ['GOVERNMENT ENGINEERING COLLEGE IDUKKI'],
+                ['ITQ413 SEMINAR — Consolidated CIE marks'],
+                [`Generated: ${generated}`],
+                [],
+                ['Summary'],
+                ['Students', stats.total],
+                ['CIE complete (all 4 parts)', stats.complete],
+                ['CIE in progress', stats.partial],
+                ['No CIE yet', stats.pending],
+                ['Absent', stats.absent],
+                ['Dummy / test', stats.dummy],
+                ['Guide marks entered', stats.byComponent?.guide ?? 0],
+                ['Coordinator marks entered', stats.byComponent?.coordinator ?? 0],
+                ['Presentation marks entered', stats.byComponent?.presentation ?? 0],
+                ['Report marks entered', stats.byComponent?.report ?? 0],
+                ['Participation marks entered', stats.byComponent?.participation ?? 0],
+                [`Average of ${stats.markedCount} students with marks /100`, stats.markedAverage],
+                ['Class average (all students, unmarked = 0) /100', stats.classAverage],
+                [],
+                [
+                    'Sl. No.', 'Student', 'KTU ID', 'Assigned guide', 'Topic', 'Topic status', 'Papers', 'Slot', 'Absent',
+                    `Guide marks (max ${maxes.guide})`, 'Guide evaluator', 'Guide evaluator role',
+                    `Coordinator marks (max ${maxes.coordinator})`, 'Coordinator evaluator', 'Coordinator evaluator role',
+                    `Presentation marks (max ${maxes.presentation})`, 'Presentation evaluator', 'Presentation evaluator role',
+                    `Report marks (max ${maxes.report})`, 'Report evaluator', 'Report evaluator role',
+                    `Participation marks (max ${maxes.participation})`, 'Participation evaluators', 'Audience Q count',
+                    'Grand total', 'Max total', 'Status', 'Dummy / test'
+                ]
+            ];
+            rows.forEach(row => {
+                totalsSheet.push([
+                    row.index, row.name, row.ktuid, row.guideName, row.topic, row.topicStatus, row.papers, row.slot,
+                    row.absent ? 'Yes' : 'No',
+                    row.categories.guide.marks, row.categories.guide.marker, row.categories.guide.role || '',
+                    row.categories.coordinator.marks, row.categories.coordinator.marker, row.categories.coordinator.role || '',
+                    row.categories.presentation.marks, row.categories.presentation.marker, row.categories.presentation.role || '',
+                    row.categories.report.marks, row.categories.report.marker, row.categories.report.role || '',
+                    row.participation.marks, row.participation.markers.join('; '), row.participation.times,
+                    row.grand, 100, row.statusLabel, row.dummy ? 'Yes' : 'No'
+                ]);
+            });
+
+            const paramHeader = ['Sl. No.', 'Student', 'KTU ID', 'Assigned guide'];
+            const paramGroups = [
+                ['guide', 'Guide'],
+                ['coordinator', 'Coordinator'],
+                ['presentation', 'Presentation'],
+                ['report', 'Report']
+            ];
+            paramGroups.forEach(([key, label]) => {
+                (sp[key] || []).forEach(p => {
+                    paramHeader.push(`${label}: ${p.label} (max ${p.maxMarks})`);
+                });
+                paramHeader.push(`${label} total`);
+            });
+            paramHeader.push(`Participation (max ${maxes.participation})`, 'Grand total', 'Status');
+            const paramsSheet = [
+                ['ITQ413 SEMINAR — Parameter-level consolidated marks'],
+                [`Generated: ${generated}`],
+                [],
+                paramHeader
+            ];
+            rows.forEach(row => {
+                const line = [row.index, row.name, row.ktuid, row.guideName];
+                paramGroups.forEach(([key]) => {
+                    (sp[key] || []).forEach(p => {
+                        const scores = row.categories[key].scores || {};
+                        const v = scores[p.id];
+                        line.push(v === '' || v == null ? '' : Number(parseFloat(v)) || 0);
+                    });
+                    line.push(row.categories[key].marks);
+                });
+                line.push(row.participation.marks, row.grand, row.statusLabel);
+                paramsSheet.push(line);
+            });
+
+            const logSheet = [
+                ['ITQ413 SEMINAR — Evaluator save log (including Admin)'],
+                [`Generated: ${generated}`],
+                [],
+                ['Student', 'KTU ID', 'Component', 'Evaluator', 'Role', 'Dummy / test', 'Marked at', 'Parameter scores']
+            ];
+            rows.forEach(row => {
+                const history = row.markHistory || [];
+                if (!history.length) {
+                    ['guide', 'coordinator', 'presentation', 'report'].forEach(key => {
+                        const cat = row.categories[key];
+                        const list = (cat.evaluators && cat.evaluators.length)
+                            ? cat.evaluators
+                            : (cat.has ? [{
+                                label: cat.name || cat.marker || 'Unknown',
+                                role: cat.role,
+                                isDummy: cat.dummy,
+                                at: cat.at,
+                                scores: cat.scores
+                            }] : []);
+                        list.forEach(ev => {
+                            const scores = Object.entries(ev.scores || cat.scores || {})
+                                .filter(([k]) => k !== '_isDummy')
+                                .map(([k, v]) => `${k}=${v}`)
+                                .join('; ');
+                            logSheet.push([
+                                row.name, row.ktuid, key, ev.label || cat.marker, ev.role || cat.role,
+                                ev.isDummy ? 'Yes' : 'No', ev.at || cat.at || '', scores
+                            ]);
+                        });
+                    });
+                    return;
+                }
+                history.forEach(h => {
+                    const scores = Object.entries(h.scores || {})
+                        .filter(([k]) => k !== '_isDummy')
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join('; ');
+                    logSheet.push([
+                        row.name,
+                        row.ktuid,
+                        h.component || '',
+                        h.markedBy?.name || '',
+                        this.seminarEvaluatorRoleLabel(h.markedBy?.role),
+                        (h.isDummy || h.markedBy?.isDummy) ? 'Yes' : 'No',
+                        h.markedAt || h.markedBy?.at || '',
+                        scores
+                    ]);
+                });
+            });
+
+            return { totalsSheet, paramsSheet, logSheet };
+        },
+
+        async exportSeminarConsolidatedMarksExcel() {
+            if (!app.isAdmin) {
+                alert('Only administrators can export consolidated seminar marks.');
+                return;
+            }
+            if (typeof XLSX === 'undefined') {
+                alert('Excel export library not loaded. Please refresh the page.');
+                return;
+            }
+            try {
+                const data = await this.collectSeminarConsolidatedData({ force: true });
+                if (!data.rows.length) {
+                    alert('No students found.');
+                    return;
+                }
+                const { totalsSheet, paramsSheet, logSheet } = this.seminarConsolidatedExcelAoa(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(totalsSheet), 'CIE totals');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(paramsSheet), 'Parameter marks');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logSheet), 'Evaluator log');
+                const fname = `Seminar_Consolidated_CIE_Marks_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                XLSX.writeFile(wb, fname);
+            } catch (error) {
+                console.error('exportSeminarConsolidatedMarksExcel:', error);
+                alert('Could not generate Excel file. Please try again.');
+            }
+        },
+
+        async exportSeminarConsolidatedMarksCsv() {
+            if (!app.isAdmin) {
+                alert('Only administrators can export consolidated seminar marks.');
+                return;
+            }
+            try {
+                const data = await this.collectSeminarConsolidatedData({ force: true });
+                const { rows, maxes } = data;
+                const header = [
+                    'Sl. No.', 'Student', 'KTU ID', 'Assigned guide', 'Topic', 'Topic status', 'Papers', 'Slot', 'Absent',
+                    `Guide marks (max ${maxes.guide})`, 'Guide evaluator',
+                    `Coordinator marks (max ${maxes.coordinator})`, 'Coordinator evaluator',
+                    `Presentation marks (max ${maxes.presentation})`, 'Presentation evaluator',
+                    `Report marks (max ${maxes.report})`, 'Report evaluator',
+                    `Participation marks (max ${maxes.participation})`, 'Participation evaluators', 'Audience Q count',
+                    'Grand total', 'Status', 'Dummy / test'
+                ];
+                const lines = [header.map(c => this.seminarCsvCell(c)).join(',')];
+                rows.forEach(row => {
+                    lines.push([
+                        row.index, row.name, row.ktuid, row.guideName, row.topic, row.topicStatus, row.papers, row.slot,
+                        row.absent ? 'Yes' : 'No',
+                        row.categories.guide.marks, row.categories.guide.marker,
+                        row.categories.coordinator.marks, row.categories.coordinator.marker,
+                        row.categories.presentation.marks, row.categories.presentation.marker,
+                        row.categories.report.marks, row.categories.report.marker,
+                        row.participation.marks, row.participation.markers.join('; '), row.participation.times,
+                        row.grand, row.statusLabel, row.dummy ? 'Yes' : 'No'
+                    ].map(c => this.seminarCsvCell(c)).join(','));
+                });
+                this.downloadSeminarCsv(
+                    `seminar-consolidated-cie-${new Date().toISOString().split('T')[0]}.csv`,
+                    lines.join('\n')
+                );
+            } catch (error) {
+                console.error('exportSeminarConsolidatedMarksCsv:', error);
+                alert('Could not generate CSV file. Please try again.');
+            }
+        },
+
+        async generateSeminarReport() {
+            await this.exportSeminarConsolidatedMarksCsv();
+        },
+
+        async generateSeminarConsolidatedMarksPdf() {
+            if (!app.isAdmin) {
+                alert('Only administrators can export consolidated seminar marks.');
+                return;
+            }
+            try {
+                const data = await this.collectSeminarConsolidatedData({ force: true });
+                const { rows, stats, maxes } = data;
+                const tableRows = rows.map((row, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 6px 8px; text-align: center; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${row.index}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb;">
+                            <div style="font-weight: 700;">${escapeHtml(row.name)}</div>
+                            <div style="color: #6b7280; font-size: 10px;">${escapeHtml(row.ktuid || '—')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(row.guideName || '—')}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                            ${row.categories.guide.has ? escapeHtml(String(row.categories.guide.marks)) : '—'}
+                            <div style="color: #6b7280; font-size: 9px;">${escapeHtml(row.categories.guide.marker || '')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                            ${row.categories.coordinator.has ? escapeHtml(String(row.categories.coordinator.marks)) : '—'}
+                            <div style="color: #6b7280; font-size: 9px;">${escapeHtml(row.categories.coordinator.marker || '')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                            ${row.categories.presentation.has ? escapeHtml(String(row.categories.presentation.marks)) : '—'}
+                            <div style="color: #6b7280; font-size: 9px;">${escapeHtml(row.categories.presentation.marker || '')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                            ${row.categories.report.has ? escapeHtml(String(row.categories.report.marks)) : '—'}
+                            <div style="color: #6b7280; font-size: 9px;">${escapeHtml(row.categories.report.marker || '')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb; text-align: center;">${escapeHtml(String(row.participation.marks))}</td>
+                        <td style="padding: 6px 8px; font-size: 12px; font-weight: 700; border-bottom: 1px solid #e5e7eb; text-align: center;">${escapeHtml(String(row.grand))}</td>
+                        <td style="padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(row.statusLabel)}</td>
+                    </tr>
+                `).join('');
+
+                const body = `
+                    <div style="margin-bottom: 18px; padding: 16px; background: #ffffff; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; margin: 0 0 10px; border-left: 4px solid #6366f1; padding-left: 10px;">Summary</h3>
+                        <div style="font-size: 12px; color: #4b5563;">
+                            Students: <strong>${stats.total}</strong> · CIE complete: <strong>${stats.complete}</strong> ·
+                            CIE in progress: <strong>${stats.partial}</strong> · No CIE yet: <strong>${stats.pending}</strong> ·
+                            Absent: <strong>${stats.absent}</strong> ·
+                            Avg of marked: <strong>${stats.markedAverage}/100</strong> ·
+                            Class avg: <strong>${stats.classAverage}/100</strong>
+                        </div>
+                        <p style="font-size: 11px; color: #6b7280; margin: 8px 0 0;">
+                            Guide ${maxes.guide} · Coordinator ${maxes.coordinator} (Admin) · Presentation ${maxes.presentation} (IEC/Admin) ·
+                            Report ${maxes.report} (Admin) · Participation ${maxes.participation}
+                        </p>
+                    </div>
+                    <div style="padding: 12px; background: #ffffff; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">G/${maxes.guide}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">C/${maxes.coordinator}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">P/${maxes.presentation}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">R/${maxes.report}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Q/${maxes.participation}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Total</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tableRows || `<tr><td colspan="10" style="padding:12px; text-align:center; color:#6b7280;">No students</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                `;
+                const html = this.seminarReportShell('Consolidated CIE Marks', body);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Consolidated CIE Marks' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating consolidated marks PDF. Please allow popups and try again.');
+            }
         },
 
         seminarReportShell(title, bodyHtml) {

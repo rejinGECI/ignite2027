@@ -51,9 +51,9 @@ import { createGuideProjectPlanningModule } from './js/guide/project-planning.js
 import { createGuideEvaluatorModule } from './js/guide/evaluator.js';
 import { createForgeLabModule } from './js/components/forgeLab.js';
 import { createAdminForgeLabModule } from './js/admin/forgeLab.js';
-import { createSeminarModule } from './js/components/seminar.js?v=eval9';
-import { createAdminSeminarModule } from './js/admin/seminar.js?v=eval9';
-import { createGuideSeminarModule } from './js/guide/seminar.js?v=eval9';
+import { createSeminarModule } from './js/components/seminar.js?v=eval13';
+import { createAdminSeminarModule } from './js/admin/seminar.js?v=eval13';
+import { createGuideSeminarModule } from './js/guide/seminar.js?v=eval13';
 
 // Application State
 // Define app object first, then make it global
