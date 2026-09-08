@@ -353,9 +353,8 @@ export function createGuideSeminarModule(app) {
                             ${escapeHtml(s.name)}
                             ${s.isMine ? '<span class="badge">Your mentee</span>' : ''}
                             ${s.isAbsent ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>' : ''}
-                            <small>(audience Q ×${s.times})</small>
                         </span>
-                        <span><strong>${s.grand}</strong>/100</span>
+                        <span></span>
                         <button type="button" class="btn btn-sm btn-primary" onclick="app.openSeminarEvaluation('${escapeHtml(s.id)}')">Evaluate</button>
                     </div>
                 `).join('') || '<p class="form-hint">No students found.</p>';

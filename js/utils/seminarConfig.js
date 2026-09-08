@@ -58,8 +58,8 @@ export const SEMINAR_SCORING_CATEGORIES = [
         key: 'questioner',
         label: 'Overall participation (audience Q)',
         syllabusMax: 10,
-        whoMarks: 'Any faculty during live presentations',
-        roles: ['guide', 'admin'],
+        whoMarks: 'Admin only',
+        roles: ['admin'],
         assignedGuideOnly: false,
         note: 'From syllabus Presentation→Overall participation: involvement during other students\' presentations.'
     }
