@@ -6989,6 +6989,40 @@ textarea:not(:placeholder-shown)::placeholder {
 }
 .seminar-cons-stat-dummy .seminar-cons-stat-value { color: #9a3412; }
 .seminar-cons-stat-dummy .seminar-cons-stat-bar > span { background: #ea580c; }
+.seminar-cons-eval-avg-wrap {
+    overflow: auto;
+    margin-bottom: 0.35rem;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 10px;
+}
+.seminar-cons-eval-avg-table {
+    min-width: 860px;
+    margin: 0;
+}
+.seminar-cons-eval-avg-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+.seminar-cons-eval-avg-row {
+    cursor: pointer;
+}
+.seminar-cons-eval-avg-row:hover td {
+    background: #eef2ff;
+}
+.seminar-cons-eval-avg-row.is-active td {
+    background: #e0e7ff;
+}
+.seminar-cons-eval-avg-admin td:first-child {
+    box-shadow: inset 3px 0 0 #6366f1;
+}
+.seminar-cons-eval-avg {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #3730a3;
+}
 .seminar-cons-wrap {
     overflow: auto;
     max-height: 70vh;

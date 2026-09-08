@@ -37,7 +37,7 @@ import {
     resolveSeminarGuideId,
     buildEvaluatorMeta,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval13';
+} from '../utils/seminarConfig.js?v=eval14';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -2362,18 +2362,118 @@ export function createAdminSeminarModule(app) {
         },
 
         getSeminarParticipationEvaluators(studentId, settings) {
-            const seen = new Map();
+            return this.collectSeminarParticipationEvaluatorEntries(studentId, settings)
+                .map(ev => ev.label)
+                .filter(Boolean);
+        },
+
+        roundSeminarAvg(n) {
+            return Math.round((Number(n) || 0) * 10) / 10;
+        },
+
+        seminarEmptyComponentAvg(max) {
+            return { count: 0, sum: 0, avg: null, max: max || 0, studentIds: new Set() };
+        },
+
+        collectSeminarParticipationEvaluatorEntries(studentId, settings, questionerParams = []) {
+            const byKey = new Map();
             for (const pres of settings.presentations || []) {
                 const scores = pres.questionerScores?.[studentId];
                 const meta = pres.questionerMeta?.[studentId];
                 if (!scores && !meta) continue;
-                const markedBy = meta?.markedBy;
-                const key = markedBy?.uid || markedBy?.name || 'unknown';
-                if (!seen.has(key)) {
-                    seen.set(key, this.formatSeminarEvaluatorLabel(markedBy, meta?.isDummy || scores?._isDummy));
+                if (!this.seminarComponentHasScores({ scores: scores || {} })) continue;
+                const markedBy = meta?.markedBy || null;
+                const id = this.seminarEvaluatorKey(markedBy);
+                const marks = sumParamScores(scores, questionerParams);
+                const prev = byKey.get(id);
+                if (prev) {
+                    prev.marks += marks;
+                    if (meta?.isDummy || scores?._isDummy) prev.isDummy = true;
+                    continue;
+                }
+                byKey.set(id, {
+                    id,
+                    scores: { ...(scores || {}) },
+                    markedBy,
+                    isDummy: Boolean(meta?.isDummy || scores?._isDummy || markedBy?.isDummy),
+                    label: this.formatSeminarEvaluatorLabel(markedBy, meta?.isDummy || scores?._isDummy) || 'Unknown',
+                    marks,
+                    role: this.seminarEvaluatorRoleLabel(markedBy?.role)
+                });
+            }
+            return [...byKey.values()];
+        },
+
+        ensureSeminarEvaluatorAvgBucket(map, ev, maxes) {
+            const id = ev.id || this.seminarEvaluatorKey(ev.markedBy) || '_unknown';
+            if (!map.has(id)) {
+                map.set(id, {
+                    id,
+                    label: ev.label || this.formatSeminarEvaluatorLabel(ev.markedBy, ev.isDummy) || 'Unknown',
+                    name: ev.markedBy?.name || ev.name || '',
+                    role: ev.role || this.seminarEvaluatorRoleLabel(ev.markedBy?.role),
+                    isAdmin: ev.markedBy?.role === 'admin' || ev.role === 'Admin',
+                    studentIds: new Set(),
+                    dummy: false,
+                    components: {
+                        guide: this.seminarEmptyComponentAvg(maxes.guide),
+                        coordinator: this.seminarEmptyComponentAvg(maxes.coordinator),
+                        presentation: this.seminarEmptyComponentAvg(maxes.presentation),
+                        report: this.seminarEmptyComponentAvg(maxes.report),
+                        participation: this.seminarEmptyComponentAvg(maxes.participation)
+                    }
+                });
+            }
+            const bucket = map.get(id);
+            if (ev.isDummy) bucket.dummy = true;
+            return bucket;
+        },
+
+        addSeminarEvaluatorComponentAvg(bucket, key, studentId, marks) {
+            const n = parseFloat(marks);
+            if (!bucket || isNaN(n)) return;
+            const comp = bucket.components[key];
+            if (!comp) return;
+            if (comp.studentIds.has(studentId)) return;
+            comp.studentIds.add(studentId);
+            comp.count += 1;
+            comp.sum += n;
+            comp.avg = this.roundSeminarAvg(comp.sum / comp.count);
+            bucket.studentIds.add(studentId);
+        },
+
+        buildSeminarEvaluatorAverages(rows, settings, maxes, sp) {
+            const map = new Map();
+            const catKeys = ['guide', 'coordinator', 'presentation', 'report'];
+            for (const row of rows) {
+                for (const key of catKeys) {
+                    for (const ev of (row.categories[key]?.evaluators || [])) {
+                        const bucket = this.ensureSeminarEvaluatorAvgBucket(map, ev, maxes);
+                        this.addSeminarEvaluatorComponentAvg(bucket, key, row.id, ev.marks);
+                    }
+                }
+                const partEvs = row.participation?.evaluators
+                    || this.collectSeminarParticipationEvaluatorEntries(row.id, settings, sp.questioner);
+                for (const ev of partEvs) {
+                    const bucket = this.ensureSeminarEvaluatorAvgBucket(map, ev, maxes);
+                    this.addSeminarEvaluatorComponentAvg(bucket, 'participation', row.id, ev.marks);
                 }
             }
-            return [...seen.values()].filter(Boolean);
+            return [...map.values()]
+                .map(ev => {
+                    ev.studentCount = ev.studentIds.size;
+                    return ev;
+                })
+                .sort((a, b) => {
+                    if (a.isAdmin !== b.isAdmin) return a.isAdmin ? -1 : 1;
+                    return (a.label || '').localeCompare(b.label || '');
+                });
+        },
+
+        seminarConsEvaluatorAvgCell(comp) {
+            if (!comp?.count) return '<span class="seminar-cons-empty">—</span>';
+            return `<strong>${escapeHtml(String(comp.avg))}</strong><small>/${escapeHtml(String(comp.max))}</small>`
+                + `<div class="seminar-cons-marker">${comp.count} student${comp.count === 1 ? '' : 's'}</div>`;
         },
 
         async collectSeminarConsolidatedData({ force = false } = {}) {
@@ -2468,9 +2568,24 @@ export function createAdminSeminarModule(app) {
                 }
 
                 const partMarks = Math.min(parseFloat(t.questionMarks) || 0, maxP);
-                const partEvaluators = this.getSeminarParticipationEvaluators(s.id, settings);
+                const partEvaluatorEntries = this.collectSeminarParticipationEvaluatorEntries(
+                    s.id, settings, sp.questioner
+                );
+                const partEvaluators = partEvaluatorEntries.map(ev => ev.label).filter(Boolean);
                 const qTimes = settings.questionFairness?.[s.id]?.times || 0;
-                if ((sem.questionHistory || []).some(h => h.isDummy)) dummy = true;
+                if ((sem.questionHistory || []).some(h => h.isDummy) || partEvaluatorEntries.some(ev => ev.isDummy)) dummy = true;
+
+                const evaluatorIds = new Set();
+                for (const key of catKeys) {
+                    const evs = categories[key].evaluators || [];
+                    evs.forEach(ev => evaluatorIds.add(ev.id));
+                    const avg = evs.length
+                        ? this.roundSeminarAvg(evs.reduce((sum, ev) => sum + (parseFloat(ev.marks) || 0), 0) / evs.length)
+                        : null;
+                    categories[key].evaluatorAvg = avg;
+                    categories[key].evaluatorCount = evs.length;
+                }
+                partEvaluatorEntries.forEach(ev => evaluatorIds.add(ev.id));
 
                 let status = 'pending';
                 if (sem.evaluation?.isAbsent) status = 'absent';
@@ -2500,8 +2615,10 @@ export function createAdminSeminarModule(app) {
                         marks: partMarks,
                         max: maxP,
                         markers: partEvaluators,
+                        evaluators: partEvaluatorEntries,
                         times: qTimes
                     },
+                    evaluatorIds: [...evaluatorIds],
                     grand,
                     maxTotal: 100,
                     status,
@@ -2533,15 +2650,18 @@ export function createAdminSeminarModule(app) {
                     participation: rows.filter(r => (parseFloat(r.participation?.marks) || 0) > 0).length
                 },
                 classAverage: rows.length
-                    ? Math.round((rows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / rows.length) * 10) / 10
+                    ? this.roundSeminarAvg(rows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / rows.length)
                     : 0,
                 markedAverage: evaluatedRows.length
-                    ? Math.round((evaluatedRows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / evaluatedRows.length) * 10) / 10
+                    ? this.roundSeminarAvg(evaluatedRows.reduce((sum, r) => sum + (parseFloat(r.grand) || 0), 0) / evaluatedRows.length)
                     : 0,
                 markedCount: evaluatedRows.length
             };
 
-            return { settings, students: sorted, guides, guideMap, sp, maxes, rows, stats };
+            const byEvaluator = this.buildSeminarEvaluatorAverages(rows, settings, maxes, sp);
+            stats.byEvaluator = byEvaluator;
+
+            return { settings, students: sorted, guides, guideMap, sp, maxes, rows, stats, byEvaluator };
         },
 
         seminarConsolidatedStatusBadge(row) {
@@ -2568,9 +2688,13 @@ export function createAdminSeminarModule(app) {
                 : (cat.marker
                     ? `<div class="seminar-cons-marker">${escapeHtml(cat.marker)}</div>`
                     : '<div class="seminar-cons-marker">Evaluator not recorded</div>');
+            const avgLine = (evaluators.length > 1 && cat.evaluatorAvg != null)
+                ? `<div class="seminar-cons-eval-avg">Avg of ${evaluators.length}: <strong>${escapeHtml(String(cat.evaluatorAvg))}</strong></div>`
+                : '';
             return `<td class="seminar-cons-marks${dummy}">
                 <strong>${escapeHtml(String(cat.marks))}</strong><small>/${escapeHtml(String(cat.max))}</small>
                 ${lines}
+                ${avgLine}
             </td>`;
         },
 
@@ -2585,6 +2709,7 @@ export function createAdminSeminarModule(app) {
             const term = (document.getElementById('search-seminar-consolidated')?.value || '').toLowerCase().trim();
             const filter = document.getElementById('filter-seminar-consolidated')?.value || '';
             const componentFilters = ['guide', 'coordinator', 'presentation', 'report', 'participation'];
+            const evFilter = (app._seminarConsEvaluatorFilter || '').replace(/^evaluator:/, '');
             let visible = 0;
             document.querySelectorAll('#seminar-consolidated-table tbody tr').forEach(row => {
                 const matchText = !term || (row.dataset.search || '').includes(term);
@@ -2593,7 +2718,8 @@ export function createAdminSeminarModule(app) {
                     || (filter === 'dummy' && row.dataset.dummy === '1')
                     || (filter === 'evaluated' && (row.dataset.status === 'complete' || row.dataset.status === 'partial'))
                     || (componentFilters.includes(filter) && row.dataset[filter] === '1');
-                const show = matchText && matchFilter;
+                const matchEv = !evFilter || (row.dataset.evaluators || '').split(' ').includes(evFilter);
+                const show = matchText && matchFilter && matchEv;
                 row.style.display = show ? '' : 'none';
                 if (show) visible += 1;
             });
@@ -2602,10 +2728,21 @@ export function createAdminSeminarModule(app) {
             document.querySelectorAll('.seminar-cons-stat-card[data-filter]').forEach(card => {
                 card.classList.toggle('is-active', Boolean(filter) && (card.dataset.filter || '') === filter);
             });
+            document.querySelectorAll('.seminar-cons-eval-avg-row[data-evaluator]').forEach(row => {
+                row.classList.toggle('is-active', Boolean(evFilter) && (row.dataset.evaluator || '') === evFilter);
+            });
         },
 
         filterSeminarConsolidatedBy(filter) {
             const sel = document.getElementById('filter-seminar-consolidated');
+            if (String(filter || '').startsWith('evaluator:')) {
+                const next = (app._seminarConsEvaluatorFilter || '') === filter ? '' : filter;
+                app._seminarConsEvaluatorFilter = next;
+                if (sel) sel.value = '';
+                this.filterSeminarConsolidatedTable();
+                return;
+            }
+            app._seminarConsEvaluatorFilter = '';
             if (!sel) return;
             sel.value = sel.value === filter ? '' : (filter || '');
             this.filterSeminarConsolidatedTable();
@@ -2637,11 +2774,35 @@ export function createAdminSeminarModule(app) {
             try {
                 const data = await this.collectSeminarConsolidatedData({ force: Boolean(force) });
                 app._seminarConsolidatedCache = data;
-                const { rows, stats, maxes } = data;
+                const { rows, stats, maxes, byEvaluator } = data;
+                const evaluatorAverages = byEvaluator || stats.byEvaluator || [];
 
                 if (statsEl) {
                     const n = stats.total;
                     const bc = stats.byComponent;
+                    const evalRows = evaluatorAverages.length
+                        ? evaluatorAverages.map(ev => {
+                            const adminCls = ev.isAdmin ? ' seminar-cons-eval-avg-admin' : '';
+                            const dummyCls = ev.dummy ? ' seminar-cons-dummy' : '';
+                            const evId = String(ev.id || '');
+                            return `
+                                <tr class="seminar-cons-eval-avg-row${adminCls}${dummyCls}" data-evaluator="${escapeHtml(evId)}"
+                                    onclick="app.filterSeminarConsolidatedBy('evaluator:' + this.dataset.evaluator)"
+                                    title="Show students marked by ${escapeHtml(ev.label)}">
+                                    <td>
+                                        <strong>${escapeHtml(ev.name || ev.label)}</strong>
+                                        ${ev.dummy ? '<div class="seminar-cons-marker">Includes dummy / test</div>' : ''}
+                                    </td>
+                                    <td>${escapeHtml(ev.role || '—')}</td>
+                                    <td>${ev.studentCount}</td>
+                                    <td class="seminar-cons-marks">${this.seminarConsEvaluatorAvgCell(ev.components.guide)}</td>
+                                    <td class="seminar-cons-marks">${this.seminarConsEvaluatorAvgCell(ev.components.coordinator)}</td>
+                                    <td class="seminar-cons-marks">${this.seminarConsEvaluatorAvgCell(ev.components.presentation)}</td>
+                                    <td class="seminar-cons-marks">${this.seminarConsEvaluatorAvgCell(ev.components.report)}</td>
+                                    <td class="seminar-cons-marks">${this.seminarConsEvaluatorAvgCell(ev.components.participation)}</td>
+                                </tr>`;
+                        }).join('')
+                        : '<tr><td colspan="8" class="seminar-cons-empty">No evaluator marks yet.</td></tr>';
                     statsEl.className = 'seminar-cons-stats';
                     statsEl.innerHTML = `
                         <p class="seminar-cons-stats-legend">
@@ -2667,6 +2828,28 @@ export function createAdminSeminarModule(app) {
                             ${this.seminarConsStatCard({ filter: 'evaluated', value: stats.markedAverage, suffix: ' /100', label: `Avg of ${stats.markedCount} with marks`, hint: 'Average CIE among students who have at least one part entered', tone: 'neutral' })}
                             ${this.seminarConsStatCard({ filter: '', value: stats.classAverage, suffix: ' /100', label: `Class avg (all ${n})`, hint: 'Average over every student; unmarked students count as 0', tone: 'neutral' })}
                         </div>
+                        <h4 class="seminar-cons-stats-heading">Average marks by evaluator</h4>
+                        <p class="seminar-cons-stats-legend">
+                            Average of the marks <strong>this person awarded</strong> (not the last-saved CIE used for the student total).
+                            Click a row to list those students. Click again to clear.
+                        </p>
+                        <div class="seminar-cons-eval-avg-wrap">
+                            <table class="forge-lab-admin-table seminar-cons-eval-avg-table">
+                                <thead>
+                                    <tr>
+                                        <th>Evaluator</th>
+                                        <th>Role</th>
+                                        <th>Students</th>
+                                        <th>Guide (${maxes.guide})</th>
+                                        <th>Coordinator (${maxes.coordinator})</th>
+                                        <th>Presentation (${maxes.presentation})</th>
+                                        <th>Report (${maxes.report})</th>
+                                        <th>Participation (${maxes.participation})</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${evalRows}</tbody>
+                            </table>
+                        </div>
                     `;
                 }
 
@@ -2679,7 +2862,7 @@ export function createAdminSeminarModule(app) {
                     <p class="form-hint" style="margin:0 0 0.5rem;">
                         Showing <strong id="seminar-consolidated-visible-count">${rows.length}</strong> of ${rows.length}.
                         Each component lists <strong>every evaluator</strong> who saved marks, including <strong>Admin</strong>.
-                        The large number is the current CIE value (last saved).
+                        The large number is the current CIE value (last saved). If several people marked the same part, their average is shown under the names.
                     </p>
                     <table id="seminar-consolidated-table" class="forge-lab-admin-table seminar-cons-table">
                         <thead>
@@ -2709,6 +2892,7 @@ export function createAdminSeminarModule(app) {
                                     data-presentation="${row.categories.presentation.has ? '1' : '0'}"
                                     data-report="${row.categories.report.has ? '1' : '0'}"
                                     data-participation="${(parseFloat(row.participation.marks) || 0) > 0 ? '1' : '0'}"
+                                    data-evaluators="${escapeHtml((row.evaluatorIds || []).join(' '))}"
                                     data-search="${escapeHtml(row.searchText)}">
                                     <td>${row.index}</td>
                                     <td>
@@ -2769,6 +2953,7 @@ export function createAdminSeminarModule(app) {
                 ['Participation marks entered', stats.byComponent?.participation ?? 0],
                 [`Average of ${stats.markedCount} students with marks /100`, stats.markedAverage],
                 ['Class average (all students, unmarked = 0) /100', stats.classAverage],
+                ['Evaluators with marks', (stats.byEvaluator || []).length],
                 [],
                 [
                     'Sl. No.', 'Student', 'KTU ID', 'Assigned guide', 'Topic', 'Topic status', 'Papers', 'Slot', 'Absent',
@@ -2878,7 +3063,33 @@ export function createAdminSeminarModule(app) {
                 });
             });
 
-            return { totalsSheet, paramsSheet, logSheet };
+            const evaluatorAvgSheet = [
+                ['ITQ413 SEMINAR — Average marks by evaluator'],
+                [`Generated: ${generated}`],
+                ['Average of marks each evaluator awarded. n = number of students they marked for that CIE part.'],
+                [],
+                [
+                    'Evaluator', 'Role', 'Students marked', 'Dummy / test',
+                    `Guide avg (max ${maxes.guide})`, 'Guide n',
+                    `Coordinator avg (max ${maxes.coordinator})`, 'Coordinator n',
+                    `Presentation avg (max ${maxes.presentation})`, 'Presentation n',
+                    `Report avg (max ${maxes.report})`, 'Report n',
+                    `Participation avg (max ${maxes.participation})`, 'Participation n'
+                ]
+            ];
+            (stats.byEvaluator || []).forEach(ev => {
+                const c = ev.components || {};
+                evaluatorAvgSheet.push([
+                    ev.name || ev.label, ev.role || '', ev.studentCount, ev.dummy ? 'Yes' : 'No',
+                    c.guide?.count ? c.guide.avg : '', c.guide?.count || 0,
+                    c.coordinator?.count ? c.coordinator.avg : '', c.coordinator?.count || 0,
+                    c.presentation?.count ? c.presentation.avg : '', c.presentation?.count || 0,
+                    c.report?.count ? c.report.avg : '', c.report?.count || 0,
+                    c.participation?.count ? c.participation.avg : '', c.participation?.count || 0
+                ]);
+            });
+
+            return { totalsSheet, paramsSheet, logSheet, evaluatorAvgSheet };
         },
 
         async exportSeminarConsolidatedMarksExcel() {
@@ -2896,9 +3107,10 @@ export function createAdminSeminarModule(app) {
                     alert('No students found.');
                     return;
                 }
-                const { totalsSheet, paramsSheet, logSheet } = this.seminarConsolidatedExcelAoa(data);
+                const { totalsSheet, paramsSheet, logSheet, evaluatorAvgSheet } = this.seminarConsolidatedExcelAoa(data);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(totalsSheet), 'CIE totals');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(evaluatorAvgSheet), 'Evaluator averages');
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(paramsSheet), 'Parameter marks');
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logSheet), 'Evaluator log');
                 const fname = `Seminar_Consolidated_CIE_Marks_${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -2961,6 +3173,24 @@ export function createAdminSeminarModule(app) {
             try {
                 const data = await this.collectSeminarConsolidatedData({ force: true });
                 const { rows, stats, maxes } = data;
+                const evaluatorAvgRows = (stats.byEvaluator || []).map((ev, idx) => {
+                    const cell = (comp) => (comp?.count
+                        ? `${escapeHtml(String(comp.avg))}<div style="color:#6b7280;font-size:9px;">n=${comp.count}</div>`
+                        : '—');
+                    return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 6px 8px; font-size: 11px; border-bottom: 1px solid #e5e7eb;">
+                            <div style="font-weight: 700;">${escapeHtml(ev.name || ev.label)}</div>
+                            <div style="color: #6b7280; font-size: 10px;">${escapeHtml(ev.role || '')}</div>
+                        </td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${ev.studentCount}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${cell(ev.components.guide)}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${cell(ev.components.coordinator)}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${cell(ev.components.presentation)}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${cell(ev.components.report)}</td>
+                        <td style="padding: 6px 8px; font-size: 11px; text-align: center; border-bottom: 1px solid #e5e7eb;">${cell(ev.components.participation)}</td>
+                    </tr>`;
+                }).join('');
                 const tableRows = rows.map((row, idx) => `
                     <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
                         <td style="padding: 6px 8px; text-align: center; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${row.index}</td>
@@ -3005,6 +3235,24 @@ export function createAdminSeminarModule(app) {
                             Guide ${maxes.guide} · Coordinator ${maxes.coordinator} (Admin) · Presentation ${maxes.presentation} (IEC/Admin) ·
                             Report ${maxes.report} (Admin) · Participation ${maxes.participation}
                         </p>
+                    </div>
+                    <div style="margin-bottom: 18px; padding: 12px; background: #ffffff; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+                        <h3 style="font-family: 'Montserrat', sans-serif; font-size: 16px; margin: 0 0 10px; border-left: 4px solid #6366f1; padding-left: 10px;">Average marks by evaluator</h3>
+                        <p style="font-size: 11px; color: #6b7280; margin: 0 0 8px;">Average of marks each person awarded. n = students marked for that CIE part.</p>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Evaluator</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">n</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">G/${maxes.guide}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">C/${maxes.coordinator}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">P/${maxes.presentation}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">R/${maxes.report}</th>
+                                    <th style="padding: 8px; background: #f8fafc; font-size: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Q/${maxes.participation}</th>
+                                </tr>
+                            </thead>
+                            <tbody>${evaluatorAvgRows || `<tr><td colspan="7" style="padding:12px; text-align:center; color:#6b7280;">No evaluator marks</td></tr>`}</tbody>
+                        </table>
                     </div>
                     <div style="padding: 12px; background: #ffffff; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
                         <table style="width: 100%; border-collapse: collapse;">
