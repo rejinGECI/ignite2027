@@ -26,6 +26,8 @@ import {
     hasTitleAbstractSubmission,
     ensureSeminarPpt,
     hasPptSubmission,
+    ensureSeminarReport,
+    hasSeminarReportSubmission,
     pickFairQuestioners,
     updateFairnessAfterPick,
     sumParamScores,
@@ -37,7 +39,7 @@ import {
     resolveSeminarGuideId,
     buildEvaluatorMeta,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval16';
+} from '../utils/seminarConfig.js?v=eval18';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',
@@ -97,6 +99,7 @@ export function createAdminSeminarModule(app) {
 
             await this.renderSeminarAdminOverview(settings);
             await this.renderSeminarGuideAllotmentSummary(settings);
+            await this.renderSeminarGuideReassignPanel(settings);
             await this.renderSeminarStudents(settings);
             this.renderSeminarSlots(settings);
             this.renderSeminarScoringParams(settings);
@@ -118,6 +121,7 @@ export function createAdminSeminarModule(app) {
             });
             if (tabId === 'evaluation') this.refreshSeminarEvaluationList();
             if (tabId === 'consolidated') this.renderSeminarConsolidatedMarks();
+            if (tabId === 'report-links') this.renderSeminarReportLinksAdmin();
         },
 
         setupSeminarEvalSearch() {
@@ -865,6 +869,8 @@ export function createAdminSeminarModule(app) {
                 const seminar = userData.seminar || getDefaultSeminar();
                 ensureSeminarTopics(seminar);
                 ensureSeminarEvaluation(seminar);
+                ensureSeminarReport(seminar, 'draft');
+                ensureSeminarReport(seminar, 'final');
                 return {
                     id: userDoc.id,
                     name: u.name || u.username || 'Unknown',
@@ -991,6 +997,160 @@ export function createAdminSeminarModule(app) {
             const min = Math.min(...loads);
             const max = Math.max(...loads);
             alert(`Guides assigned to ${students.length} students.\nFaculty load: ${min}–${max} students per guide (equal distribution).`);
+            await this.loadSeminarAdmin();
+        },
+
+        collectSeminarGuideAllotmentRows(students, guides, settings) {
+            const guideMap = Object.fromEntries(guides.map(g => [g.id, g]));
+            const countBy = {};
+            const nameBy = {};
+            guides.forEach(g => {
+                countBy[g.id] = 0;
+                nameBy[g.id] = g.name || g.email || g.id;
+            });
+            students.forEach(s => {
+                const gid = resolveSeminarGuideId(s.seminar, settings, s.id);
+                if (!gid) return;
+                countBy[gid] = (countBy[gid] || 0) + 1;
+                if (!nameBy[gid]) {
+                    const g = guideMap[gid];
+                    nameBy[gid] = g?.name || g?.email || `Former faculty (${String(gid).slice(0, 8)})`;
+                }
+            });
+            return Object.keys(countBy).map(id => ({
+                id,
+                name: nameBy[id] || id,
+                email: guideMap[id]?.email || '',
+                count: countBy[id] || 0,
+                exists: Boolean(guideMap[id])
+            })).sort((a, b) => a.name.localeCompare(b.name));
+        },
+
+        seminarReassignGuideCheckbox(row, group) {
+            const extra = row.exists ? '' : ' · not in current guide list';
+            return `
+                <label class="seminar-reassign-item">
+                    <input type="checkbox" name="seminar-reassign-${group}" value="${escapeHtml(row.id)}">
+                    <span>
+                        <strong>${escapeHtml(row.name)}</strong>
+                        <small>${row.count} student${row.count === 1 ? '' : 's'}${row.email ? ` · ${escapeHtml(row.email)}` : ''}${extra}</small>
+                    </span>
+                </label>`;
+        },
+
+        async renderSeminarGuideReassignPanel(settings) {
+            const fromEl = document.getElementById('seminar-reassign-from-list');
+            const toEl = document.getElementById('seminar-reassign-to-list');
+            if (!fromEl || !toEl) return;
+            const [students, guides] = await Promise.all([
+                this.fetchSeminarStudents(),
+                this.fetchGuides()
+            ]);
+            const rows = this.collectSeminarGuideAllotmentRows(students, guides, settings || {});
+            if (!rows.length) {
+                fromEl.innerHTML = '<p class="form-hint">No faculty found. Create guides first.</p>';
+                toEl.innerHTML = '<p class="form-hint">No faculty found. Create guides first.</p>';
+                return;
+            }
+            fromEl.innerHTML = rows.map(r => this.seminarReassignGuideCheckbox(r, 'from')).join('');
+            toEl.innerHTML = rows.map(r => this.seminarReassignGuideCheckbox(r, 'to')).join('');
+        },
+
+        getSeminarReassignGuideIds(group) {
+            return [...document.querySelectorAll(`input[name="seminar-reassign-${group}"]:checked`)]
+                .map(el => el.value)
+                .filter(Boolean);
+        },
+
+        async reassignTransferredSeminarGuides() {
+            const fromIds = this.getSeminarReassignGuideIds('from');
+            const toIds = this.getSeminarReassignGuideIds('to');
+            if (!fromIds.length) {
+                alert('Select at least one transferred faculty.');
+                return;
+            }
+            if (!toIds.length) {
+                alert('Select at least one new faculty to receive students.');
+                return;
+            }
+            const overlap = fromIds.filter(id => toIds.includes(id));
+            if (overlap.length) {
+                alert('The same faculty cannot be both transferred and new. Uncheck the overlap and try again.');
+                return;
+            }
+
+            const settings = await this.getSeminarSettings();
+            const [students, guides] = await Promise.all([
+                this.fetchSeminarStudents({ force: true }),
+                this.fetchGuides({ force: true })
+            ]);
+            const guideMap = Object.fromEntries(guides.map(g => [g.id, g]));
+            const missingNew = toIds.filter(id => !guideMap[id]);
+            if (missingNew.length) {
+                alert('One or more selected new faculty are not in the current guide list. Create their Guide accounts first under Mini Projects → Teams & Guides.');
+                return;
+            }
+
+            const fromSet = new Set(fromIds);
+            const movers = students.filter(s => fromSet.has(resolveSeminarGuideId(s.seminar, settings, s.id)));
+            if (!movers.length) {
+                alert('The selected transferred faculty have no seminar students to move.');
+                return;
+            }
+
+            const keepLoad = Object.fromEntries(toIds.map(id => [id, 0]));
+            students.forEach(s => {
+                if (movers.some(m => m.id === s.id)) return;
+                const gid = resolveSeminarGuideId(s.seminar, settings, s.id);
+                if (gid && Object.prototype.hasOwnProperty.call(keepLoad, gid)) keepLoad[gid] += 1;
+            });
+
+            const shuffled = [...movers].sort(() => Math.random() - 0.5);
+            const movedAssignments = {};
+            const newLoad = { ...keepLoad };
+            shuffled.forEach(s => {
+                const minLoad = Math.min(...toIds.map(id => newLoad[id]));
+                const least = toIds.filter(id => newLoad[id] === minLoad);
+                const guideId = least[Math.floor(Math.random() * least.length)];
+                movedAssignments[s.id] = guideId;
+                newLoad[guideId] += 1;
+            });
+
+            const fromNames = fromIds.map(id => guideMap[id]?.name || guideMap[id]?.email || id).join(', ');
+            const toNames = toIds.map(id => guideMap[id]?.name || guideMap[id]?.email || id).join(', ');
+            const loadText = toIds.map(id => `${guideMap[id]?.name || id}: ${newLoad[id]}`).join('\n');
+            if (!confirm(
+                `Move ${movers.length} student(s) from:\n${fromNames}\n\nto:\n${toNames}\n\n` +
+                `New faculty totals after move:\n${loadText}\n\n` +
+                `Other students, presentation slots, CIE marks, and audience questions stay unchanged.`
+            )) return;
+
+            const nextAssignments = { ...(settings.guideAssignments || {}) };
+            for (const s of movers) {
+                const guideId = movedAssignments[s.id];
+                nextAssignments[s.id] = guideId;
+                const ref = doc(window.firebaseDb, 'userData', s.id);
+                const snap = await getDoc(ref);
+                const data = snap.exists() ? snap.data() : {};
+                if (!data.seminar) data.seminar = getDefaultSeminar();
+                data.seminar.guideId = guideId;
+                await setDoc(ref, { seminar: data.seminar }, { merge: true });
+            }
+
+            const loadByGuide = {};
+            Object.values(nextAssignments).forEach(gid => {
+                if (!gid) return;
+                loadByGuide[gid] = (loadByGuide[gid] || 0) + 1;
+            });
+
+            await this.saveSeminarSettings({
+                guideAssignments: nextAssignments,
+                guideLoadByGuide: loadByGuide,
+                guideReassignedAt: new Date().toISOString()
+            });
+
+            this.invalidateSeminarCaches();
+            alert(`${movers.length} student(s) moved to the new faculty.\nSlots, CIE marks, and other modules were not changed.`);
             await this.loadSeminarAdmin();
         },
 
@@ -1539,6 +1699,16 @@ export function createAdminSeminarModule(app) {
                 const absentBadge = sem.evaluation?.isAbsent
                     ? '<span class="badge" style="background:#fee2e2;color:#991b1b;">Absent</span>'
                     : '';
+                const draft = ensureSeminarReport(sem, 'draft');
+                const finalRep = ensureSeminarReport(sem, 'final');
+                const draftStatus = normalizePaperStatus(draft.status);
+                const finalStatus = normalizePaperStatus(finalRep.status);
+                const draftLabel = !hasSeminarReportSubmission(draft) && draftStatus === 'draft'
+                    ? 'Not submitted'
+                    : (draftStatus === 'needs_revision' ? 'Needs edit' : statusBadge(draftStatus));
+                const finalLabel = !hasSeminarReportSubmission(finalRep) && finalStatus === 'draft'
+                    ? 'Not submitted'
+                    : (finalStatus === 'needs_revision' ? 'Needs edit' : statusBadge(finalStatus));
 
                 return `
                     <div class="forge-lab-admin-student-card" data-name="${escapeHtml(s.name.toLowerCase())}" data-ktuid="${escapeHtml(s.ktuid.toLowerCase())}">
@@ -1546,6 +1716,14 @@ export function createAdminSeminarModule(app) {
                         <p><strong>Guide:</strong> ${gid ? escapeHtml(guideMap[gid] || gid) : '—'}</p>
                         <p><strong>Topic:</strong> ${escapeHtml(topicLabel)} <span class="badge">${escapeHtml(topicStatus)}</span></p>
                         <p><strong>Papers:</strong> ${(sem.papers || []).length} · <strong>Presentation:</strong> ${slot ? escapeHtml(formatPresentationSlot(slot)) : '—'}</p>
+                        <p>
+                            <strong>Draft report:</strong>
+                            <span class="badge badge-${escapeHtml(draftStatus)}">${escapeHtml(draftLabel)}</span>
+                            ${draft.url ? ` · <a href="${escapeHtml(draft.url)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+                            · <strong>Final report:</strong>
+                            <span class="badge badge-${escapeHtml(finalStatus)}">${escapeHtml(finalLabel)}</span>
+                            ${finalRep.url ? ` · <a href="${escapeHtml(finalRep.url)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+                        </p>
                         <p class="seminar-score-breakdown">
                             <strong>CIE:</strong>
                             Guide ${t.guideMarks || 0} · Coord ${t.coordinatorMarks || 0} ·
@@ -3410,7 +3588,11 @@ export function createAdminSeminarModule(app) {
             const students = await this.fetchSeminarStudents();
             const guides = await this.fetchGuides();
             const guideMap = Object.fromEntries(guides.map(g => [g.id, g]));
-            students.forEach(s => ensureSeminarTopics(s.seminar));
+            students.forEach(s => {
+                ensureSeminarTopics(s.seminar);
+                ensureSeminarReport(s.seminar, 'draft');
+                ensureSeminarReport(s.seminar, 'final');
+            });
             students.sort((a, b) => a.name.localeCompare(b.name));
             return { settings, students, guides, guideMap };
         },
@@ -4264,6 +4446,455 @@ export function createAdminSeminarModule(app) {
             } catch (error) {
                 console.error(error);
                 alert('Error generating PPT upload status report. Please allow popups and try again.');
+            }
+        },
+
+        seminarReportLinkStatusLabel(status, submitted) {
+            if (!submitted && (status === 'draft' || !status)) return 'Not submitted';
+            if (status === 'needs_revision') return 'Needs edit';
+            return statusBadge(status);
+        },
+
+        collectSeminarReportLinksRows(students, settings, guideMap) {
+            const counts = {
+                total: students.length,
+                draftSubmitted: 0,
+                draftPending: 0,
+                draftApproved: 0,
+                draftRejected: 0,
+                draftRevision: 0,
+                draftMissing: 0,
+                finalSubmitted: 0,
+                finalPending: 0,
+                finalApproved: 0,
+                finalRejected: 0,
+                finalRevision: 0,
+                finalMissing: 0
+            };
+
+            const rows = students.map((s, idx) => {
+                const seminar = s.seminar || getDefaultSeminar();
+                const draft = ensureSeminarReport(seminar, 'draft');
+                const finalRep = ensureSeminarReport(seminar, 'final');
+                const draftStatus = normalizePaperStatus(draft.status);
+                const finalStatus = normalizePaperStatus(finalRep.status);
+                const draftSubmitted = hasSeminarReportSubmission(draft);
+                const finalSubmitted = hasSeminarReportSubmission(finalRep);
+                const gid = seminar.guideId || settings.guideAssignments?.[s.id];
+                const guide = guideMap[gid];
+                const locked = getLockedTopic(seminar);
+                const displayTopic = getSeminarDisplayTopic(seminar);
+
+                if (draftSubmitted) {
+                    counts.draftSubmitted += 1;
+                    if (draftStatus === 'approved') counts.draftApproved += 1;
+                    else if (draftStatus === 'rejected') counts.draftRejected += 1;
+                    else if (draftStatus === 'needs_revision') counts.draftRevision += 1;
+                    else counts.draftPending += 1;
+                } else {
+                    counts.draftMissing += 1;
+                }
+
+                if (finalSubmitted) {
+                    counts.finalSubmitted += 1;
+                    if (finalStatus === 'approved') counts.finalApproved += 1;
+                    else if (finalStatus === 'rejected') counts.finalRejected += 1;
+                    else if (finalStatus === 'needs_revision') counts.finalRevision += 1;
+                    else counts.finalPending += 1;
+                } else {
+                    counts.finalMissing += 1;
+                }
+
+                return {
+                    index: idx + 1,
+                    id: s.id,
+                    name: s.name || '',
+                    ktuid: s.ktuid || '',
+                    guideName: guide?.name || (typeof guide === 'string' ? guide : '') || '—',
+                    topic: locked?.title || displayTopic?.title || '—',
+                    locked: Boolean(locked),
+                    draft,
+                    final: finalRep,
+                    draftStatus,
+                    finalStatus,
+                    draftSubmitted,
+                    finalSubmitted,
+                    draftLabel: this.seminarReportLinkStatusLabel(draftStatus, draftSubmitted),
+                    finalLabel: this.seminarReportLinkStatusLabel(finalStatus, finalSubmitted)
+                };
+            });
+
+            return { rows, counts };
+        },
+
+        seminarReportLinksSearchHay(row) {
+            return [
+                row.name, row.ktuid, row.guideName, row.topic,
+                row.draft?.title, row.draft?.url, row.final?.title, row.final?.url,
+                row.draftLabel, row.finalLabel
+            ].join(' ').toLowerCase();
+        },
+
+        seminarReportLinksRowMatchesFilter(row, filter) {
+            if (!filter) return true;
+            if (filter === 'draft-missing') return !row.draftSubmitted;
+            if (filter === 'draft-pending') return row.draftSubmitted && row.draftStatus === 'submitted';
+            if (filter === 'draft-approved') return row.draftStatus === 'approved';
+            if (filter === 'draft-rejected') return row.draftStatus === 'rejected';
+            if (filter === 'draft-revision') return row.draftStatus === 'needs_revision';
+            if (filter === 'final-missing') return !row.finalSubmitted;
+            if (filter === 'final-pending') return row.finalSubmitted && row.finalStatus === 'submitted';
+            if (filter === 'final-approved') return row.finalStatus === 'approved';
+            if (filter === 'final-rejected') return row.finalStatus === 'rejected';
+            if (filter === 'final-revision') return row.finalStatus === 'needs_revision';
+            if (filter === 'both-approved') return row.draftStatus === 'approved' && row.finalStatus === 'approved';
+            return true;
+        },
+
+        async loadSeminarReportLinksData({ force = false } = {}) {
+            if (force) this.invalidateSeminarCaches();
+            const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+            return this.collectSeminarReportLinksRows(students, settings, guideMap);
+        },
+
+        seminarReportLinksStatCard(filter, value, label, extraClass = '') {
+            const active = (document.getElementById('filter-seminar-report-links')?.value || '') === filter;
+            return `
+                <button type="button" class="seminar-cons-stat-card ${extraClass} ${active ? 'is-active' : ''}"
+                    ${filter ? `onclick="app.filterSeminarReportLinksBy('${escapeHtml(filter)}')"` : 'disabled'}>
+                    <span class="seminar-cons-stat-value">${value}</span>
+                    <span class="seminar-cons-stat-label">${escapeHtml(label)}</span>
+                </button>`;
+        },
+
+        setupSeminarReportLinksSearch() {
+            const searchInput = document.getElementById('search-seminar-report-links');
+            if (!searchInput || searchInput.dataset.bound) return;
+            searchInput.dataset.bound = 'true';
+            searchInput.addEventListener('input', () => this.filterSeminarReportLinksTable());
+        },
+
+        filterSeminarReportLinksBy(filter) {
+            const sel = document.getElementById('filter-seminar-report-links');
+            if (sel) sel.value = (sel.value === filter) ? '' : (filter || '');
+            this.filterSeminarReportLinksTable();
+        },
+
+        filterSeminarReportLinksTable() {
+            const term = (document.getElementById('search-seminar-report-links')?.value || '').toLowerCase().trim();
+            const filter = document.getElementById('filter-seminar-report-links')?.value || '';
+            document.querySelectorAll('#seminar-report-links-table-wrap .seminar-report-links-row').forEach(row => {
+                const hay = row.dataset.search || '';
+                const matchesSearch = !term || hay.includes(term);
+                const matchesFilter = this.seminarReportLinksRowMatchesFilter({
+                    draftSubmitted: row.dataset.draftSubmitted === '1',
+                    finalSubmitted: row.dataset.finalSubmitted === '1',
+                    draftStatus: row.dataset.draftStatus || '',
+                    finalStatus: row.dataset.finalStatus || ''
+                }, filter);
+                row.style.display = matchesSearch && matchesFilter ? '' : 'none';
+            });
+            document.querySelectorAll('#seminar-report-links-stats .seminar-cons-stat-card').forEach(card => {
+                const onclick = card.getAttribute('onclick') || '';
+                const m = onclick.match(/filterSeminarReportLinksBy\('([^']+)'\)/);
+                card.classList.toggle('is-active', Boolean(m && m[1] === filter));
+            });
+        },
+
+        async renderSeminarReportLinksAdmin(force = false) {
+            const statsEl = document.getElementById('seminar-report-links-stats');
+            const wrap = document.getElementById('seminar-report-links-table-wrap');
+            if (!wrap) return;
+            wrap.innerHTML = '<p class="form-hint">Loading seminar report links…</p>';
+            try {
+                const { rows, counts } = await this.loadSeminarReportLinksData({ force });
+                if (statsEl) {
+                    statsEl.innerHTML = `
+                        <div class="seminar-cons-stat-grid">
+                            ${this.seminarReportLinksStatCard('', counts.total, 'Students', 'seminar-cons-stat-muted')}
+                            ${this.seminarReportLinksStatCard('draft-pending', counts.draftPending, 'Draft pending review', 'seminar-cons-stat-info')}
+                            ${this.seminarReportLinksStatCard('draft-approved', counts.draftApproved, 'Draft approved', 'seminar-cons-stat-ok')}
+                            ${this.seminarReportLinksStatCard('draft-missing', counts.draftMissing, 'Draft not submitted', 'seminar-cons-stat-danger')}
+                            ${this.seminarReportLinksStatCard('final-pending', counts.finalPending, 'Final pending review', 'seminar-cons-stat-info')}
+                            ${this.seminarReportLinksStatCard('final-approved', counts.finalApproved, 'Final approved', 'seminar-cons-stat-ok')}
+                            ${this.seminarReportLinksStatCard('final-missing', counts.finalMissing, 'Final not submitted', 'seminar-cons-stat-danger')}
+                            ${this.seminarReportLinksStatCard('both-approved', rows.filter(r => r.draftStatus === 'approved' && r.finalStatus === 'approved').length, 'Both approved', 'seminar-cons-stat-ok')}
+                        </div>
+                        <p class="seminar-cons-stats-legend">
+                            Draft submitted ${counts.draftSubmitted} · rejected ${counts.draftRejected} · needs edit ${counts.draftRevision}.
+                            Final submitted ${counts.finalSubmitted} · rejected ${counts.finalRejected} · needs edit ${counts.finalRevision}.
+                        </p>`;
+                }
+
+                if (!rows.length) {
+                    wrap.innerHTML = '<p class="empty-state">No students found.</p>';
+                    this.setupSeminarReportLinksSearch();
+                    return;
+                }
+
+                const tableRows = rows.map(row => {
+                    const draftLink = row.draft.url
+                        ? `<a href="${escapeHtml(row.draft.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.draft.title || 'Open draft')}</a>`
+                        : '—';
+                    const finalLink = row.final.url
+                        ? `<a href="${escapeHtml(row.final.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.final.title || 'Open final')}</a>`
+                        : '—';
+                    return `
+                        <tr class="seminar-report-links-row"
+                            data-search="${escapeHtml(this.seminarReportLinksSearchHay(row))}"
+                            data-draft-status="${escapeHtml(row.draftStatus)}"
+                            data-final-status="${escapeHtml(row.finalStatus)}"
+                            data-draft-submitted="${row.draftSubmitted ? '1' : '0'}"
+                            data-final-submitted="${row.finalSubmitted ? '1' : '0'}">
+                            <td>${row.index}</td>
+                            <td>
+                                <strong>${escapeHtml(row.name)}</strong>
+                                <div class="form-hint" style="margin:0;">${escapeHtml(row.ktuid)}</div>
+                            </td>
+                            <td>${escapeHtml(row.guideName)}</td>
+                            <td>${escapeHtml(row.topic)}</td>
+                            <td>
+                                <span class="badge badge-${escapeHtml(row.draftSubmitted ? row.draftStatus : 'draft')}">${escapeHtml(row.draftLabel)}</span>
+                                <div class="seminar-report-link-cell">${draftLink}</div>
+                                ${row.draft.guideFeedback ? `<div class="form-hint" style="margin:0.25rem 0 0;">${escapeHtml(row.draft.guideFeedback)}</div>` : ''}
+                            </td>
+                            <td>
+                                <span class="badge badge-${escapeHtml(row.finalSubmitted ? row.finalStatus : 'draft')}">${escapeHtml(row.finalLabel)}</span>
+                                <div class="seminar-report-link-cell">${finalLink}</div>
+                                ${row.final.guideFeedback ? `<div class="form-hint" style="margin:0.25rem 0 0;">${escapeHtml(row.final.guideFeedback)}</div>` : ''}
+                            </td>
+                        </tr>`;
+                }).join('');
+
+                wrap.innerHTML = `
+                    <table class="seminar-cons-table seminar-report-links-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Student</th>
+                                <th>Guide</th>
+                                <th>Topic</th>
+                                <th>Draft report</th>
+                                <th>Final report</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>`;
+                this.setupSeminarReportLinksSearch();
+                this.filterSeminarReportLinksTable();
+            } catch (error) {
+                console.error(error);
+                wrap.innerHTML = `<p class="error-message">Could not load seminar report links.${error?.message ? ` (${escapeHtml(error.message)})` : ''}</p>`;
+            }
+        },
+
+        async exportSeminarReportLinksExcel() {
+            if (!app.isAdmin) {
+                alert('Only administrators can export seminar report links.');
+                return;
+            }
+            if (typeof XLSX === 'undefined') {
+                alert('Excel export library not loaded. Please refresh the page.');
+                return;
+            }
+            try {
+                const { rows, counts } = await this.loadSeminarReportLinksData({ force: true });
+                if (!rows.length) {
+                    alert('No students found.');
+                    return;
+                }
+                const summary = [
+                    ['Seminar report links — summary'],
+                    ['Generated', new Date().toLocaleString('en-IN')],
+                    [],
+                    ['Metric', 'Count'],
+                    ['Students', counts.total],
+                    ['Draft submitted', counts.draftSubmitted],
+                    ['Draft pending review', counts.draftPending],
+                    ['Draft approved', counts.draftApproved],
+                    ['Draft rejected', counts.draftRejected],
+                    ['Draft needs edit', counts.draftRevision],
+                    ['Draft not submitted', counts.draftMissing],
+                    ['Final submitted', counts.finalSubmitted],
+                    ['Final pending review', counts.finalPending],
+                    ['Final approved', counts.finalApproved],
+                    ['Final rejected', counts.finalRejected],
+                    ['Final needs edit', counts.finalRevision],
+                    ['Final not submitted', counts.finalMissing]
+                ];
+                const header = [
+                    'Sl. No.', 'Student', 'KTU ID', 'Guide', 'Topic',
+                    'Draft title', 'Draft status', 'Draft URL', 'Draft submitted', 'Draft guide comment',
+                    'Final title', 'Final status', 'Final URL', 'Final submitted', 'Final guide comment'
+                ];
+                const body = rows.map(row => [
+                    row.index, row.name, row.ktuid, row.guideName, row.topic,
+                    row.draft.title || '', row.draftLabel, row.draft.url || '',
+                    row.draft.submittedAt ? new Date(row.draft.submittedAt).toLocaleDateString('en-IN') : '',
+                    row.draft.guideFeedback || '',
+                    row.final.title || '', row.finalLabel, row.final.url || '',
+                    row.final.submittedAt ? new Date(row.final.submittedAt).toLocaleDateString('en-IN') : '',
+                    row.final.guideFeedback || ''
+                ]);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), 'Report links');
+                XLSX.writeFile(wb, `Seminar_Report_Links_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            } catch (error) {
+                console.error('exportSeminarReportLinksExcel:', error);
+                alert('Could not generate Excel file. Please try again.');
+            }
+        },
+
+        async exportSeminarReportLinksCsv() {
+            if (!app.isAdmin) {
+                alert('Only administrators can export seminar report links.');
+                return;
+            }
+            try {
+                const { rows } = await this.loadSeminarReportLinksData({ force: true });
+                const header = [
+                    'Sl. No.', 'Student', 'KTU ID', 'Guide', 'Topic',
+                    'Draft title', 'Draft status', 'Draft URL', 'Draft submitted', 'Draft guide comment',
+                    'Final title', 'Final status', 'Final URL', 'Final submitted', 'Final guide comment'
+                ];
+                const lines = [header.map(c => this.seminarCsvCell(c)).join(',')];
+                rows.forEach(row => {
+                    lines.push([
+                        row.index, row.name, row.ktuid, row.guideName, row.topic,
+                        row.draft.title || '', row.draftLabel, row.draft.url || '',
+                        row.draft.submittedAt ? new Date(row.draft.submittedAt).toLocaleDateString('en-IN') : '',
+                        row.draft.guideFeedback || '',
+                        row.final.title || '', row.finalLabel, row.final.url || '',
+                        row.final.submittedAt ? new Date(row.final.submittedAt).toLocaleDateString('en-IN') : '',
+                        row.final.guideFeedback || ''
+                    ].map(c => this.seminarCsvCell(c)).join(','));
+                });
+                this.downloadSeminarCsv(
+                    `seminar-report-links-${new Date().toISOString().split('T')[0]}.csv`,
+                    lines.join('\n')
+                );
+            } catch (error) {
+                console.error('exportSeminarReportLinksCsv:', error);
+                alert('Could not generate CSV file. Please try again.');
+            }
+        },
+
+        buildSeminarReportLinksStatusReportHtml(students, settings, guideMap) {
+            const { rows, counts } = this.collectSeminarReportLinksRows(students, settings, guideMap);
+            const missingDraft = rows.filter(r => !r.draftSubmitted);
+            const missingFinal = rows.filter(r => !r.finalSubmitted);
+
+            const missingDraftRows = missingDraft.length
+                ? missingDraft.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guideName)}</td>
+                    </tr>`).join('')
+                : `<tr><td colspan="4" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have submitted a draft report link.</td></tr>`;
+
+            const missingFinalRows = missingFinal.length
+                ? missingFinal.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#fffbeb'};">
+                        <td style="padding: 8px 12px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.name)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ktuid)}</td>
+                        <td style="padding: 8px 12px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guideName)}</td>
+                    </tr>`).join('')
+                : `<tr><td colspan="4" style="padding: 14px; text-align: center; color: #059669; font-size: 12px;">All students have submitted a final report link.</td></tr>`;
+
+            const tableRows = rows.length
+                ? rows.map((r, idx) => `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                        <td style="padding: 8px 10px; text-align: center; color: #4b5563; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${idx + 1}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.name)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.ktuid)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.guideName)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.draftLabel)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.draft.url || '—')}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; font-weight: 600; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.finalLabel)}</td>
+                        <td style="padding: 8px 10px; color: #1f2937; font-family: 'Lato', sans-serif; font-size: 11px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(r.final.url || '—')}</td>
+                    </tr>`).join('')
+                : `<tr><td colspan="8" style="padding: 16px; text-align: center; color: #6b7280;">No students found.</td></tr>`;
+
+            const body = `
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #059669; padding-left: 12px;">Summary</h3>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <div style="padding: 12px; background: #f8fafc; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #1f2937;">${counts.total}</div><div style="font-size: 11px; color: #4b5563;">Students</div></div>
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${counts.draftApproved}</div><div style="font-size: 11px; color: #047857;">Draft approved</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${counts.draftPending}</div><div style="font-size: 11px; color: #1d4ed8;">Draft pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${counts.draftMissing}</div><div style="font-size: 11px; color: #b45309;">Draft missing</div></div>
+                        <div style="padding: 12px; background: #ecfdf5; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #059669;">${counts.finalApproved}</div><div style="font-size: 11px; color: #047857;">Final approved</div></div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #2563eb;">${counts.finalPending}</div><div style="font-size: 11px; color: #1d4ed8;">Final pending</div></div>
+                        <div style="padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #d97706;">${counts.finalMissing}</div><div style="font-size: 11px; color: #b45309;">Final missing</div></div>
+                        <div style="padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;"><div style="font-size: 20px; font-weight: 700; color: #dc2626;">${counts.draftRejected + counts.finalRejected}</div><div style="font-size: 11px; color: #b91c1c;">Rejected (draft+final)</div></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with no draft report link</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Guide</th>
+                            </tr>
+                        </thead>
+                        <tbody>${missingDraftRows}</tbody>
+                    </table>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: #1f2937; border-left: 4px solid #d97706; padding-left: 12px;">Students with no final report link</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #fde68a;">#</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Student</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">KTU ID</th>
+                                <th style="padding: 8px 12px; background: #fffbeb; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #fde68a;">Guide</th>
+                            </tr>
+                        </thead>
+                        <tbody>${missingFinalRows}</tbody>
+                    </table>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.06);">
+                    <h3 style="font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 14px 0; color: #1f2937; border-left: 4px solid #0284c7; padding-left: 12px;">Consolidated report links</h3>
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.06);">
+                        <thead>
+                            <tr>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: center; border-bottom: 2px solid #e5e7eb;">#</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Student</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">KTU ID</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Guide</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Draft status</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Draft URL</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Final status</th>
+                                <th style="padding: 8px 10px; background: #f8fafc; color: #1f2937; font-weight: 700; font-family: 'Montserrat', sans-serif; font-size: 11px; text-align: left; border-bottom: 2px solid #e5e7eb;">Final URL</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            return this.seminarReportShell('Seminar Report Links Status Report', body);
+        },
+
+        async generateSeminarReportLinksStatusReport() {
+            try {
+                const { settings, students, guideMap } = await this.getSeminarTopicReportContext();
+                const html = this.buildSeminarReportLinksStatusReportHtml(students, settings, guideMap);
+                await app.generatePDFReport(html, { groupName: 'Seminar' }, { name: 'Seminar Report Links Status Report' });
+            } catch (error) {
+                console.error(error);
+                alert('Error generating seminar report links report. Please allow popups and try again.');
             }
         }
     };

@@ -13,8 +13,10 @@ import {
     isPaperPendingReview,
     ensureTitleAbstract,
     ensureSeminarPpt,
+    ensureSeminarReport,
+    hasSeminarReportSubmission,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval9';
+} from '../utils/seminarConfig.js?v=eval18';
 
 export function createGuideSeminarModule(app) {
     return {
@@ -35,6 +37,10 @@ export function createGuideSeminarModule(app) {
             const taStatus = normalizePaperStatus(ta.status);
             const ppt = ensureSeminarPpt(seminar);
             const pptStatus = normalizePaperStatus(ppt.status);
+            const draftReport = ensureSeminarReport(seminar, 'draft');
+            const draftReportStatus = normalizePaperStatus(draftReport.status);
+            const finalReport = ensureSeminarReport(seminar, 'final');
+            const finalReportStatus = normalizePaperStatus(finalReport.status);
             return {
                 total: topics.length,
                 pending: topics.filter(t => t.status === 'submitted').length,
@@ -55,7 +61,15 @@ export function createGuideSeminarModule(app) {
                 ppt,
                 pptStatus,
                 pptPending: pptStatus === 'submitted',
-                pptApproved: pptStatus === 'approved'
+                pptApproved: pptStatus === 'approved',
+                draftReport,
+                draftReportStatus,
+                draftReportPending: draftReportStatus === 'submitted',
+                draftReportApproved: draftReportStatus === 'approved',
+                finalReport,
+                finalReportStatus,
+                finalReportPending: finalReportStatus === 'submitted',
+                finalReportApproved: finalReportStatus === 'approved'
             };
         },
 
@@ -161,8 +175,10 @@ export function createGuideSeminarModule(app) {
                 acc.papersPending += st.papersPending;
                 acc.abstractPending += st.titleAbstractPending ? 1 : 0;
                 acc.pptPending += st.pptPending ? 1 : 0;
+                acc.draftReportPending += st.draftReportPending ? 1 : 0;
+                acc.finalReportPending += st.finalReportPending ? 1 : 0;
                 return acc;
-            }, { students: 0, pending: 0, locked: 0, awaiting: 0, noTopics: 0, papersPending: 0, abstractPending: 0, pptPending: 0 });
+            }, { students: 0, pending: 0, locked: 0, awaiting: 0, noTopics: 0, papersPending: 0, abstractPending: 0, pptPending: 0, draftReportPending: 0, finalReportPending: 0 });
 
             const menteeList = students.length
                 ? students.map(s => this.renderGuideStudentCard(s)).join('')
@@ -206,6 +222,14 @@ export function createGuideSeminarModule(app) {
                                 <strong>${stats.pptPending}</strong>
                                 <span>PPTs to review</span>
                             </div>
+                            <div class="seminar-guide-stat ${stats.draftReportPending ? 'stat-warn' : ''}">
+                                <strong>${stats.draftReportPending}</strong>
+                                <span>Draft reports</span>
+                            </div>
+                            <div class="seminar-guide-stat ${stats.finalReportPending ? 'stat-warn' : ''}">
+                                <strong>${stats.finalReportPending}</strong>
+                                <span>Final reports</span>
+                            </div>
                         </div>
 
                         <div class="seminar-guide-toolbar">
@@ -217,6 +241,8 @@ export function createGuideSeminarModule(app) {
                                 <option value="papers">Papers need review</option>
                                 <option value="abstract">Abstracts need review</option>
                                 <option value="ppt">PPTs need review</option>
+                                <option value="draft-report">Draft reports need review</option>
+                                <option value="final-report">Final reports need review</option>
                                 <option value="ready">Ready to lock</option>
                                 <option value="locked">Locked</option>
                                 <option value="none">No topics yet</option>
@@ -226,8 +252,8 @@ export function createGuideSeminarModule(app) {
                         <p class="seminar-guide-howto">
                             <i class="fas fa-info-circle"></i>
                             Review topics → lock one final topic. Then verify <strong>papers</strong>,
-                            <strong>title &amp; abstract</strong>, and <strong>PPT</strong>:
-                            Approve, Reject, or Open for edit. Guide CIE marks (background &amp; relevance) are entered from the CIE evaluation tab for your mentees.
+                            <strong>title &amp; abstract</strong>, <strong>PPT</strong>, and <strong>draft/final report links</strong>:
+                            Approve, Reject, or revert so the student can update. Guide CIE marks (background &amp; relevance) are entered from the CIE evaluation tab for your mentees.
                         </p>
 
                         <div id="guide-seminar-students" class="seminar-guide-students">
@@ -400,7 +426,9 @@ export function createGuideSeminarModule(app) {
             const papers = sem.papers || [];
 
             let filterStatus = 'none';
-            if (st.pptPending) filterStatus = 'ppt';
+            if (st.finalReportPending) filterStatus = 'final-report';
+            else if (st.draftReportPending) filterStatus = 'draft-report';
+            else if (st.pptPending) filterStatus = 'ppt';
             else if (st.titleAbstractPending) filterStatus = 'abstract';
             else if (st.papersPending > 0) filterStatus = 'papers';
             else if (st.locked) filterStatus = 'locked';
@@ -414,6 +442,8 @@ export function createGuideSeminarModule(app) {
                 st.papersPending > 0 ? 'papers' : '',
                 st.titleAbstractPending ? 'abstract' : '',
                 st.pptPending ? 'ppt' : '',
+                st.draftReportPending ? 'draft-report' : '',
+                st.finalReportPending ? 'final-report' : '',
                 (!st.locked && st.approved > 0) ? 'ready' : '',
                 st.total === 0 ? 'none' : ''
             ].filter(Boolean).join(' ');
@@ -446,6 +476,22 @@ export function createGuideSeminarModule(app) {
                     ? '<span class="seminar-status-chip chip-ready"><i class="fas fa-file-powerpoint"></i> PPT approved</span>'
                     : '';
 
+            const draftChip = st.draftReportPending
+                ? '<span class="seminar-status-chip chip-pending"><i class="fas fa-file-alt"></i> Draft report pending</span>'
+                : st.draftReportApproved
+                    ? '<span class="seminar-status-chip chip-ready"><i class="fas fa-file-alt"></i> Draft report approved</span>'
+                    : hasSeminarReportSubmission(st.draftReport)
+                        ? `<span class="seminar-status-chip chip-pending"><i class="fas fa-file-alt"></i> Draft: ${escapeHtml(st.draftReportStatus === 'needs_revision' ? 'needs edit' : statusBadge(st.draftReportStatus))}</span>`
+                        : '';
+
+            const finalChip = st.finalReportPending
+                ? '<span class="seminar-status-chip chip-pending"><i class="fas fa-file-pdf"></i> Final report pending</span>'
+                : st.finalReportApproved
+                    ? '<span class="seminar-status-chip chip-ready"><i class="fas fa-file-pdf"></i> Final report approved</span>'
+                    : hasSeminarReportSubmission(st.finalReport)
+                        ? `<span class="seminar-status-chip chip-pending"><i class="fas fa-file-pdf"></i> Final: ${escapeHtml(st.finalReportStatus === 'needs_revision' ? 'needs edit' : statusBadge(st.finalReportStatus))}</span>`
+                        : '';
+
             const topicsHtml = topics.length
                 ? topics.map((t, idx) => this.renderGuideTopicCard(student, t, idx, st.locked)).join('')
                 : `<div class="seminar-guide-no-topics">
@@ -476,6 +522,8 @@ export function createGuideSeminarModule(app) {
                             ${paperChip}
                             ${abstractChip}
                             ${pptChip}
+                            ${draftChip}
+                            ${finalChip}
                             <span class="seminar-topic-count">${st.total} topic${st.total === 1 ? '' : 's'}
                                 ${st.minMet ? '' : ` <small>(min ${MIN_SEMINAR_TOPICS})</small>`}
                             </span>
@@ -519,6 +567,12 @@ export function createGuideSeminarModule(app) {
 
                     <h4 class="seminar-guide-subsection"><i class="fas fa-file-powerpoint"></i> PPT</h4>
                     ${this.renderGuidePptCard(student, st)}
+
+                    <h4 class="seminar-guide-subsection"><i class="fas fa-file-alt"></i> Draft report</h4>
+                    ${this.renderGuideReportCard(student, st, 'draft')}
+
+                    <h4 class="seminar-guide-subsection"><i class="fas fa-file-pdf"></i> Final report</h4>
+                    ${this.renderGuideReportCard(student, st, 'final')}
                 </article>
             `;
         },
@@ -578,6 +632,70 @@ export function createGuideSeminarModule(app) {
                         ` : ''}
                         ${status === 'needs_revision' || status === 'rejected' ? `
                             <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to update and resubmit the PPT link.</p>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        },
+
+        renderGuideReportCard(student, st, kind) {
+            const isFinal = kind === 'final';
+            const label = isFinal ? 'Final report' : 'Draft report';
+            const report = isFinal ? st.finalReport : st.draftReport;
+            const status = isFinal ? st.finalReportStatus : st.draftReportStatus;
+            const hasContent = Boolean(report?.url?.trim());
+
+            if (!st.locked) {
+                return `<div class="seminar-guide-no-topics">
+                    <i class="fas fa-file-alt"></i>
+                    <p>${escapeHtml(label)} unlocks after you lock a final topic.</p>
+                </div>`;
+            }
+
+            if (!hasContent || status === 'draft') {
+                return `<div class="seminar-guide-no-topics">
+                    <i class="fas fa-file-alt"></i>
+                    <p>No ${escapeHtml(label.toLowerCase())} link submitted yet.</p>
+                </div>`;
+            }
+
+            const statusLabel = status === 'needs_revision' ? 'Needs edit' : statusBadge(status);
+            const kindArg = isFinal ? 'final' : 'draft';
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${escapeHtml(report.title || label)}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                    <p class="seminar-paper-meta">
+                        <a href="${escapeHtml(report.url || '#')}" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-external-link-alt"></i> Open ${escapeHtml(label.toLowerCase())} link
+                        </a>
+                    </p>
+                    ${report.url ? `<p class="seminar-paper-url form-hint">${escapeHtml(report.url)}</p>` : ''}
+                    ${report.guideFeedback ? `
+                        <p class="seminar-topic-feedback"><i class="fas fa-comment"></i> ${escapeHtml(report.guideFeedback)}</p>
+                    ` : ''}
+                    <div class="seminar-guide-actions">
+                        ${status === 'submitted' ? `
+                            <button type="button" class="btn btn-sm btn-primary" onclick="app.guideApproveSeminarReport('${escapeHtml(student.id)}', '${kindArg}')">
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="app.guideRejectSeminarReport('${escapeHtml(student.id)}', '${kindArg}')">
+                                <i class="fas fa-times"></i> Reject
+                            </button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenSeminarReportEdit('${escapeHtml(student.id)}', '${kindArg}')">
+                                <i class="fas fa-undo"></i> Revert to student
+                            </button>
+                        ` : ''}
+                        ${status === 'approved' ? `
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="app.guideOpenSeminarReportEdit('${escapeHtml(student.id)}', '${kindArg}')">
+                                <i class="fas fa-undo"></i> Revert to student
+                            </button>
+                        ` : ''}
+                        ${status === 'needs_revision' || status === 'rejected' ? `
+                            <p class="form-hint" style="margin:0;"><i class="fas fa-user-edit"></i> Waiting for student to update and resubmit the ${escapeHtml(label.toLowerCase())} link.</p>
                         ` : ''}
                     </div>
                 </div>
@@ -753,6 +871,8 @@ export function createGuideSeminarModule(app) {
             ensureSeminarTopics(data.seminar);
             ensureTitleAbstract(data.seminar);
             ensureSeminarPpt(data.seminar);
+            ensureSeminarReport(data.seminar, 'draft');
+            ensureSeminarReport(data.seminar, 'final');
             if (!data.seminar.papers) data.seminar.papers = [];
             updater(data.seminar);
             await setDoc(ref, { seminar: data.seminar }, { merge: true });
@@ -1007,25 +1127,56 @@ export function createGuideSeminarModule(app) {
             alert('PPT reverted to student. They can update the link and resubmit.');
         },
 
+        async guideApproveSeminarReport(studentId, kind) {
+            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const fb = prompt(`Optional note for the student (${label.toLowerCase()} approval):`) || '';
+            await this.updateStudentSeminar(studentId, s => {
+                const report = ensureSeminarReport(s, kind);
+                report.status = 'approved';
+                report.guideFeedback = fb;
+                report.reviewedAt = new Date().toISOString();
+            });
+        },
+
+        async guideRejectSeminarReport(studentId, kind) {
+            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const fb = prompt(`Reason for rejecting the ${label.toLowerCase()} (shown to student):`);
+            if (fb === null) return;
+            const reason = fb.trim() || `Please update the ${label.toLowerCase()} and resubmit the link.`;
+            await this.updateStudentSeminar(studentId, s => {
+                const report = ensureSeminarReport(s, kind);
+                report.status = 'rejected';
+                report.guideFeedback = reason;
+                report.reviewedAt = new Date().toISOString();
+            });
+            alert(`Rejected. Student can update and resubmit the ${label.toLowerCase()} link.`);
+        },
+
+        async guideOpenSeminarReportEdit(studentId, kind) {
+            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const fb = prompt(`Comment for the student (what to change in the ${label.toLowerCase()}):`);
+            if (fb === null) return;
+            const reason = fb.trim() || `Please update the ${label.toLowerCase()} link and resubmit.`;
+            await this.updateStudentSeminar(studentId, s => {
+                const report = ensureSeminarReport(s, kind);
+                report.status = 'needs_revision';
+                report.guideFeedback = reason;
+                report.reviewedAt = new Date().toISOString();
+            });
+            alert(`${label} reverted to student. They can update the link and resubmit.`);
+        },
+
         async guideApproveDraft(studentId) {
-            await this.updateStudentSeminar(studentId, s => { s.draftReport.status = 'guide_approved'; });
+            return this.guideApproveSeminarReport(studentId, 'draft');
         },
         async guideRejectDraft(studentId) {
-            const fb = prompt('Feedback:') || '';
-            await this.updateStudentSeminar(studentId, s => {
-                s.draftReport.status = 'guide_rejected';
-                s.draftReport.guideFeedback = fb;
-            });
+            return this.guideRejectSeminarReport(studentId, 'draft');
         },
         async guideApproveFinal(studentId) {
-            await this.updateStudentSeminar(studentId, s => { s.finalReport.status = 'guide_approved'; });
+            return this.guideApproveSeminarReport(studentId, 'final');
         },
         async guideRejectFinal(studentId) {
-            const fb = prompt('Feedback:') || '';
-            await this.updateStudentSeminar(studentId, s => {
-                s.finalReport.status = 'guide_rejected';
-                s.finalReport.guideFeedback = fb;
-            });
+            return this.guideRejectSeminarReport(studentId, 'final');
         }
     };
 }

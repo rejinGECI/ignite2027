@@ -24,8 +24,10 @@ import {
     hasTitleAbstractSubmission,
     ensureSeminarPpt,
     hasPptSubmission,
+    ensureSeminarReport,
+    hasSeminarReportSubmission,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval5';
+} from '../utils/seminarConfig.js?v=eval18';
 
 export function createSeminarModule(app) {
     return {
@@ -35,16 +37,20 @@ export function createSeminarModule(app) {
             ensureSeminarTopics(s);
             ensureTitleAbstract(s);
             ensureSeminarPpt(s);
+            ensureSeminarReport(s, 'draft');
+            ensureSeminarReport(s, 'final');
             ensureSeminarEvaluation(s);
             if (!s.papers) s.papers = [];
             if (!s.questionHistory) s.questionHistory = [];
             if (s.postTopicWorkflowOpen === undefined) s.postTopicWorkflowOpen = false;
-            // Soft-migrate: keep papers/title/PPT open after prior lock or existing submissions
+            // Soft-migrate: keep papers/title/PPT/reports open after prior lock or existing submissions
             if (!s.postTopicWorkflowOpen && (
                 s.lockedTopicId
                 || s.papers.length > 0
                 || hasTitleAbstractSubmission(s.titleAbstract)
                 || hasPptSubmission(s.ppt)
+                || hasSeminarReportSubmission(s.draftReport)
+                || hasSeminarReportSubmission(s.finalReport)
             )) {
                 s.postTopicWorkflowOpen = true;
             }
@@ -234,6 +240,13 @@ export function createSeminarModule(app) {
             const pptHintDate = settings?.schedule?.pptSubmission;
             const pptHtml = this.renderStudentPpt(ppt, postTopicOpen);
 
+            const draftReport = ensureSeminarReport(seminar, 'draft');
+            const finalReport = ensureSeminarReport(seminar, 'final');
+            const draftHintDate = settings?.schedule?.draftReportSubmission;
+            const finalHintDate = settings?.schedule?.finalReportSubmission;
+            const draftHtml = this.renderStudentReportLink('draft', draftReport, postTopicOpen);
+            const finalHtml = this.renderStudentReportLink('final', finalReport, postTopicOpen);
+
             el.innerHTML = `
                 <div class="seminar-student-page">
                     <div class="seminar-overview-strip">
@@ -354,6 +367,38 @@ export function createSeminarModule(app) {
                         </div>
                         <div id="seminar-ppt">${pptHtml}</div>
                     </section>
+
+                    <section class="seminar-section seminar-section-primary" id="seminar-draft-report-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-file-alt"></i> Draft report</h3>
+                                <p class="form-hint">
+                                    Upload a link to your draft seminar report (Google Drive, OneDrive, etc.) for guide verification.
+                                    ${draftHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(draftHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <span class="badge badge-${escapeHtml(normalizePaperStatus(draftReport.status))}">${escapeHtml(statusBadge(normalizePaperStatus(draftReport.status)))}</span>
+                            </div>
+                        </div>
+                        <div id="seminar-draft-report">${draftHtml}</div>
+                    </section>
+
+                    <section class="seminar-section seminar-section-primary" id="seminar-final-report-section">
+                        <div class="seminar-section-header">
+                            <div>
+                                <h3><i class="fas fa-file-pdf"></i> Final report</h3>
+                                <p class="form-hint">
+                                    Upload a link to your final seminar report after incorporating guide comments.
+                                    ${finalHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(finalHintDate))}</strong>.` : ''}
+                                </p>
+                            </div>
+                            <div class="seminar-progress-meta">
+                                <span class="badge badge-${escapeHtml(normalizePaperStatus(finalReport.status))}">${escapeHtml(statusBadge(normalizePaperStatus(finalReport.status)))}</span>
+                            </div>
+                        </div>
+                        <div id="seminar-final-report">${finalHtml}</div>
+                    </section>
                 </div>
             `;
         },
@@ -421,6 +466,81 @@ export function createSeminarModule(app) {
                     </p>
                     ${ppt.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(ppt.guideFeedback)}</p>` : ''}
                     ${ppt.submittedAt ? `<p class="form-hint">Submitted: ${escapeHtml(new Date(ppt.submittedAt).toLocaleDateString())}</p>` : ''}
+                </div>`;
+        },
+
+        seminarReportKindLabel(kind) {
+            return kind === 'final' ? 'Final report' : 'Draft report';
+        },
+
+        renderStudentReportLink(kind, report, postTopicOpen) {
+            const label = this.seminarReportKindLabel(kind);
+            if (!postTopicOpen) {
+                return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> ${escapeHtml(label)} upload opens after your guide locks a final topic.</p>`;
+            }
+
+            const status = normalizePaperStatus(report.status);
+            const titleId = `seminar-${kind}-report-title`;
+            const urlId = `seminar-${kind}-report-url`;
+            const submitFn = kind === 'final' ? 'submitSeminarFinalReport' : 'submitSeminarDraftReport';
+            const resubmitFn = kind === 'final' ? 'resubmitSeminarFinalReport' : 'resubmitSeminarDraftReport';
+
+            if (status === 'needs_revision' || status === 'rejected') {
+                const badgeLabel = status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
+                const badgeClass = status === 'rejected' ? 'rejected' : 'needs_revision';
+                return `
+                    <div class="seminar-paper-card seminar-topic-status-${escapeHtml(badgeClass)}">
+                        <div class="seminar-topic-card-header">
+                            <strong>Update ${escapeHtml(label.toLowerCase())} link</strong>
+                            <span class="badge badge-${escapeHtml(badgeClass)}">${escapeHtml(badgeLabel)}</span>
+                        </div>
+                        ${report.guideFeedback ? `<p class="seminar-topic-feedback"><i class="fas fa-comment"></i> <strong>Guide:</strong> ${escapeHtml(report.guideFeedback)}</p>` : ''}
+                        <div class="seminar-edit-ppt-form">
+                            <div class="form-group">
+                                <label><strong>Report title (optional)</strong></label>
+                                <input type="text" id="${titleId}" class="form-input" value="${escapeHtml(report.title || '')}" placeholder="${escapeHtml(label)} title">
+                            </div>
+                            <div class="form-group">
+                                <label><strong>Report link (URL)</strong></label>
+                                <input type="url" id="${urlId}" class="form-input" value="${escapeHtml(report.url || '')}" placeholder="https://...">
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="app.${resubmitFn}()">
+                                <i class="fas fa-paper-plane"></i> Save &amp; resubmit
+                            </button>
+                        </div>
+                    </div>`;
+            }
+
+            if (status === 'draft' || !report.url?.trim()) {
+                return `
+                    <div class="seminar-add-paper-form">
+                        <div class="form-group">
+                            <label><strong>Report title (optional)</strong></label>
+                            <input type="text" id="${titleId}" class="form-input" placeholder="${escapeHtml(label)} title">
+                        </div>
+                        <div class="form-group">
+                            <label><strong>Report link (URL)</strong></label>
+                            <input type="url" id="${urlId}" class="form-input" placeholder="https://drive.google.com/...">
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="app.${submitFn}()">
+                            <i class="fas fa-upload"></i> Submit ${escapeHtml(label.toLowerCase())} link
+                        </button>
+                    </div>`;
+            }
+
+            return `
+                <div class="seminar-paper-card seminar-topic-status-${escapeHtml(status)}">
+                    <div class="seminar-topic-card-header">
+                        <strong>${escapeHtml(report.title || label)}</strong>
+                        <span class="badge badge-${escapeHtml(status)}">${escapeHtml(statusBadge(status))}</span>
+                    </div>
+                    <p class="seminar-paper-meta">
+                        <a href="${escapeHtml(report.url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-external-link-alt"></i> ${escapeHtml(report.url)}
+                        </a>
+                    </p>
+                    ${report.guideFeedback ? `<p class="form-hint"><strong>Guide:</strong> ${escapeHtml(report.guideFeedback)}</p>` : ''}
+                    ${report.submittedAt ? `<p class="form-hint">Submitted: ${escapeHtml(new Date(report.submittedAt).toLocaleDateString())}</p>` : ''}
                 </div>`;
         },
 
@@ -857,26 +977,66 @@ export function createSeminarModule(app) {
         },
 
         async submitSeminarDraftReport() {
-            const url = document.getElementById('seminar-draft-url')?.value.trim();
-            if (!url) { alert('Enter draft report link.'); return; }
-            const data = await app.getUserData();
-            if (!data) return;
-            const seminar = this.ensureSeminar(data);
-            seminar.draftReport = { url, status: 'submitted', guideFeedback: '', submittedAt: new Date().toISOString() };
-            await app.saveUserData(data);
-            alert('Draft report submitted.');
-            await this.loadSeminar();
+            return this.saveSeminarReportLink('draft', false);
+        },
+
+        async resubmitSeminarDraftReport() {
+            return this.saveSeminarReportLink('draft', true);
         },
 
         async submitSeminarFinalReport() {
-            const url = document.getElementById('seminar-final-url')?.value.trim();
-            if (!url) { alert('Enter final report link.'); return; }
+            return this.saveSeminarReportLink('final', false);
+        },
+
+        async resubmitSeminarFinalReport() {
+            return this.saveSeminarReportLink('final', true);
+        },
+
+        async saveSeminarReportLink(kind, isResubmit) {
+            const label = this.seminarReportKindLabel(kind);
+            const title = document.getElementById(`seminar-${kind}-report-title`)?.value.trim() || '';
+            const url = document.getElementById(`seminar-${kind}-report-url`)?.value.trim();
+            if (!url) { alert(`Enter the ${label.toLowerCase()} link (URL).`); return; }
+            try {
+                new URL(url);
+            } catch (e) {
+                alert('Enter a valid URL (include https://).');
+                return;
+            }
+
             const data = await app.getUserData();
             if (!data) return;
             const seminar = this.ensureSeminar(data);
-            seminar.finalReport = { url, status: 'submitted', guideFeedback: '', submittedAt: new Date().toISOString() };
+
+            if (!isSeminarPostTopicOpen(seminar)) {
+                alert(`${label} upload unlocks after your guide locks a final topic.`);
+                await this.loadSeminar();
+                return;
+            }
+
+            const report = ensureSeminarReport(seminar, kind);
+            const status = normalizePaperStatus(report.status);
+            if (isResubmit) {
+                if (status !== 'needs_revision' && status !== 'rejected') {
+                    alert(`${label} is not open for editing.`);
+                    return;
+                }
+            } else if (status !== 'draft' && hasSeminarReportSubmission(report) && !isSeminarSubmissionEditable(status)) {
+                alert(`${label} already submitted. Ask your guide to open it for edit if you need to update the link.`);
+                return;
+            }
+
+            report.title = title;
+            report.url = url;
+            report.status = 'submitted';
+            report.guideFeedback = isResubmit ? (report.guideFeedback || '') : '';
+            report.submittedAt = new Date().toISOString();
+            report.reviewedAt = null;
+
             await app.saveUserData(data);
-            alert('Final report submitted.');
+            alert(isResubmit
+                ? `${label} link updated and resubmitted for guide review.`
+                : `${label} link submitted for guide review.`);
             await this.loadSeminar();
         }
     };

@@ -937,6 +937,7 @@ Bob Johnson,GHI789</pre>
                     <button type="button" class="seminar-admin-tab" data-tab="schedule">Schedule &amp; Presentation</button>
                     <button type="button" class="seminar-admin-tab" data-tab="evaluation">Evaluation</button>
                     <button type="button" class="seminar-admin-tab" data-tab="consolidated">Consolidated marks</button>
+                    <button type="button" class="seminar-admin-tab" data-tab="report-links">Report links</button>
                     <button type="button" class="seminar-admin-tab" data-tab="scoring">Scoring setup</button>
                     <button type="button" class="seminar-admin-tab" data-tab="students">Students &amp; reports</button>
                 </div>
@@ -949,6 +950,39 @@ Bob Johnson,GHI789</pre>
                         <p class="form-hint">Assigns each student to a faculty guide at random with equal load across all guides (difference of at most one student per faculty).</p>
                         <button type="button" class="btn btn-primary" onclick="app.randomAllotSeminarGuides()">
                             <i class="fas fa-random"></i> Allot guides (equal faculty load)
+                        </button>
+                        <p class="form-hint" style="margin-top:0.75rem;">
+                            This button reshuffles <strong>every</strong> student. To move only students of transferred faculty, use
+                            <strong>Reassign transferred guides</strong> below.
+                        </p>
+                    </div>
+                    <div class="admin-card" style="margin-top: 1rem;">
+                        <h3><i class="fas fa-exchange-alt"></i> Reassign transferred guides</h3>
+                        <p class="form-hint">
+                            Use this when some faculty have been transferred and new faculty have been added.
+                            Only students of the <strong>transferred</strong> faculty are moved to the <strong>new</strong> faculty,
+                            with equal load among those new faculty. Other students, presentation slots, CIE marks,
+                            audience questions, and other modules are not changed.
+                        </p>
+                        <p class="form-hint">
+                            Create each new faculty first under <strong>Mini Projects → Teams &amp; Guides → Create Guide</strong>.
+                        </p>
+                        <div class="seminar-reassign-grid">
+                            <div>
+                                <h4 class="seminar-reassign-heading">Transferred faculty (students will be moved)</h4>
+                                <div id="seminar-reassign-from-list" class="seminar-reassign-list">
+                                    <p class="form-hint">Loading faculty…</p>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="seminar-reassign-heading">New faculty (receive those students)</h4>
+                                <div id="seminar-reassign-to-list" class="seminar-reassign-list">
+                                    <p class="form-hint">Loading faculty…</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" style="margin-top:1rem;" onclick="app.reassignTransferredSeminarGuides()">
+                            <i class="fas fa-exchange-alt"></i> Move students to new faculty
                         </button>
                     </div>
                     <div class="admin-card" style="margin-top: 1rem;">
@@ -1084,6 +1118,52 @@ Bob Johnson,GHI789</pre>
                         </div>
                         <div id="seminar-consolidated-table-wrap" class="seminar-cons-wrap">
                             <p class="form-hint">Open this tab to load consolidated CIE marks from all evaluators, including admin.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="seminar-admin-report-links" class="seminar-admin-panel">
+                    <div class="admin-card">
+                        <h3><i class="fas fa-file-alt"></i> Consolidated seminar report links</h3>
+                        <p class="form-hint">
+                            Draft and final seminar report URLs submitted by students, with guide approval / rejection status.
+                            Guides verify from Seminar Reviews. Students can update the link after reject or revert.
+                        </p>
+                        <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
+                            <button type="button" class="btn btn-secondary" onclick="app.renderSeminarReportLinksAdmin(true)">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="app.exportSeminarReportLinksExcel()">
+                                <i class="fas fa-file-excel"></i> Export Excel
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.exportSeminarReportLinksCsv()">
+                                <i class="fas fa-file-csv"></i> Export CSV
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarReportLinksStatusReport()">
+                                <i class="fas fa-file-pdf"></i> Download PDF
+                            </button>
+                        </div>
+                        <div id="seminar-report-links-stats" class="seminar-cons-stats"></div>
+                        <div class="seminar-cons-toolbar">
+                            <input type="search" id="search-seminar-report-links" class="form-input search-input"
+                                placeholder="Search by student, KTU ID, guide, topic, or URL…">
+                            <select id="filter-seminar-report-links" class="form-input" onchange="app.filterSeminarReportLinksTable()">
+                                <option value="">All students</option>
+                                <option value="draft-pending">Draft pending review</option>
+                                <option value="draft-approved">Draft approved</option>
+                                <option value="draft-rejected">Draft rejected</option>
+                                <option value="draft-revision">Draft needs edit</option>
+                                <option value="draft-missing">Draft not submitted</option>
+                                <option value="final-pending">Final pending review</option>
+                                <option value="final-approved">Final approved</option>
+                                <option value="final-rejected">Final rejected</option>
+                                <option value="final-revision">Final needs edit</option>
+                                <option value="final-missing">Final not submitted</option>
+                                <option value="both-approved">Both approved</option>
+                            </select>
+                        </div>
+                        <div id="seminar-report-links-table-wrap" class="seminar-cons-wrap">
+                            <p class="form-hint">Open this tab to load draft and final report links for all students.</p>
                         </div>
                     </div>
                 </div>
@@ -1227,6 +1307,24 @@ Bob Johnson,GHI789</pre>
                             </button>
                         </div>
                     </div>
+                    <div class="admin-card" style="margin-bottom: 1rem;">
+                        <h3><i class="fas fa-file-alt"></i> Seminar report links</h3>
+                        <p class="form-hint">Draft and final report URLs with guide verification. Open the consolidated table, or download Excel / CSV / PDF.</p>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            <button type="button" class="btn btn-secondary" onclick="app.showSeminarAdminTab('report-links')">
+                                <i class="fas fa-table"></i> Consolidated view
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.exportSeminarReportLinksExcel()">
+                                <i class="fas fa-file-excel"></i> Excel
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.exportSeminarReportLinksCsv()">
+                                <i class="fas fa-file-csv"></i> CSV
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.generateSeminarReportLinksStatusReport()">
+                                <i class="fas fa-file-pdf"></i> PDF report
+                            </button>
+                        </div>
+                    </div>
                     <div class="admin-controls" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
                         <input type="text" id="search-seminar-students" placeholder="Search students by name or KTU ID..." class="search-input" style="flex: 1; max-width: 400px;">
                         <button type="button" class="btn btn-secondary" onclick="app.showSeminarAdminTab('consolidated')">
@@ -1247,7 +1345,7 @@ Bob Johnson,GHI789</pre>
             <div id="guide-seminar" class="page">
                 <div class="page-header">
                     <h1><i class="fas fa-chalkboard-teacher"></i> Seminar Reviews</h1>
-                    <p class="subtitle">Review student topics — approve, reject, and lock the final selection</p>
+                    <p class="subtitle">Review student topics, papers, PPT, and seminar report links — approve, reject, and lock the final selection</p>
                 </div>
                 <div id="guide-seminar-content"></div>
             </div>
@@ -3159,7 +3257,7 @@ Bob Johnson,GHI789</pre>
 
     <!-- PptxGenJS for PPT generation - Load before app.js -->
     <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs/dist/pptxgen.bundle.js"></script>
-    <script type="module" src="./app.js?v=eval16"></script>
+    <script type="module" src="./app.js?v=eval18"></script>
     <script>
         // Password visibility toggle function
         function togglePasswordVisibility() {

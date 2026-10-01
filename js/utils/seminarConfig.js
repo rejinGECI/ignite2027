@@ -265,8 +265,22 @@ export function getDefaultSeminar() {
             submittedAt: null,
             reviewedAt: null
         },
-        draftReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
-        finalReport: { url: '', status: 'draft', guideFeedback: '', submittedAt: null },
+        draftReport: {
+            url: '',
+            title: '',
+            status: 'draft',
+            guideFeedback: '',
+            submittedAt: null,
+            reviewedAt: null
+        },
+        finalReport: {
+            url: '',
+            title: '',
+            status: 'draft',
+            guideFeedback: '',
+            submittedAt: null,
+            reviewedAt: null
+        },
         presentationSlotId: null,
         totals: {
             guideMarks: 0,
@@ -353,6 +367,8 @@ export function isSeminarPostTopicOpen(seminar) {
     if ((seminar.papers || []).length > 0) return true;
     if (hasTitleAbstractSubmission(seminar.titleAbstract)) return true;
     if (hasPptSubmission(seminar.ppt)) return true;
+    if (hasSeminarReportSubmission(seminar.draftReport)) return true;
+    if (hasSeminarReportSubmission(seminar.finalReport)) return true;
     return false;
 }
 
@@ -502,6 +518,47 @@ export function ensureSeminarPpt(seminar) {
 
 export function hasPptSubmission(ppt) {
     return Boolean(ppt?.url?.trim() && normalizePaperStatus(ppt.status) !== 'draft');
+}
+
+export function getDefaultSeminarReport() {
+    return {
+        url: '',
+        title: '',
+        status: 'draft',
+        guideFeedback: '',
+        submittedAt: null,
+        reviewedAt: null
+    };
+}
+
+export function seminarReportField(kind) {
+    return kind === 'final' ? 'finalReport' : 'draftReport';
+}
+
+export function ensureSeminarReport(seminar, kind = 'draft') {
+    const field = seminarReportField(kind);
+    if (!seminar[field] || typeof seminar[field] !== 'object') {
+        seminar[field] = getDefaultSeminarReport();
+    } else {
+        seminar[field] = { ...getDefaultSeminarReport(), ...seminar[field] };
+        const raw = seminar[field].status;
+        if (raw === 'guide_approved' || raw === 'guide_rejected') {
+            seminar[field].status = normalizePaperStatus(raw);
+        }
+    }
+    return seminar[field];
+}
+
+export function ensureSeminarDraftReport(seminar) {
+    return ensureSeminarReport(seminar, 'draft');
+}
+
+export function ensureSeminarFinalReport(seminar) {
+    return ensureSeminarReport(seminar, 'final');
+}
+
+export function hasSeminarReportSubmission(rep) {
+    return Boolean(rep?.url?.trim() && normalizePaperStatus(rep.status) !== 'draft');
 }
 
 export function sumParamScores(scores, params) {

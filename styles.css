@@ -6466,6 +6466,7 @@ textarea:not(:placeholder-shown)::placeholder {
     background: #fffbeb;
 }
 .badge-needs_revision { background: #fef3c7; color: #92400e; }
+.badge-draft { background: #f3f4f6; color: #4b5563; }
 .seminar-edit-topic-form {
     margin-top: 0.65rem;
     padding-top: 0.65rem;
@@ -6873,6 +6874,39 @@ textarea:not(:placeholder-shown)::placeholder {
 .seminar-faculty-student-list li { margin-bottom: 0.25rem; }
 .seminar-faculty-student-list small { color: var(--text-secondary); }
 
+.seminar-reassign-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+.seminar-reassign-heading {
+    margin: 0 0 0.5rem;
+    font-size: 0.92rem;
+}
+.seminar-reassign-list {
+    max-height: 280px;
+    overflow: auto;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    padding: 0.4rem 0.55rem;
+    background: #fff;
+}
+.seminar-reassign-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.4rem 0.2rem;
+    font-size: 0.9rem;
+}
+.seminar-reassign-item input {
+    margin-top: 0.2rem;
+}
+.seminar-reassign-item small {
+    display: block;
+    color: var(--text-secondary);
+}
+
 .seminar-cons-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -7042,6 +7076,14 @@ textarea:not(:placeholder-shown)::placeholder {
 .seminar-cons-table td,
 .seminar-cons-table th {
     vertical-align: top;
+}
+.seminar-report-links-table {
+    min-width: 980px;
+}
+.seminar-report-link-cell {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    word-break: break-all;
 }
 .seminar-cons-marks strong,
 .seminar-cons-total strong {
