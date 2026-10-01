@@ -26,8 +26,9 @@ import {
     hasPptSubmission,
     ensureSeminarReport,
     hasSeminarReportSubmission,
+    isSeminarDraftReportApproved,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval18';
+} from '../utils/seminarConfig.js?v=eval19';
 
 export function createSeminarModule(app) {
     return {
@@ -244,8 +245,9 @@ export function createSeminarModule(app) {
             const finalReport = ensureSeminarReport(seminar, 'final');
             const draftHintDate = settings?.schedule?.draftReportSubmission;
             const finalHintDate = settings?.schedule?.finalReportSubmission;
-            const draftHtml = this.renderStudentReportLink('draft', draftReport, postTopicOpen);
-            const finalHtml = this.renderStudentReportLink('final', finalReport, postTopicOpen);
+            const draftApproved = isSeminarDraftReportApproved(seminar);
+            const draftHtml = this.renderStudentReportLink('draft', draftReport, postTopicOpen, seminar);
+            const finalHtml = this.renderStudentReportLink('final', finalReport, postTopicOpen, seminar);
 
             el.innerHTML = `
                 <div class="seminar-student-page">
@@ -387,9 +389,10 @@ export function createSeminarModule(app) {
                     <section class="seminar-section seminar-section-primary" id="seminar-final-report-section">
                         <div class="seminar-section-header">
                             <div>
-                                <h3><i class="fas fa-file-pdf"></i> Final report</h3>
+                                <h3><i class="fas fa-file-pdf"></i> Main seminar report</h3>
                                 <p class="form-hint">
-                                    Upload a link to your final seminar report after incorporating guide comments.
+                                    Upload a link to your main seminar report after the draft report is approved.
+                                    ${!draftApproved ? ' This section unlocks when your guide approves the draft.' : ''}
                                     ${finalHintDate ? ` Suggested: <strong>${escapeHtml(formatSlotDate(finalHintDate))}</strong>.` : ''}
                                 </p>
                             </div>
@@ -470,22 +473,28 @@ export function createSeminarModule(app) {
         },
 
         seminarReportKindLabel(kind) {
-            return kind === 'final' ? 'Final report' : 'Draft report';
+            return kind === 'final' ? 'Main seminar report' : 'Draft report';
         },
 
-        renderStudentReportLink(kind, report, postTopicOpen) {
+        renderStudentReportLink(kind, report, postTopicOpen, seminar) {
             const label = this.seminarReportKindLabel(kind);
             if (!postTopicOpen) {
                 return `<p class="form-hint seminar-lock-notice"><i class="fas fa-info-circle"></i> ${escapeHtml(label)} upload opens after your guide locks a final topic.</p>`;
             }
+            if (kind === 'final' && !isSeminarDraftReportApproved(seminar)) {
+                if (!hasSeminarReportSubmission(report)) {
+                    return `<p class="form-hint seminar-lock-notice"><i class="fas fa-lock"></i> Main seminar report upload opens after your guide approves the draft report.</p>`;
+                }
+            }
 
             const status = normalizePaperStatus(report.status);
+            const finalOpen = kind !== 'final' || isSeminarDraftReportApproved(seminar);
             const titleId = `seminar-${kind}-report-title`;
             const urlId = `seminar-${kind}-report-url`;
             const submitFn = kind === 'final' ? 'submitSeminarFinalReport' : 'submitSeminarDraftReport';
             const resubmitFn = kind === 'final' ? 'resubmitSeminarFinalReport' : 'resubmitSeminarDraftReport';
 
-            if (status === 'needs_revision' || status === 'rejected') {
+            if (finalOpen && (status === 'needs_revision' || status === 'rejected')) {
                 const badgeLabel = status === 'rejected' ? 'Rejected — update & resubmit' : 'Needs edit';
                 const badgeClass = status === 'rejected' ? 'rejected' : 'needs_revision';
                 return `
@@ -511,7 +520,7 @@ export function createSeminarModule(app) {
                     </div>`;
             }
 
-            if (status === 'draft' || !report.url?.trim()) {
+            if (finalOpen && (status === 'draft' || !report.url?.trim())) {
                 return `
                     <div class="seminar-add-paper-form">
                         <div class="form-group">
@@ -1010,6 +1019,11 @@ export function createSeminarModule(app) {
 
             if (!isSeminarPostTopicOpen(seminar)) {
                 alert(`${label} upload unlocks after your guide locks a final topic.`);
+                await this.loadSeminar();
+                return;
+            }
+            if (kind === 'final' && !isSeminarDraftReportApproved(seminar)) {
+                alert('Main seminar report upload opens after your guide approves the draft report.');
                 await this.loadSeminar();
                 return;
             }

@@ -16,7 +16,7 @@ import {
     ensureSeminarReport,
     hasSeminarReportSubmission,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval18';
+} from '../utils/seminarConfig.js?v=eval19';
 
 export function createGuideSeminarModule(app) {
     return {
@@ -252,7 +252,8 @@ export function createGuideSeminarModule(app) {
                         <p class="seminar-guide-howto">
                             <i class="fas fa-info-circle"></i>
                             Review topics → lock one final topic. Then verify <strong>papers</strong>,
-                            <strong>title &amp; abstract</strong>, <strong>PPT</strong>, and <strong>draft/final report links</strong>:
+                            <strong>title &amp; abstract</strong>, <strong>PPT</strong>, and <strong>draft report</strong>.
+                            The <strong>main seminar report</strong> unlocks only after you approve the draft.
                             Approve, Reject, or revert so the student can update. Guide CIE marks (background &amp; relevance) are entered from the CIE evaluation tab for your mentees.
                         </p>
 
@@ -571,7 +572,7 @@ export function createGuideSeminarModule(app) {
                     <h4 class="seminar-guide-subsection"><i class="fas fa-file-alt"></i> Draft report</h4>
                     ${this.renderGuideReportCard(student, st, 'draft')}
 
-                    <h4 class="seminar-guide-subsection"><i class="fas fa-file-pdf"></i> Final report</h4>
+                    <h4 class="seminar-guide-subsection"><i class="fas fa-file-pdf"></i> Main seminar report</h4>
                     ${this.renderGuideReportCard(student, st, 'final')}
                 </article>
             `;
@@ -640,7 +641,7 @@ export function createGuideSeminarModule(app) {
 
         renderGuideReportCard(student, st, kind) {
             const isFinal = kind === 'final';
-            const label = isFinal ? 'Final report' : 'Draft report';
+            const label = isFinal ? 'Main seminar report' : 'Draft report';
             const report = isFinal ? st.finalReport : st.draftReport;
             const status = isFinal ? st.finalReportStatus : st.draftReportStatus;
             const hasContent = Boolean(report?.url?.trim());
@@ -649,6 +650,13 @@ export function createGuideSeminarModule(app) {
                 return `<div class="seminar-guide-no-topics">
                     <i class="fas fa-file-alt"></i>
                     <p>${escapeHtml(label)} unlocks after you lock a final topic.</p>
+                </div>`;
+            }
+
+            if (isFinal && !st.draftReportApproved && (!hasContent || status === 'draft')) {
+                return `<div class="seminar-guide-no-topics">
+                    <i class="fas fa-lock"></i>
+                    <p>Main seminar report unlocks after you approve the draft report.</p>
                 </div>`;
             }
 
@@ -1128,7 +1136,7 @@ export function createGuideSeminarModule(app) {
         },
 
         async guideApproveSeminarReport(studentId, kind) {
-            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const label = kind === 'final' ? 'Main seminar report' : 'Draft report';
             const fb = prompt(`Optional note for the student (${label.toLowerCase()} approval):`) || '';
             await this.updateStudentSeminar(studentId, s => {
                 const report = ensureSeminarReport(s, kind);
@@ -1139,7 +1147,7 @@ export function createGuideSeminarModule(app) {
         },
 
         async guideRejectSeminarReport(studentId, kind) {
-            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const label = kind === 'final' ? 'Main seminar report' : 'Draft report';
             const fb = prompt(`Reason for rejecting the ${label.toLowerCase()} (shown to student):`);
             if (fb === null) return;
             const reason = fb.trim() || `Please update the ${label.toLowerCase()} and resubmit the link.`;
@@ -1153,7 +1161,7 @@ export function createGuideSeminarModule(app) {
         },
 
         async guideOpenSeminarReportEdit(studentId, kind) {
-            const label = kind === 'final' ? 'Final report' : 'Draft report';
+            const label = kind === 'final' ? 'Main seminar report' : 'Draft report';
             const fb = prompt(`Comment for the student (what to change in the ${label.toLowerCase()}):`);
             if (fb === null) return;
             const reason = fb.trim() || `Please update the ${label.toLowerCase()} link and resubmit.`;

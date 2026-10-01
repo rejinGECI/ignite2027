@@ -39,7 +39,7 @@ import {
     resolveSeminarGuideId,
     buildEvaluatorMeta,
     computeSeminarGrandTotal
-} from '../utils/seminarConfig.js?v=eval18';
+} from '../utils/seminarConfig.js?v=eval19';
 
 const PAPER_TYPE_LABELS = {
     paper: 'Research paper',

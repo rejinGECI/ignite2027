@@ -561,6 +561,15 @@ export function hasSeminarReportSubmission(rep) {
     return Boolean(rep?.url?.trim() && normalizePaperStatus(rep.status) !== 'draft');
 }
 
+export function isSeminarDraftReportApproved(seminar) {
+    const draft = seminar?.draftReport;
+    return Boolean(draft?.url?.trim() && normalizePaperStatus(draft.status) === 'approved');
+}
+
+export function isSeminarFinalReportOpen(seminar) {
+    return isSeminarDraftReportApproved(seminar);
+}
+
 export function sumParamScores(scores, params) {
     if (!scores || !params) return 0;
     return params.reduce((s, p) => s + (parseFloat(scores[p.id]) || 0), 0);
